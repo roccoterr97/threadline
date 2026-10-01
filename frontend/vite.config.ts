@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -16,8 +16,31 @@ function demoFlag(mode: string): 'true' | 'false' {
   return mode === DEMO_MODE || env.VITE_DEMO === 'true' ? 'true' : 'false';
 }
 
+/** What search engines show for the public demo. */
+const DEMO_DESCRIPTION =
+  'Threadline demo: every conversation, one clear line. A self-hosted tracker that reads your mailbox and LinkedIn and tells you who is waiting for whom. Made-up data.';
+
+/**
+ * Only the public demo may be listed by search engines. A real dashboard keeps
+ * its "do not list" tag; the demo build swaps it for a public description.
+ */
+function demoListing(isDemo: boolean): Plugin {
+  return {
+    name: 'threadline-demo-listing',
+    transformIndexHtml(html) {
+      if (!isDemo) return html;
+      return html
+        .replace(/\s*<meta name="robots" content="noindex, nofollow" \/>/, '')
+        .replace(
+          '<meta name="description" content="Private Threadline dashboard." />',
+          `<meta name="description" content="${DEMO_DESCRIPTION}" />`,
+        );
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), demoListing(demoFlag(mode) === 'true')],
   define: {
     'import.meta.env.VITE_DEMO': JSON.stringify(demoFlag(mode)),
   },
