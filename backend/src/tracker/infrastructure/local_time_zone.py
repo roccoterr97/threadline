@@ -11,7 +11,8 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Final
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from tracker.shared.time_zones import canonical_zone_name
 
 #: The link that names the computer's zone.
 LOCALTIME_LINK: Final[Path] = Path("/etc/localtime")
@@ -38,8 +39,9 @@ def detect_time_zone(
     environment = os.environ if environment is None else environment
     from_setting = environment.get("TZ", "").lstrip(":")
     for candidate in (from_setting, _zone_from_link(link)):
-        if candidate and _is_known(candidate):
-            return candidate
+        known = canonical_zone_name(candidate)
+        if known is not None:
+            return known
     return FALLBACK_ZONE
 
 
@@ -54,12 +56,3 @@ def _zone_from_link(link: Path) -> str:
         return ""
     index = len(parts) - 1 - parts[::-1].index(ZONEINFO_FOLDER)
     return "/".join(parts[index + 1 :])
-
-
-def _is_known(name: str) -> bool:
-    """Tell whether this machine knows a zone by that name."""
-    try:
-        ZoneInfo(name)
-    except (ZoneInfoNotFoundError, ValueError):
-        return False
-    return True

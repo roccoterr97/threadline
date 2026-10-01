@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, type RenderResult } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, parsePath, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthContext, type AuthState } from '../auth/AuthContext';
 import { fixedClock, type Clock } from '../lib/clock';
 import { ClockContext } from '../lib/ClockContext';
@@ -18,6 +18,8 @@ interface RenderOptions {
   path?: string | null;
   clock?: Clock;
   auth?: Partial<AuthState>;
+  /** Location state the first address carries, as `navigate(to, { state })` would leave it. */
+  state?: unknown;
 }
 
 /** Prints the current address so a test can assert on the URL. */
@@ -48,7 +50,8 @@ interface ProvidersResult extends RenderResult {
  * wall clock or on a real Supabase session.
  */
 export function renderWithProviders(ui: ReactNode, options: RenderOptions = {}): ProvidersResult {
-  const { route = '/', path = '*', clock = fixedClock(NOW), auth = {} } = options;
+  const { route = '/', path = '*', clock = fixedClock(NOW), auth = {}, state } = options;
+  const firstEntry = state === undefined ? route : { ...parsePath(route), state };
 
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -61,7 +64,7 @@ export function renderWithProviders(ui: ReactNode, options: RenderOptions = {}):
     <QueryClientProvider client={queryClient}>
       <AuthContext.Provider value={stubAuth(auth)}>
         <ClockContext.Provider value={clock}>
-          <MemoryRouter initialEntries={[route]}>
+          <MemoryRouter initialEntries={[firstEntry]}>
             <LocationProbe />
             {path === null ? ui : <Routes>{<Route path={path} element={ui} />}</Routes>}
           </MemoryRouter>

@@ -14,6 +14,7 @@ import { fixedClock } from '../lib/clock';
 import { RefusalReason, RefusedError } from '../lib/errors';
 import { getSupabaseClient, isConfigured } from '../lib/supabaseClient';
 import { DEMO_REFRESH_SECONDS } from '../constants/dashboard';
+import { CategoryNameIndex } from '../domain/categorySettings';
 import { DEMO_OWNER_EMAIL, DEMO_UNUSED_CATEGORY } from './demoData';
 import { startDemo } from './startDemo';
 
@@ -136,9 +137,10 @@ describe('demo data — changes last for the page load only', () => {
       sort_order: 50,
     };
     await addCategory(investor);
-    await expect(addCategory(investor)).rejects.toEqual(
-      new RefusedError(RefusalReason.Duplicate, 'categories.add'),
-    );
+    await expect(addCategory(investor)).rejects.toMatchObject({
+      reason: RefusalReason.Duplicate,
+      constraint: 'categories_key_key',
+    });
     await expect(updateCategory('investor', { label: 'x'.repeat(41) })).rejects.toBeInstanceOf(
       RefusedError,
     );
@@ -146,6 +148,24 @@ describe('demo data — changes last for the page load only', () => {
     expect(await removeCategory('partner', DEMO_NOW)).toBe(RemovalOutcome.Archived);
     const partner = (await fetchCategories()).find((category) => category.key === 'partner');
     expect(partner?.archived_at).toBe(DEMO_NOW.toISOString());
+  });
+
+  it('refuses a second category with the same name or group name, whatever the case', async () => {
+    const sameName = { reason: RefusalReason.Duplicate, constraint: CategoryNameIndex.Label };
+    const lookalike = {
+      key: 'customer_2',
+      label: 'customer',
+      group_label: 'Buyers',
+      description: '',
+      colour: 'pink' as const,
+      sort_order: 50,
+    };
+    await expect(addCategory(lookalike)).rejects.toMatchObject(sameName);
+    await expect(
+      addCategory({ ...lookalike, label: 'Buyer', group_label: ' CUSTOMERS ' }),
+    ).rejects.toMatchObject({ ...sameName, constraint: CategoryNameIndex.GroupLabel });
+    await expect(updateCategory('partner', { label: 'Prospect' })).rejects.toMatchObject(sameName);
+    await expect(updateCategory('partner', { label: 'PARTNER' })).resolves.toBeUndefined();
   });
 
   it('starts from the invented data again on the next load', async () => {

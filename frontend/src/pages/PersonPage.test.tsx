@@ -93,6 +93,10 @@ describe('PersonPage — the four states', () => {
     fetchPersonMock.mockResolvedValue(null);
     renderPerson('missing');
     expect(await screen.findByText(copy.person.notFound.title)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: copy.person.backToPeople })).toHaveAttribute(
+      'href',
+      '/',
+    );
   });
 
   it('offers a retry when the person cannot be loaded', async () => {
@@ -364,6 +368,27 @@ describe('PersonPage — not relevant', () => {
     });
   });
 
+  it('goes back to the people list once the person is hidden', async () => {
+    const { user } = renderPerson();
+    await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
+    await user.click(screen.getByRole('button', { name: copy.person.markNoise.confirm }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    });
+    expect(screen.queryByText(copy.person.notFound.title)).not.toBeInTheDocument();
+  });
+
+  it('stays on the page and says so when hiding fails', async () => {
+    markNoiseMock.mockRejectedValue(new DataUnavailableError('person.mark_noise'));
+    const { user } = renderPerson();
+    await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
+    await user.click(screen.getByRole('button', { name: copy.person.markNoise.confirm }));
+
+    expect(await screen.findByText(copy.person.markNoise.failed)).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(`/people/${PERSON.person_id}`);
+  });
+
   it('can be backed out of', async () => {
     const { user } = renderPerson();
     await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
@@ -371,6 +396,14 @@ describe('PersonPage — not relevant', () => {
 
     expect(screen.queryByText(copy.person.markNoise.confirmTitle)).not.toBeInTheDocument();
     expect(markNoiseMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PersonPage — browser tab', () => {
+  it('is named after the person', async () => {
+    renderPerson();
+    await screen.findByRole('heading', { level: 1, name: PERSON.full_name });
+    expect(document.title).toBe(copy.app.pageTitle(PERSON.full_name));
   });
 });
 

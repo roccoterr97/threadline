@@ -28,6 +28,15 @@ describe('SaveFeedback', () => {
     expect(banner.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
   });
 
+  it('leaves the keyboard alone when asked to, but still speaks', () => {
+    render(<SaveFeedback outcome={{ tone: 'success', text: SAVED, keepFocus: true }} />);
+
+    const banner = screen.getByRole('status');
+    expect(banner).toHaveTextContent(SAVED);
+    expect(banner).not.toHaveFocus();
+    expect(banner.scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('does not animate the scroll for someone who asked for less motion', () => {
     vi.stubGlobal(
       'matchMedia',

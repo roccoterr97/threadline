@@ -12,7 +12,7 @@ import {
 import { categorySuggestionsQueryKey } from '../api/categorySuggestions';
 import type { SaveOutcome } from '../components/SaveFeedback';
 import * as copy from '../copy/en';
-import type { SortChange } from '../domain/categorySettings';
+import { problemForIndex, type SortChange } from '../domain/categorySettings';
 import { useClock } from '../lib/ClockContext';
 import { NotSignedInError, RefusalReason, RefusedError } from '../lib/errors';
 import type { CategoryChanges, CategoryInsert, CategoryKey } from '../types/database';
@@ -25,10 +25,18 @@ export type CategoryAction =
   | { kind: 'remove'; key: CategoryKey; label: string }
   | { kind: 'show-again'; key: CategoryKey; label: string };
 
+/** What a caller wants to hear back about one change. */
+export interface RunCallbacks {
+  /** Runs only if the change was saved. */
+  onSaved?: () => void;
+  /** Runs once the change has ended either way and the list has been fetched again. */
+  onSettled?: () => void;
+}
+
 /** What the settings page's parts need to change categories. */
 export interface CategoryEditor {
-  /** Starts a change; `onDone` runs only if it was saved. */
-  run: (action: CategoryAction, onDone?: () => void) => void;
+  /** Starts a change. */
+  run: (action: CategoryAction, callbacks?: RunCallbacks) => void;
   /** True while a change is on its way; every control waits for it. */
   isBusy: boolean;
   /** How the most recent change ended, or null while none has or one is waiting. */
@@ -67,8 +75,9 @@ export function categoryEditFailureText(error: Error): string {
   if (error instanceof NotSignedInError) return failed.signedOut;
   if (!(error instanceof RefusedError)) return failed.generic;
   if (error.reason === RefusalReason.BreaksRule) return failed.breaksRule;
-  if (error.reason === RefusalReason.Duplicate) return failed.duplicate;
-  return failed.generic;
+  if (error.reason !== RefusalReason.Duplicate) return failed.generic;
+  const problem = problemForIndex(error.constraint);
+  return problem === null ? failed.duplicate : copy.categoryDraftProblems[problem];
 }
 
 /**
@@ -88,11 +97,13 @@ export function useCategoryEditor(): CategoryEditor {
     onMutate: () => {
       setFeedback(null);
     },
-    onSuccess: (text) => {
-      setFeedback({ tone: 'success', text });
+    // A move keeps the keyboard on the moved row, so its sentence must not take focus.
+    onSuccess: (text, action) => {
+      setFeedback({ tone: 'success', text, keepFocus: action.kind === 'move' });
     },
-    onError: (error) => {
-      setFeedback({ tone: 'error', text: categoryEditFailureText(error) });
+    onError: (error, action) => {
+      const text = categoryEditFailureText(error);
+      setFeedback({ tone: 'error', text, keepFocus: action.kind === 'move' });
     },
     onSettled: async () => {
       await Promise.all([
@@ -103,8 +114,8 @@ export function useCategoryEditor(): CategoryEditor {
   });
 
   return {
-    run: (action, onDone) => {
-      mutation.mutate(action, { onSuccess: onDone });
+    run: (action, callbacks = {}) => {
+      mutation.mutate(action, { onSuccess: callbacks.onSaved, onSettled: callbacks.onSettled });
     },
     isBusy: mutation.isPending,
     feedback,

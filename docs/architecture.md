@@ -141,14 +141,16 @@ what survived the noise rules. Sent Items is included; Junk, Deleted Items,
 Drafts and Outbox are skipped.
 
 **Reading side by side.** Nearly all of a collection is waiting for a source to
-answer, so the collector asks for a mailbox's threads, and the bodies inside a
-thread, together (`shared/concurrency.py`). How much is let through is each
-reader's own business: the Graph reader allows `GRAPH_CONCURRENT_REQUESTS`
-(three) requests in flight — Microsoft accepts four per mailbox and answers
-"slow down" beyond that — and the IMAP reader one command at a time, because
-its single connection remembers which folder is open. The Microsoft key is
-renewed by one request at a time, so two renewals can never race to save
-different long-lived keys.
+answer, so the collector asks for a mailbox's threads together
+(`shared/concurrency.py`), and for all the bodies of a thread in one request to
+the reader (`fetch_bodies`). How that is carried out is each reader's own
+business: the Graph reader asks for the bodies side by side with
+`GRAPH_CONCURRENT_REQUESTS` (three) requests in flight — Microsoft accepts four
+per mailbox and answers "slow down" beyond that — and the IMAP reader, whose
+single connection takes one command at a time and remembers which folder is
+open, makes fewer round trips instead: one fetch for all of a thread's messages
+in a folder. The Microsoft key is renewed by one request at a time, so two
+renewals can never race to save different long-lived keys.
 
 **Gmail and every other standard mailbox** are read over IMAP with the
 standard library only (`infrastructure/imap/`), signed in with an app password
@@ -161,15 +163,22 @@ SELECT, and fetches only with `BODY.PEEK`: nothing is ever marked as read,
 moved or flagged, and the session has no method that could. The same two passes
 apply: headers of the window first (no body; the Sent copy marks the owner's
 own messages even from an unlisted address), then whole threads and bodies for
-what was kept. Bodies prefer the plain-text part, turn an HTML-only body into
-text, never read an attachment, fetch at most the first megabyte and keep at
-most 50,000 characters. Threads use Gmail's own `X-GM-THRID` when the server
+what was kept. Because the one connection takes one command at a time, the
+reader saves round trips rather than overlapping them: a folder that is already
+open is not opened again, the bodies of a thread are fetched with one
+`UID FETCH` per folder (at most `IMAP_BODY_BATCH_SIZE` messages per command,
+each answer matched to its message by UID, a message that has gone since read
+as empty), and the folder that is already open is read first. Bodies prefer the
+plain-text part, turn an HTML-only body into text, never read an attachment,
+fetch at most the first megabyte of each message and keep at most 50,000
+characters. Threads use Gmail's own `X-GM-THRID` when the server
 offers `X-GM-EXT-1`; otherwise the first identifier of the
 `References`/`In-Reply-To` chain names the thread, with the subject as a
 fallback only for a reply ("Re:") that lost those headers. Identifiers are
 opaque (Gmail's numbers, or a hash), so a noise thread stores no address and no
-subject even in its identifier. A dropped connection is reopened and retried
-with the repository's retry policy; a refused app password is never retried
+subject even in its identifier. A dropped connection is reopened, the folder
+that was open is opened again, and the command is retried with the repository's
+retry policy; a refused app password is never retried
 and has its own code, `mailbox_password_refused`, so the summary can say
 "Google refused the app password".
 
@@ -234,7 +243,7 @@ Commands: `tracker collect linkedin|email|all [--since YYYY-MM-DD]`,
 `tracker collect all --record [--refresh]`,
 `tracker collect calendar`, `tracker collect linkedin --show-folders`,
 `tracker microsoft login|forget`, `tracker setup mailbox`,
-`tracker people list|merge|link|untangle`.
+`tracker people list|merge|link|tidy|untangle`.
 
 ## The assessment
 
@@ -243,7 +252,7 @@ subscription. Python never calls an AI service: it prepares the work, and it
 checks what comes back.
 
 ```
-tracker ai export  →  work/batches/<batch-id>.json   Python picks who needs judging
+tracker ai export  →  work/batches/<batch-id>.json   Python picks who needs judging, and makes work/results/
         ↓
 conversation-assessor  →  work/results/<batch-id>.json   Claude reads one batch, writes one verdict file
         ↓
@@ -255,6 +264,12 @@ history. Once a verdict file has been applied, `tracker ai import` deletes it
 together with the batch it answered, so message text does not outlive its use;
 a rejected file and its batch stay for another answer. `tracker ai clean`
 empties the whole work directory, including batches that were never answered.
+
+With `--record`, the two commands record the `assess` step of the run
+themselves (`services/assessment/run_step.py`): the export when there is nobody
+to assess, the import with the people it assessed and how many it sent to
+review. A second import in the same run — a rejected file answered again —
+adds to the step instead of replacing it.
 
 **Rules before the AI** (`domain/relevance.py`, pure functions): a thread already
 marked noise stays noise; a thread the owner answered `yes` or `no` about is
@@ -342,11 +357,20 @@ started by `.github/workflows/threadline-run.yml` (the main route) or by a
 Claude cloud routine (the alternative):
 
 ```
-run start ──▶ healthcheck ──▶ collect all --record ──▶ people merge, link ──▶ /assess ──▶ summary build ──▶ send ──▶ run finish
-                              (LinkedIn, mailboxes and
-                               calendar read together,
-                               each recorded as its step)
+run start --prepare ──▶ collect all --record ──▶ people tidy ──▶ /assess --record ──▶ summary build ──▶ send ──▶ run finish --clean
+(then healthcheck       (LinkedIn, mailboxes and (people merge,  (records its                                    (then ai clean)
+ and profile apply)      calendar read together,  then link)      own step)
+                         each recorded as its step)
 ```
+
+Every step of the recipe costs the session about the same few seconds whatever
+it does, so the small commands are folded into their neighbours
+(`cli/commands/_parts.py`). Each folded command prints what it prints on its
+own, and one that fails is printed with its code while the rest still runs:
+`run start --prepare` ends with `ready: yes` or `ready: no` (the health check's
+verdict, which the recipe branches on), `people tidy` runs the link after a
+failed merge, and `run finish --clean` removes the work files even when the run
+could not be closed. The separate commands still work by hand.
 
 **GitHub Actions, on the owner's subscription.** The workflow runs on a
 `schedule` (a daily `cron` with a `timezone`, written by `tracker setup
@@ -358,8 +382,15 @@ secret, which Threadline itself never stores) and the permissions in
 `.claude/settings.json`. It runs the recipe through the action rather than a
 bare `claude -p` call because the action installs a pinned Claude Code, fails
 the step when the session fails, and passes GitHub's own token, so no Claude
-GitHub App is needed. Other fixed points: `permissions: contents: read`, one
-`concurrency` group so two runs never overlap, a job timeout, and a first step
+GitHub App is needed. Other fixed points: `permissions: contents: read` and
+`actions: read`, a job timeout, and two `concurrency` groups, one for daily
+runs and one for refreshes, so two daily runs or two refreshes never overlap
+and a refresh pressed while another is going can never push a waiting daily
+run out of the queue. Across the two groups, a gate step (the reason for
+`actions: read`: it lists the runs that are going) makes them take turns: a
+daily run waits for a refresh in progress to finish, and a refresh that finds
+a daily run going steps aside, since the daily run reads everything new
+anyway. There is also a first step
 that finishes green, doing nothing, when a required secret is missing (the
 public template, an unconfigured copy). Every setting reaches the Claude step
 only, each read from the Actions secret or variable that
@@ -440,13 +471,14 @@ your attention" section and on the dashboard's run page, in plain English.
 Switching to the Mac route is the owner's decision, written up in
 `docs/operations.md`.
 
-Commands: `tracker run start|step|finish`, `tracker summary build [--out PATH]`,
+Commands: `tracker run start [--prepare]`, `tracker run step`,
+`tracker run finish [--clean]`, `tracker summary build [--out PATH]`,
 `tracker summary send [--file PATH]`, `tracker setup schedule|github|cloud`.
 
 ## The database contract
 
 Hosted Postgres on Supabase; the free plan is enough. Reached at
-`https://<project-ref>.supabase.co`.
+`https://<project-id>.supabase.co`.
 
 Every table has `id uuid primary key default gen_random_uuid()` plus
 `created_at` and `updated_at` (`timestamptz not null default now()`, kept by a

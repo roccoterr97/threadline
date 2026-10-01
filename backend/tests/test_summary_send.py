@@ -90,7 +90,16 @@ def written_summary(settings: Settings, folder: Path, client: FakeSupabaseClient
     return path
 
 
+def reopen_todays_run(client: FakeSupabaseClient) -> None:
+    """Put today's run back to running, as it is while the summary goes out."""
+    for row in client.tables["run_logs"]:
+        if row["id"] == str(TODAYS_RUN):
+            row["status"] = RunStatus.RUNNING.value
+            row["finished_at"] = None
+
+
 def sender_for(settings: Settings, client: FakeSupabaseClient, mailer: SmtpMailer) -> SummarySender:
+    reopen_todays_run(client)
     recorder = RunRecorder(build_repositories(as_client(client)), FixedClock(NOW))
     return SummarySender(settings, lambda: mailer, recorder)
 
@@ -103,6 +112,36 @@ def summary_step(client: FakeSupabaseClient) -> dict[str, object]:
     ]
     assert len(rows) == 1
     return rows[0]
+
+
+def test_a_summary_already_sent_for_this_run_is_not_sent_again(
+    imap_settings: Settings, tmp_path: Path
+) -> None:
+    client = sample_client()
+    path = written_summary(imap_settings, tmp_path, client)
+    server = FakeSmtp()
+    sender = sender_for(imap_settings, client, mailer_on(server))
+    sender.send(path)
+
+    with pytest.raises(ValidationFailedError, match="already sent"):
+        sender.send(path)
+
+    assert len(server.sent) == 1
+    assert summary_step(client)["status"] == RunStatus.SUCCESS.value
+
+
+def test_a_summary_that_failed_can_be_sent_again(imap_settings: Settings, tmp_path: Path) -> None:
+    client = sample_client()
+    path = written_summary(imap_settings, tmp_path, client)
+    refused = sender_for(imap_settings, client, mailer_on(FakeSmtp(refuse_send=True)))
+    with pytest.raises(SourceUnavailableError):
+        refused.send(path)
+    server = FakeSmtp()
+
+    sender_for(imap_settings, client, mailer_on(server)).send(path)
+
+    assert len(server.sent) == 1
+    assert summary_step(client)["status"] == RunStatus.SUCCESS.value
 
 
 def test_the_summary_goes_out_exactly_as_built(imap_settings: Settings, tmp_path: Path) -> None:

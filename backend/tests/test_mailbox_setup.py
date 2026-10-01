@@ -79,7 +79,15 @@ async def test_three_refusals_stop_the_step_and_save_nothing() -> None:
 
 
 async def test_another_provider_asks_for_its_server_and_port() -> None:
-    answers: list[str | bool] = ["other", "Mail.Example.org", "", "sam", GOOD_APP_PASSWORD]
+    answers: list[str | bool] = [
+        "other",
+        "Mail.Example.org",
+        "",
+        "sam",
+        GOOD_APP_PASSWORD,
+        "smtp.mail.example",
+        "",
+    ]
     world = make_world(answers, configured_env() | {"OWNER_EMAIL_ADDRESSES": OWNER_EMAIL})
 
     await MailboxStep().run(world.context())
@@ -89,6 +97,64 @@ async def test_another_provider_asks_for_its_server_and_port() -> None:
     assert world.env.values["IMAP_HOST"] == "mail.example.org"
     assert world.env.values["IMAP_PORT"] == "993"
     assert world.io.opened == []
+
+
+def _custom_answers(*smtp: str) -> list[str | bool]:
+    """Another provider whose IMAP server is imap.mail.example, then the SMTP answers."""
+    return ["other", "imap.mail.example", "", "sam", GOOD_APP_PASSWORD, *smtp]
+
+
+async def test_another_provider_is_asked_its_sending_server_and_it_is_tried_live() -> None:
+    world = make_world(_custom_answers("", "587"), configured_env())
+
+    await MailboxStep().run(world.context())
+
+    [sending] = world.mailbox.sending_checked
+    assert (sending.host, sending.port, sending.username) == ("smtp.mail.example", 587, "sam")
+    assert world.env.values["SMTP_HOST"] == "smtp.mail.example"
+    assert world.env.values["SMTP_PORT"] == "587"
+    assert "Nothing was sent" in world.io.text()
+
+
+async def test_a_sending_server_that_cannot_be_reached_is_asked_again() -> None:
+    world = make_world(
+        _custom_answers("smtp.wrong.example", "", "smtp.mail.example", ""), configured_env()
+    )
+
+    await MailboxStep().run(world.context())
+
+    assert [account.host for account in world.mailbox.sending_checked] == [
+        "smtp.wrong.example",
+        "smtp.mail.example",
+    ]
+    assert "Please check the server and port" in world.io.text()
+    assert world.env.values["SMTP_HOST"] == "smtp.mail.example"
+    assert world.env.values["SMTP_PORT"] == "465"
+
+
+async def test_no_sending_server_is_asked_when_the_summary_goes_through_gmail() -> None:
+    env = configured_env() | {"SUMMARY_DELIVERY": "gmail_connector"}
+    world = make_world(_custom_answers(), env)
+
+    await MailboxStep().run(world.context())
+
+    assert world.mailbox.sending_checked == []
+    assert "SMTP_HOST" not in world.env.values
+
+
+async def test_a_built_in_provider_clears_a_sending_server_left_from_another() -> None:
+    env = configured_env() | {
+        "SMTP_HOST": "smtp.mail.example",
+        "SMTP_PORT": "587",
+        "OWNER_EMAIL_ADDRESSES": GMAIL,
+    }
+    world = make_world(["gmail", GMAIL, GOOD_APP_PASSWORD], env)
+
+    await MailboxStep().run(world.context())
+
+    assert world.mailbox.sending_checked == []
+    assert world.env.get("SMTP_HOST") is None
+    assert world.env.get("SMTP_PORT") is None
 
 
 async def test_a_missing_sent_folder_is_said_plainly() -> None:

@@ -89,7 +89,15 @@ describe('runMutation', () => {
       answer({ error: { message: 'violates constraint "secret_name"', code }, status: 409 }),
     );
     await expect(refusal).rejects.toBeInstanceOf(RefusedError);
-    await expect(refusal).rejects.toMatchObject({ reason });
+    await expect(refusal).rejects.toMatchObject({ reason, constraint: 'secret_name' });
     await expect(refusal).rejects.not.toHaveProperty('message', expect.stringContaining('secret'));
+  });
+
+  it('leaves the rule unnamed when the refusal does not name one', async () => {
+    const refusal = runMutation(
+      'test',
+      answer({ error: { message: 'at most 8 categories', code: '23514' }, status: 400 }),
+    );
+    await expect(refusal).rejects.toMatchObject({ constraint: null });
   });
 });

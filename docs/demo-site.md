@@ -72,8 +72,12 @@ Click the picture to open the site. Copy its address from the browser.
 ✅ Check: you should now see the demo notice, and "Set up your own" should open
 the setup guide on GitHub.
 
-Put the address in the "Live demo:" line of the README's "Try the demo"
-section, in place of the example address.
+If you forked Threadline and publish your own demo, two places still point at
+the original project's demo and guide, so change them to yours: the "Live
+demo:" line of the README's "Try the demo" section (replace the example
+address with yours), and the demo notice's "Set up your own" link, which is the
+`SETUP_GUIDE_URL` in `frontend/src/demo/DemoBanner.tsx`. Leave them as they are
+if you would rather keep pointing at the original.
 
 ---
 
@@ -87,6 +91,15 @@ section, in place of the example address.
   both share the same `vercel.json` rules. People can still open it from a link.
 - **Keep the two apart.** Never add `VITE_DEMO` to your real dashboard's
   project — it would show the made-up data instead of yours.
+- **Shared links show a picture.** When someone posts the demo's address in
+  a chat or on social media, a preview card with a picture of the dashboard
+  appears. On Vercel this works by itself. Elsewhere, set `DEMO_SITE_URL` to
+  the demo's full address (for example `https://threadline-demo.vercel.app`)
+  in `frontend/.env.local` or in your host's settings before
+  `npm run build:demo`, because previews need the full address of the picture.
+  The picture itself is `frontend/assets/social-card.png`; if you change the
+  logo or the colours, run `npm run social-card` in the `frontend` folder to
+  draw it again, and commit the new file.
 - **On a phone** the demo can be added to the home screen like the real
   dashboard: on iPhone, Share → **Add to Home Screen**; on Android, the ⋮ menu
   → **Add to Home screen** (or **Install app**).

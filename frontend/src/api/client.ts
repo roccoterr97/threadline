@@ -6,7 +6,7 @@ import {
   RefusedError,
   UnexpectedDataError,
 } from '../lib/errors';
-import { logError } from '../lib/logger';
+import { logError, logInfo } from '../lib/logger';
 
 /**
  * The one place a Supabase response is turned into typed data.
@@ -33,7 +33,29 @@ const REFUSAL_CODES = new Map<string, RefusalReason>([
   ['23505', RefusalReason.Duplicate],
 ]);
 
-function toDomainError(event: string, result: SupabaseResult): Error {
+/** Where Postgres names the rule a refused write broke: `… constraint "name"`. */
+const CONSTRAINT_NAME = /constraint "([^"]+)"/;
+
+/** The rule a refusal names, or null when its message names none. */
+function constraintName(message: string): string | null {
+  return CONSTRAINT_NAME.exec(message)?.[1] ?? null;
+}
+
+/** How a caller wants a write handled. */
+export interface MutationOptions {
+  /**
+   * Refusals the caller handles as a normal outcome (for example, hiding a
+   * category the database will not delete). They are logged as information,
+   * not as errors, and still raised so the caller can act on them.
+   */
+  expectedRefusals?: readonly RefusalReason[];
+}
+
+function toDomainError(
+  event: string,
+  result: SupabaseResult,
+  { expectedRefusals = [] }: MutationOptions = {},
+): Error {
   const { error, status } = result;
   const code = error?.code ?? null;
 
@@ -48,8 +70,10 @@ function toDomainError(event: string, result: SupabaseResult): Error {
 
   const reason = code === null ? undefined : REFUSAL_CODES.get(code);
   if (reason !== undefined) {
-    logError('query.refused', { event, code, status: status ?? null });
-    return new RefusedError(reason, event);
+    const fields = { event, code, status: status ?? null };
+    if (expectedRefusals.includes(reason)) logInfo('query.refused_as_expected', fields);
+    else logError('query.refused', fields);
+    return new RefusedError(reason, event, constraintName(error?.message ?? ''));
   }
 
   logError('query.failed', { event, code, status: status ?? null });
@@ -94,6 +118,7 @@ export async function runQuery<T>(
  *
  * @param event Short identifier used in logs — never contains personal data.
  * @param execute The Supabase query builder call.
+ * @param options Which refusals are an expected outcome rather than an error.
  * @throws {NotSignedInError} when the session is missing or expired.
  * @throws {RefusedError} when the database refused it on purpose (a rule, a
  *   duplicate, or a row something still points at).
@@ -102,6 +127,7 @@ export async function runQuery<T>(
 export async function runMutation(
   event: string,
   execute: () => PromiseLike<SupabaseResult>,
+  options: MutationOptions = {},
 ): Promise<void> {
   let result: SupabaseResult;
   try {
@@ -111,5 +137,5 @@ export async function runMutation(
     throw new DataUnavailableError(event, { cause });
   }
 
-  if (result.error !== null) throw toDomainError(event, result);
+  if (result.error !== null) throw toDomainError(event, result, options);
 }

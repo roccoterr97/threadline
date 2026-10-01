@@ -86,11 +86,11 @@ class Category(BaseModel):
     sort_order: int = Field(ge=0, le=UNKNOWN_SORT_ORDER)
 
 
-#: The reserved category, exactly as the database seeds it.
+#: The reserved category, exactly as the database holds it once 0015 is applied.
 UNKNOWN_CATEGORY: Final[Category] = Category(
     key=UNKNOWN_CATEGORY_KEY,
     label="Not known",
-    group_label="Unknown",
+    group_label="Not known",
     description="Not clear from the conversation yet.",
     colour=ColourSlot.GREY,
     sort_order=UNKNOWN_SORT_ORDER,

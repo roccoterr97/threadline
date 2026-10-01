@@ -11,10 +11,10 @@ import re
 from datetime import date, time
 from typing import Final
 from urllib.parse import urlsplit
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from tracker.shared.constants.setup import LINKEDIN_PROFILE_PREFIX, SUPABASE_HOST_SUFFIX
 from tracker.shared.errors import ValidationFailedError
+from tracker.shared.time_zones import canonical_zone_name
 
 _PROJECT_REF: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9]{8,40}$")
 _EMAIL: Final[re.Pattern[str]] = re.compile(r"^[^@\s,]+@[^@\s,]+\.[^@\s,]+$")
@@ -24,7 +24,6 @@ _HOST: Final[re.Pattern[str]] = re.compile(
 )
 _MAX_PORT: Final[int] = 65_535
 _CLOCK_TIME: Final[re.Pattern[str]] = re.compile(r"^(\d{1,2})(?:[:.](\d{2}))?$")
-_UTC: Final[str] = "UTC"
 _REPOSITORY_NAME: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 _MONTH_NAMES: Final[tuple[str, ...]] = (
     "january",
@@ -303,26 +302,22 @@ def daily_time(raw: str) -> time:
 
 
 def time_zone(raw: str) -> str:
-    """Accept a time-zone name this machine knows, such as ``Europe/Rome``.
+    """Accept a time-zone name this machine knows, such as ``Europe/Rome``, in any case.
 
     Args:
         raw: What was typed.
 
     Returns:
-        The name, or ``UTC``.
+        The name as the time-zone database spells it, or ``UTC``.
 
     Raises:
         ValidationFailedError: If the zone is unknown.
     """
-    cleaned = raw.strip()
-    if cleaned.upper() == _UTC:
-        return _UTC
-    try:
-        ZoneInfo(cleaned)
-    except (ZoneInfoNotFoundError, ValueError) as error:
+    canonical = canonical_zone_name(raw)
+    if canonical is None:
         message = "that is not a time-zone name, such as Europe/Rome, America/New_York or UTC"
-        raise ValidationFailedError(message) from error
-    return cleaned
+        raise ValidationFailedError(message)
+    return canonical
 
 
 def repository_name(raw: str) -> str:

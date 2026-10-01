@@ -3,7 +3,7 @@ import * as copy from '../copy/en';
 import { categoryFor } from '../domain/categories';
 import type { Vocabulary } from '../domain/vocabulary';
 import type { Clock } from '../lib/clock';
-import { formatDate, formatRelative } from '../lib/format';
+import { formatDate, formatRelative, formatRoleLine } from '../lib/format';
 import type { PeopleOverviewRow } from '../types/database';
 import { FollowUpBadge } from './FollowUpBadge';
 import { PersonTypeBadge } from './PersonTypeBadge';
@@ -19,6 +19,7 @@ interface PersonCardProps {
 
 /** One person as a stacked card — the phone-width view of a table row. */
 export function PersonCard({ person, clock, vocabulary }: PersonCardProps) {
+  const roleLine = formatRoleLine(person.role_title, person.organisation_name);
   return (
     <li className="rounded-token-lg border border-line bg-surface p-4 shadow-card">
       <Link
@@ -27,10 +28,7 @@ export function PersonCard({ person, clock, vocabulary }: PersonCardProps) {
       >
         {person.full_name}
       </Link>
-      <p className="mt-1 text-sm text-ink-muted">
-        {person.role_title ?? copy.values.unknown}
-        {person.organisation_name !== null && ` · ${person.organisation_name}`}
-      </p>
+      {roleLine !== null && <p className="mt-1 text-sm text-ink-muted">{roleLine}</p>}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <PersonTypeBadge

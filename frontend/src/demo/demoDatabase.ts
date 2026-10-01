@@ -6,7 +6,9 @@ import {
   reviewAnswerSchema,
 } from '../api/schemas';
 import type { SupabaseResult } from '../api/client';
+import { CategoryNameIndex } from '../domain/categorySettings';
 import type { Clock } from '../lib/clock';
+import type { Category } from '../types/database';
 import { localDate } from './demoCalendar';
 import type { DemoTables } from './demoData';
 import { refreshIsRunning, settledRun, startedRefreshRun } from './demoRefresh';
@@ -15,7 +17,8 @@ import { conversationsWithPeople, peopleOverview } from './demoViews';
 /**
  * The demo's in-memory database. It answers the same tables the real one
  * does, keeps its rules (a category in use cannot be deleted, keys are
- * unique, text has length limits) and forgets everything on reload.
+ * unique, two categories never share a name or group name whatever the case,
+ * text has length limits) and forgets everything on reload.
  */
 
 /** Chooses the rows a filter applies to. Rows are plain objects. */
@@ -55,8 +58,46 @@ function failure(code: PostgresCode, status = REFUSED_STATUS): SupabaseResult {
   return { data: null, error: { message: `demo refused: ${code}`, code }, status };
 }
 
+/** Postgres's name for the unique index on `categories.key`. */
+const CATEGORY_KEY_INDEX = 'categories_key_key';
+
+/** A duplicate refused by `index`, worded as Postgres words it so the index can be read back. */
+function duplicate(index: string): SupabaseResult {
+  const message = `duplicate key value violates unique constraint "${index}"`;
+  return { data: null, error: { message, code: PostgresCode.Unique }, status: REFUSED_STATUS };
+}
+
 /** The answer to a query on a table the demo does not have. */
 export const NO_SUCH_TABLE = failure(PostgresCode.UnknownTable, NOT_FOUND_STATUS);
+
+/** A category name as the database compares it for clashes: case does not matter. */
+function comparable(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/** True when `name` is set and one of `others` already has it in `field`. */
+function nameTaken(
+  others: readonly Category[],
+  field: 'label' | 'group_label',
+  name: string | undefined,
+): boolean {
+  return name !== undefined && others.some((row) => comparable(row[field]) === comparable(name));
+}
+
+/**
+ * The index a row `match` does not pick would break by taking the label or
+ * group label in `changes`, or null when neither name is taken.
+ */
+function clashingIndex(
+  categories: readonly Category[],
+  match: RowFilter,
+  changes: { label?: string | undefined; group_label?: string | undefined },
+): CategoryNameIndex | null {
+  const others = categories.filter((row) => !match(row));
+  if (nameTaken(others, 'label', changes.label)) return CategoryNameIndex.Label;
+  if (nameTaken(others, 'group_label', changes.group_label)) return CategoryNameIndex.GroupLabel;
+  return null;
+}
 
 /** Applies `changes` to every row `match` picks, leaving the others as they are. */
 function patch<T extends object>(rows: readonly T[], match: RowFilter, changes: Partial<T>): T[] {
@@ -101,9 +142,10 @@ export class DemoDatabase {
     if (table !== 'categories') return NO_SUCH_TABLE;
     const parsed = categoryInsertSchema.safeParse(values);
     if (!parsed.success) return failure(PostgresCode.Check, BAD_REQUEST_STATUS);
-    if (this.tables.categories.some((row) => row.key === parsed.data.key)) {
-      return failure(PostgresCode.Unique);
-    }
+    const keyTaken = this.tables.categories.some((row) => row.key === parsed.data.key);
+    if (keyTaken) return duplicate(CATEGORY_KEY_INDEX);
+    const clash = clashingIndex(this.tables.categories, () => false, parsed.data);
+    if (clash !== null) return duplicate(clash);
     this.tables.categories.push({ ...parsed.data, archived_at: null });
     return success();
   }
@@ -114,6 +156,8 @@ export class DemoDatabase {
     if (table === 'categories') {
       const parsed = categoryChangesSchema.safeParse(changes);
       if (!parsed.success) return failure(PostgresCode.Check, BAD_REQUEST_STATUS);
+      const clash = clashingIndex(tables.categories, match, parsed.data);
+      if (clash !== null) return duplicate(clash);
       tables.categories = patch(tables.categories, match, parsed.data);
       return success();
     }

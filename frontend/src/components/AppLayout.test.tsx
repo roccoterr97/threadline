@@ -1,8 +1,9 @@
-import { screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchRunSince, requestRefresh } from '../api/refresh';
 import { fetchOpenReviewItems } from '../api/review';
+import { REFRESH_DONE_SHOWN_MS } from '../constants/dashboard';
 import * as copy from '../copy/en';
 import { expectNoAxeViolations } from '../test/axe';
 import { NOW, sampleReviewItems } from '../test/__fixtures__/sampleData';
@@ -103,6 +104,23 @@ describe('AppLayout — header', () => {
     expect(signOut).toHaveBeenCalledOnce();
   });
 
+  it('makes "skip to the main content" the first stop, before any banner link', async () => {
+    const { user } = renderWithProviders(
+      <Routes>
+        <Route element={<AppLayout banner={<a href="#banner">Banner link</a>} />}>
+          <Route path="/" element={<p>People page</p>} />
+        </Route>
+      </Routes>,
+      { route: '/', path: null },
+    );
+    await screen.findByText('People page');
+
+    await user.tab();
+    expect(screen.getByRole('link', { name: copy.app.skipToContent })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('link', { name: 'Banner link' })).toHaveFocus();
+  });
+
   it('has no axe violations', async () => {
     const { container } = renderLayout('/review');
     await screen.findByText('Review page');
@@ -131,6 +149,45 @@ describe('AppLayout — Refresh now', () => {
     expect(status).toBeInTheDocument();
     expect(screen.getByRole('link', { name: copy.refresh.seeRuns })).toHaveAttribute('href', '/runs');
     expect(refreshButton()).toBeEnabled();
+  });
+
+  it('clears "Refresh finished" a while after everything worked', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      requestRefreshMock.mockResolvedValue({ kind: 'started', requestedAt: NOW, target: 'github' });
+      fetchRunSinceMock.mockResolvedValue(finishedRun('success'));
+      const { user } = renderLayout('/');
+      await user.click(refreshButton());
+      expect(await screen.findByText(copy.refresh.finished.success)).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESH_DONE_SHOWN_MS);
+      });
+
+      expect(screen.queryByText(copy.refresh.finished.success)).not.toBeInTheDocument();
+      expect(refreshButton()).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a refresh that went wrong on screen', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      requestRefreshMock.mockResolvedValue({ kind: 'started', requestedAt: NOW, target: 'github' });
+      fetchRunSinceMock.mockResolvedValue(finishedRun('failed'));
+      const { user } = renderLayout('/');
+      await user.click(refreshButton());
+      await screen.findByText(copy.refresh.finished.failed);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(REFRESH_DONE_SHOWN_MS * 2);
+      });
+
+      expect(screen.getByText(copy.refresh.finished.failed)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('explains a refusal in plain words', async () => {

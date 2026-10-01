@@ -32,12 +32,23 @@ export async function clearOverride(personId: string): Promise<void> {
 }
 
 /**
- * Takes a person off the list for good: their relevance becomes "noise", so no
- * later run looks at their messages again.
+ * Takes a person off the list: their relevance becomes "noise", so no later
+ * run looks at their messages again (until `markPersonAsRelevant` undoes it).
  */
 export async function markPersonAsNoise(personId: string): Promise<void> {
   const supabase = getSupabaseClient();
   await runMutation('person.mark_noise', () =>
     supabase.from('people').update({ relevance: 'noise' }).eq('id', personId),
+  );
+}
+
+/**
+ * Puts a hidden person back on the list. Only people on the list can be
+ * hidden from the dashboard, so "relevant" is always what they were before.
+ */
+export async function markPersonAsRelevant(personId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  await runMutation('person.mark_relevant', () =>
+    supabase.from('people').update({ relevance: 'relevant' }).eq('id', personId),
   );
 }

@@ -189,6 +189,11 @@ class ImapSession:
         data = self._run(lambda client: client.list())
         return [folder for line in data if (folder := _folder(line)) is not None]
 
+    @property
+    def open_folder(self) -> str | None:
+        """The folder that is open, so a caller can read it first; ``None`` when none is."""
+        return self._folder
+
     def examine(self, folder: str) -> None:
         """Open a folder read-only, unless it is already the open one.
 
@@ -197,6 +202,9 @@ class ImapSession:
         """
         if self._folder == folder:
             return
+        # The folder being left is forgotten first: a refused EXAMINE leaves no
+        # folder open at all, and a reconnection has no reason to reopen it.
+        self._folder = None
         self._run(lambda client: client.select(quote(folder), readonly=True))
         self._folder = folder
 
@@ -267,7 +275,7 @@ class ImapSession:
         """The open connection, connecting, signing in and reopening the folder if needed."""
         if self._client is not None:
             return self._client
-        client = self._connect(self._account.host, self._account.port, IMAP_TIMEOUT_SECONDS)
+        client = self._greeted()
         try:
             client.login(self._account.username, self._password.get_secret_value())
         except imaplib.IMAP4.abort:
@@ -277,14 +285,52 @@ class ImapSession:
             message = f"{self._account.company} refused the app password"
             raise MailboxPasswordError(message) from None
         self._client = client
-        folder, self._folder = self._folder, None
-        if folder is not None:
-            client.select(quote(folder), readonly=True)
-            self._folder = folder
+        self._reopen(client)
         return client
 
+    def _greeted(self) -> ImapClient:
+        """Connect and read the server's greeting.
+
+        imaplib reports a greeting it does not like (a server that is busy, or
+        not a mail server at all) as a plain protocol error rather than a
+        dropped line. It is treated as a dropped line, so it is tried again a
+        bounded number of times and ends as "did not answer", never as a crash.
+        """
+        try:
+            return self._connect(self._account.host, self._account.port, IMAP_TIMEOUT_SECONDS)
+        except imaplib.IMAP4.abort:
+            raise
+        except imaplib.IMAP4.error:
+            _log.warning("imap_greeting_refused", host=self._account.host)
+            message = "the server's greeting was not a mail server's"
+            raise imaplib.IMAP4.abort(message) from None
+
+    def _reopen(self, client: ImapClient) -> None:
+        """Open, on a new connection, the folder the lost one had open.
+
+        A new connection has no folder open. The folder stays remembered when
+        the line drops again, so the next attempt reopens it; it is forgotten
+        when the server refuses it, so nothing is searched in a folder that is
+        not open.
+        """
+        folder = self._folder
+        if folder is None:
+            return
+        try:
+            status, _ = client.select(quote(folder), readonly=True)
+        except imaplib.IMAP4.abort:
+            raise
+        except imaplib.IMAP4.error:
+            self._folder = None
+            raise
+        if status != _OK:
+            self._folder = None
+
     def _forget(self) -> None:
-        """Drop a broken connection without trying to sign out of it."""
+        """Drop a broken connection without trying to sign out of it.
+
+        The open folder stays remembered: the next connection reopens it.
+        """
         self._client = None
 
 

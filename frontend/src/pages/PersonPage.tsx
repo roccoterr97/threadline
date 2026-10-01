@@ -16,6 +16,7 @@ import { PersonSummary } from '../components/PersonSummary';
 import { Timeline } from '../components/Timeline';
 import * as copy from '../copy/en';
 import { buildTimeline } from '../domain/timeline';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
 
@@ -40,6 +41,7 @@ export function PersonPage() {
     queryFn: () => fetchPersonConversations(personId),
   });
   const vocabulary = useVocabulary();
+  usePageTitle(person.data === null ? copy.person.notFound.title : (person.data?.full_name ?? null));
 
   if (person.isError) {
     return (
@@ -61,7 +63,17 @@ export function PersonPage() {
   }
 
   if (person.data === null) {
-    return <EmptyState title={copy.person.notFound.title} body={copy.person.notFound.body} />;
+    return (
+      <EmptyState
+        title={copy.person.notFound.title}
+        body={copy.person.notFound.body}
+        action={
+          <Link to="/" className="font-medium text-accent underline underline-offset-2">
+            {copy.person.backToPeople}
+          </Link>
+        }
+      />
+    );
   }
 
   const timeline = buildTimeline(conversations.data ?? []);
@@ -98,7 +110,7 @@ export function PersonPage() {
 
         <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
           <PersonCorrection personId={personId} vocabulary={vocabulary.vocabulary} />
-          <MarkNoiseAction personId={personId} />
+          <MarkNoiseAction personId={personId} personName={person.data.full_name} />
         </div>
       </div>
     </div>

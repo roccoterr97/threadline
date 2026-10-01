@@ -7,9 +7,11 @@ ever opened and every message is made up.
 from __future__ import annotations
 
 import asyncio
+import imaplib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 
 import pytest
@@ -22,15 +24,18 @@ from tests.imap_world import (
     SENT,
     FakeImapServer,
     StoredMessage,
+    body_fetches,
+    examines,
     mail,
     session_on,
     writes_sent,
 )
 from tracker.domain.mail import MailMessage
+from tracker.infrastructure.imap import reader
 from tracker.infrastructure.imap.html_text import html_to_text
 from tracker.infrastructure.imap.parser import extract_body, parse_fetch, parse_headers
 from tracker.infrastructure.imap.reader import ImapMailbox, find_sent_folder, imap_date
-from tracker.infrastructure.imap.session import Answer, Folder, ImapSession, quote
+from tracker.infrastructure.imap.session import Answer, Folder, ImapClient, ImapSession, quote
 from tracker.infrastructure.imap.threads import ThreadFacts, thread_keys
 from tracker.shared.concurrency import gather_all
 from tracker.shared.constants.retry import SOURCE_REQUEST_ATTEMPTS
@@ -329,6 +334,39 @@ def test_only_messages_inside_the_window_are_read() -> None:
     assert "Old news" not in subjects
 
 
+def test_a_server_behind_utc_still_finds_mail_from_the_windows_first_hours() -> None:
+    since = datetime(2026, 9, 11, 2, 0, tzinfo=UTC)
+    early = datetime(2026, 9, 11, 3, 0, tzinfo=UTC)
+    before = datetime(2026, 9, 10, 20, 0, tzinfo=UTC)
+    inbox = [
+        StoredMessage(
+            uid,
+            mail(sender=ELODIE, subject=subject, sent=moment, message_id=f"<{uid}@x.example>"),
+            moment,
+        )
+        for uid, subject, moment in ((1, "Too early", before), (2, "Early hours", early))
+    ]
+    # On the server's clock (UTC-5) the early message arrived on 10 September.
+    server = FakeImapServer(folders={"INBOX": inbox}, gmail=False, utc_offset=timedelta(hours=-5))
+
+    async def run() -> list[MailMessage]:
+        async with ImapMailbox(session_on(server)) as mailbox:
+            return await mailbox.list_messages_since(since)
+
+    assert [message.subject for message in asyncio.run(run())] == ["Early hours"]
+    assert ("UID", "SEARCH", "SINCE", "10-Sep-2026") in server.log
+
+
+def test_a_folder_with_too_many_messages_gives_its_newest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(reader, "IMAP_MAX_MESSAGES_PER_FOLDER", 1)
+
+    subjects = {message.subject for message in read_window(gmail_server())}
+
+    assert subjects == {"Coffee next week?", "Re: Coffee next week?"}
+
+
 def test_sent_messages_are_the_owners_and_carry_the_headers_needed() -> None:
     messages = read_window(gmail_server())
 
@@ -415,6 +453,249 @@ def test_nothing_is_ever_marked_moved_or_changed() -> None:
     assert all(entry[2] == "readonly" for entry in server.log if entry[0] == "SELECT")
 
 
+# --- Bodies, a thread at a time -----------------------------------------------
+
+#: Gmail's thread numbers on the made-up server of :func:`two_threads`.
+INBOX_ONLY, ANSWERED = "500", "600"
+
+
+def note(uid: int, name: str, thread: str, day: int, *, sent: bool = False) -> StoredMessage:
+    """A message whose text names it, so a body given to the wrong message shows."""
+    return StoredMessage(
+        uid,
+        mail(
+            sender=f"Sam <{OWNER}>" if sent else ELODIE,
+            to=ELODIE if sent else OWNER,
+            subject="Coffee next week?",
+            sent=at(day),
+            message_id=f"<{name}@startup.example>",
+            body=f"Text of {name}.",
+        ),
+        at(day),
+        thread=thread,
+        gmail_id=f"{thread}{day}",
+    )
+
+
+def two_threads() -> FakeImapServer:
+    """A thread of three inbox messages, and one with two messages in each folder."""
+    inbox = [
+        note(1, "a1", INBOX_ONLY, 11),
+        note(2, "b1", ANSWERED, 12),
+        note(3, "a2", INBOX_ONLY, 13),
+        note(4, "a3", INBOX_ONLY, 15),
+        note(5, "b3", ANSWERED, 16),
+    ]
+    sent = [note(1, "b2", ANSWERED, 14, sent=True), note(2, "b4", ANSWERED, 17, sent=True)]
+    return FakeImapServer(
+        folders={"INBOX": inbox, SENT: sent}, attributes={SENT: "\\HasNoChildren \\Sent"}
+    )
+
+
+@dataclass
+class BodyRead:
+    """What reading one thread's bodies gave, and the commands it cost."""
+
+    bodies: list[str]
+    commands: list[tuple[str, ...]]
+
+
+def read_bodies(
+    server: FakeImapServer,
+    thread: str,
+    *,
+    before: Callable[[], None] = lambda: None,
+    one_by_one: bool = False,
+) -> BodyRead:
+    """List the window, then read one thread's bodies, oldest message first.
+
+    ``before`` runs between the two, once the log has been emptied: the place
+    to make the server misbehave.
+    """
+
+    async def run() -> list[str]:
+        async with ImapMailbox(session_on(server)) as mailbox:
+            recent = await mailbox.list_messages_since(SINCE)
+            wanted = sorted(
+                (m for m in recent if m.conversation_id == f"gmail-{thread}"),
+                key=lambda m: m.sent_at,
+            )
+            server.log.clear()
+            before()
+            if one_by_one:
+                return [await mailbox.fetch_body(m.message_id) for m in wanted]
+            return await mailbox.fetch_bodies([m.message_id for m in wanted])
+
+    bodies = asyncio.run(run())
+    return BodyRead(bodies, [entry for entry in server.log if entry[0] != "LOGOUT"])
+
+
+def test_the_bodies_of_a_thread_in_one_folder_cost_one_fetch() -> None:
+    server = two_threads()
+
+    read = read_bodies(server, INBOX_ONLY)
+
+    assert read.bodies == ["Text of a1.", "Text of a2.", "Text of a3."]
+    assert examines(server) == ["INBOX"]
+    assert body_fetches(server) == ["1,3,4"]
+
+
+def test_a_thread_in_the_inbox_and_sent_costs_one_fetch_per_folder() -> None:
+    server = two_threads()
+
+    read = read_bodies(server, ANSWERED)
+
+    assert read.bodies == ["Text of b1.", "Text of b2.", "Text of b3.", "Text of b4."]
+    # The window's listing left Sent open, so Sent is read first and only the
+    # inbox has to be opened.
+    assert [entry[:3] for entry in read.commands] == [
+        ("UID", "FETCH", "1,2"),
+        ("SELECT", '"INBOX"', "readonly"),
+        ("UID", "FETCH", "2,5"),
+    ]
+    assert writes_sent(server) == []
+
+
+def test_a_folder_that_is_open_is_not_opened_again() -> None:
+    server = two_threads()
+
+    read = read_bodies(server, INBOX_ONLY, one_by_one=True)
+
+    assert read.bodies == ["Text of a1.", "Text of a2.", "Text of a3."]
+    assert examines(server) == ["INBOX"]
+    assert body_fetches(server) == ["1", "3", "4"]
+
+
+def test_a_dropped_line_opens_the_folder_again_before_reading_on() -> None:
+    server = two_threads()
+
+    def drop_the_line() -> None:
+        server.drop_next_command = 1
+
+    read = read_bodies(server, ANSWERED, before=drop_the_line)
+
+    assert read.bodies == ["Text of b1.", "Text of b2.", "Text of b3.", "Text of b4."]
+    assert [entry[:3] for entry in read.commands] == [
+        ("UID", "FETCH", "1,2"),  # the line drops here
+        ("CONNECT", "imap.gmail.com", "993"),
+        ("LOGIN", OWNER),
+        ("SELECT", f'"{SENT}"', "readonly"),
+        ("UID", "FETCH", "1,2"),
+        ("SELECT", '"INBOX"', "readonly"),
+        ("UID", "FETCH", "2,5"),
+    ]
+
+
+def test_a_line_that_drops_again_while_reopening_still_opens_the_folder() -> None:
+    server = two_threads()
+
+    def drop_the_line_twice() -> None:
+        server.drop_next_command = 2
+
+    read = read_bodies(server, ANSWERED, before=drop_the_line_twice)
+
+    assert read.bodies == ["Text of b1.", "Text of b2.", "Text of b3.", "Text of b4."]
+    assert [entry[0] for entry in read.commands] == [
+        "UID",  # the line drops here
+        "CONNECT",
+        "LOGIN",
+        "SELECT",  # and here again
+        "CONNECT",
+        "LOGIN",
+        "SELECT",
+        "UID",
+        "SELECT",
+        "UID",
+    ]
+    assert examines(server) == [SENT, SENT, "INBOX"]
+
+
+def test_bodies_keep_their_message_when_the_server_answers_in_another_order() -> None:
+    server = two_threads()
+    server.answers_newest_first = True
+
+    read = read_bodies(server, ANSWERED)
+
+    assert read.bodies == ["Text of b1.", "Text of b2.", "Text of b3.", "Text of b4."]
+
+
+def test_bodies_come_back_in_the_order_asked_whatever_the_folders() -> None:
+    server = two_threads()
+
+    async def run() -> list[str]:
+        async with ImapMailbox(session_on(server)) as mailbox:
+            recent = await mailbox.list_messages_since(SINCE)
+            newest_first = sorted(recent, key=lambda m: m.sent_at, reverse=True)
+            return await mailbox.fetch_bodies([m.message_id for m in newest_first])
+
+    assert asyncio.run(run()) == [
+        "Text of b4.",
+        "Text of b3.",
+        "Text of a3.",
+        "Text of b2.",
+        "Text of a2.",
+        "Text of b1.",
+        "Text of a1.",
+    ]
+    assert body_fetches(server) == ["1,2", "1,2,3,4,5"]
+
+
+def test_a_message_that_vanished_reads_as_empty_and_the_others_keep_their_text() -> None:
+    server = two_threads()
+
+    def delete_the_second() -> None:
+        server.folders["INBOX"] = [m for m in server.folders["INBOX"] if m.uid != 3]
+
+    read = read_bodies(server, INBOX_ONLY, before=delete_the_second)
+
+    assert read.bodies == ["Text of a1.", "", "Text of a3."]
+
+
+def test_an_identifier_never_seen_reads_as_empty_without_asking_the_server() -> None:
+    server = two_threads()
+
+    async def run() -> list[str]:
+        async with ImapMailbox(session_on(server)) as mailbox:
+            return await mailbox.fetch_bodies(["gmail-never-seen"])
+
+    assert asyncio.run(run()) == [""]
+    assert body_fetches(server) == []
+
+
+@dataclass
+class ChattyImapServer(FakeImapServer):
+    """A fake server that reports a flag change at the end of every FETCH answer."""
+
+    def uid(self, command: str, *args: str) -> Answer:
+        """Answer as usual, then add a line about the first message's flags."""
+        status, data = super().uid(command, *args)
+        if command != "FETCH":
+            return status, data
+        first = args[0].split(",")[0]
+        return status, [*data, f"9 (UID {first} FLAGS (\\Seen))".encode()]
+
+
+def test_a_line_about_flags_is_never_taken_for_a_body() -> None:
+    plain = two_threads()
+    server = ChattyImapServer(folders=plain.folders, attributes=plain.attributes)
+
+    read = read_bodies(server, INBOX_ONLY)
+
+    assert read.bodies == ["Text of a1.", "Text of a2.", "Text of a3."]
+
+
+def test_a_long_thread_is_fetched_a_bounded_number_at_a_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(reader, "IMAP_BODY_BATCH_SIZE", 2)
+    server = two_threads()
+
+    read = read_bodies(server, INBOX_ONLY)
+
+    assert read.bodies == ["Text of a1.", "Text of a2.", "Text of a3."]
+    assert body_fetches(server) == ["1,3", "4"]
+
+
 def test_the_survey_counts_the_inbox_window_and_names_the_sent_folder() -> None:
     async def run() -> tuple[int, str | None]:
         async with ImapMailbox(session_on(gmail_server())) as mailbox:
@@ -470,9 +751,58 @@ def test_a_server_that_never_answers_is_unavailable() -> None:
     assert len(attempts) == SOURCE_REQUEST_ATTEMPTS
 
 
+def test_a_greeting_that_is_not_a_mail_servers_is_unavailable_not_a_crash() -> None:
+    attempts: list[str] = []
+
+    def greet_badly(host: str, port: int, timeout: float) -> FakeImapServer:
+        attempts.append(host)
+        message = "* BYE too many connections"
+        raise imaplib.IMAP4.error(message)
+
+    session = ImapSession(
+        GMAIL_ACCOUNT, SecretStr(APP_PASSWORD), connect=greet_badly, sleep=lambda _seconds: None
+    )
+
+    with pytest.raises(SourceUnavailableError, match="Gmail did not answer"):
+        session.open()
+    assert len(attempts) == SOURCE_REQUEST_ATTEMPTS
+
+
+def test_a_bad_greeting_once_is_tried_again() -> None:
+    server = gmail_server()
+    greetings = [imaplib.IMAP4.error("* BYE busy")]
+
+    def greet(host: str, port: int, timeout: float) -> ImapClient:
+        if greetings:
+            raise greetings.pop()
+        return server.connect(host, port, timeout)
+
+    session = ImapSession(
+        GMAIL_ACCOUNT, SecretStr(APP_PASSWORD), connect=greet, sleep=lambda _seconds: None
+    )
+
+    session.open()
+
+    assert server.connections == 1
+
+
 def test_a_missing_folder_is_reported_not_crashed() -> None:
     session = session_on(gmail_server())
     session.open()
 
     with pytest.raises(SourceUnavailableError):
         session.examine("Nowhere")
+
+
+def test_a_refused_folder_leaves_none_open() -> None:
+    server = gmail_server()
+    session = session_on(server)
+    session.open()
+    session.examine("INBOX")
+
+    with pytest.raises(SourceUnavailableError):
+        session.examine("Nowhere")
+    session.examine("INBOX")
+
+    assert examines(server) == ["INBOX", "Nowhere", "INBOX"]
+    assert session.search("SINCE", imap_date(SINCE)) == [1, 2]

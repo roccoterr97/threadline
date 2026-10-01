@@ -11,7 +11,7 @@ import imaplib
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from email.utils import format_datetime
 
@@ -61,12 +61,16 @@ class FakeImapServer:
     log: list[tuple[str, ...]] = field(default_factory=list)
     connections: int = 0
     drop_next_command: int = 0
+    answers_newest_first: bool = False
+    #: The server's own time zone, which SINCE compares dates in.
+    utc_offset: timedelta = timedelta(0)
     _open: str = ""
 
     def connect(self, host: str, port: int, timeout: float) -> ImapClient:
-        """The session's connector: every call is a new connection."""
+        """The session's connector: every call is a new connection, with no folder open."""
         self.connections += 1
         self.log.append(("CONNECT", host, str(port), str(timeout)))
+        self._open = ""
         return self
 
     def login(self, user: str, password: str) -> Answer:
@@ -95,8 +99,10 @@ class FakeImapServer:
     def select(self, mailbox: str = "INBOX", readonly: bool = False) -> Answer:
         """Open a folder, remembering whether it was read-only."""
         self.log.append(("SELECT", mailbox, "readonly" if readonly else "READ-WRITE"))
+        self._maybe_drop()
         name = mailbox.strip('"')
         if name not in self.folders:
+            self._open = ""
             return "NO", [b"no such folder"]
         self._open = name
         return "OK", [str(len(self.folders[name])).encode()]
@@ -105,6 +111,9 @@ class FakeImapServer:
         """Answer SEARCH and FETCH; anything else is logged and refused."""
         self.log.append(("UID", command, *args))
         self._maybe_drop()
+        if not self._open:
+            message = f"command {command} illegal in state AUTH"
+            raise imaplib.IMAP4.error(message)
         if command == "SEARCH":
             return self._search(args)
         if command == "FETCH":
@@ -127,13 +136,16 @@ class FakeImapServer:
         return self.folders[self._open]
 
     def _search(self, criteria: Sequence[str]) -> Answer:
-        found = [message for message in self._messages() if _matches(message, criteria)]
+        found = [
+            message for message in self._messages() if _matches(message, criteria, self.utc_offset)
+        ]
         return "OK", [" ".join(str(message.uid) for message in found).encode()]
 
     def _fetch(self, numbers: str, items: str) -> Answer:
         wanted = {int(number) for number in numbers.split(",")}
         data: list[object] = []
-        for sequence, message in enumerate(self._messages(), start=1):
+        numbered = list(enumerate(self._messages(), start=1))
+        for sequence, message in reversed(numbered) if self.answers_newest_first else numbered:
             if message.uid not in wanted:
                 continue
             envelope, literal = _answer(message, items, self.gmail)
@@ -158,11 +170,14 @@ def _answer(message: StoredMessage, items: str, gmail: bool) -> tuple[str, bytes
     return " ".join(parts), raw
 
 
-def _matches(message: StoredMessage, criteria: Sequence[str]) -> bool:
-    """A tiny subset of IMAP SEARCH: SINCE, X-GM-THRID, and the header OR chain."""
+def _matches(message: StoredMessage, criteria: Sequence[str], utc_offset: timedelta) -> bool:
+    """A tiny subset of IMAP SEARCH: SINCE, X-GM-THRID, and the header OR chain.
+
+    SINCE compares the arrival's date in the server's time zone, as RFC 3501 says.
+    """
     if criteria[0] == "SINCE":
-        day = datetime.strptime(criteria[1], "%d-%b-%Y").replace(tzinfo=UTC)
-        return message.arrived >= day
+        day = datetime.strptime(criteria[1], "%d-%b-%Y").date()
+        return (message.arrived.astimezone(UTC) + utc_offset).date() >= day
     if criteria[0] == "X-GM-THRID":
         return message.thread == criteria[1]
     root = criteria[4].strip('"').encode()
@@ -213,6 +228,20 @@ def session_on(server: FakeImapServer, password: str = APP_PASSWORD) -> ImapSess
         connect=server.connect,
         sleep=lambda _seconds: None,
     )
+
+
+def examines(server: FakeImapServer) -> list[str]:
+    """Every folder the log shows being opened, in order."""
+    return [entry[1].strip('"') for entry in server.log if entry[0] == "SELECT"]
+
+
+def body_fetches(server: FakeImapServer) -> list[str]:
+    """The message numbers of every logged FETCH that asked for bodies, in order."""
+    return [
+        entry[2]
+        for entry in server.log
+        if entry[:2] == ("UID", "FETCH") and "HEADER.FIELDS" not in entry[3]
+    ]
 
 
 def writes_sent(server: FakeImapServer) -> list[tuple[str, ...]]:

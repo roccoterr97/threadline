@@ -55,13 +55,12 @@ def category_line(category: Category) -> str:
         category: The category.
 
     Returns:
-        Its key, label, group label and colour, noting that ``unknown`` stays.
+        Its key, label, group label (when it differs) and colour, noting that
+        ``unknown`` stays.
     """
     reserved = f"{_DOT}always there" if category.key == UNKNOWN_CATEGORY_KEY else ""
-    return (
-        f"  {category.key}: {category.label} ({category.group_label})"
-        f"{_DOT}{category.colour.value}{reserved}"
-    )
+    group = "" if category.group_label == category.label else f" ({category.group_label})"
+    return f"  {category.key}: {category.label}{group}{_DOT}{category.colour.value}{reserved}"
 
 
 class CategoryChooser:

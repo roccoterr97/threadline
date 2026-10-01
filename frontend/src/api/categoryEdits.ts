@@ -51,8 +51,10 @@ export async function showCategoryAgain(key: CategoryKey): Promise<void> {
 export async function removeCategory(key: CategoryKey, now: Date): Promise<RemovalOutcome> {
   const supabase = getSupabaseClient();
   try {
-    await runMutation('categories.delete', () =>
-      supabase.from('categories').delete().eq('key', key),
+    await runMutation(
+      'categories.delete',
+      () => supabase.from('categories').delete().eq('key', key),
+      { expectedRefusals: [RefusalReason.InUse] },
     );
     return RemovalOutcome.Deleted;
   } catch (error) {

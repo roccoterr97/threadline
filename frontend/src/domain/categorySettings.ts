@@ -72,10 +72,32 @@ export interface CategoryDraft {
 export enum DraftProblem {
   MissingName = 'missing_name',
   NameTooLong = 'name_too_long',
+  DuplicateName = 'duplicate_name',
   MissingGroupName = 'missing_group_name',
   GroupNameTooLong = 'group_name_too_long',
+  DuplicateGroupName = 'duplicate_group_name',
   MissingDescription = 'missing_description',
   DescriptionTooLong = 'description_too_long',
+}
+
+/**
+ * The database's unique indexes on a category's names (migration 0015). When
+ * a save is refused as a duplicate, the index it names says which name
+ * clashed with a category the page had not loaded yet.
+ */
+export enum CategoryNameIndex {
+  Label = 'categories_label_unique',
+  GroupLabel = 'categories_group_label_unique',
+}
+
+const CLASH_PROBLEMS: ReadonlyMap<string, DraftProblem> = new Map([
+  [CategoryNameIndex.Label, DraftProblem.DuplicateName],
+  [CategoryNameIndex.GroupLabel, DraftProblem.DuplicateGroupName],
+]);
+
+/** The draft problem a refused save names, or null for any other rule. */
+export function problemForIndex(constraint: string | null): DraftProblem | null {
+  return constraint === null ? null : (CLASH_PROBLEMS.get(constraint) ?? null);
 }
 
 /** True for the reserved "not known" category. */
@@ -109,6 +131,21 @@ export function nextSortOrder(categories: readonly Category[]): number {
 export function firstFreeColour(categories: readonly Category[]): CategoryColour {
   const used = new Set(activeOwnCategories(categories).map((category) => category.colour));
   return CATEGORY_COLOURS.find((colour) => colour !== 'grey' && !used.has(colour)) ?? 'grey';
+}
+
+/**
+ * The colour a suggestion is added with: its own, unless a category in use
+ * already has that colour, in which case the first free one, so two
+ * categories do not share a colour while another is still free.
+ */
+export function colourForSuggestion(
+  suggestion: CategorySuggestion,
+  categories: readonly Category[],
+): CategoryColour {
+  const taken = activeOwnCategories(categories).some(
+    (category) => category.colour === suggestion.colour,
+  );
+  return taken ? firstFreeColour(categories) : suggestion.colour;
 }
 
 /** Suggestions whose key is not already a category, in use or hidden. */
@@ -146,10 +183,32 @@ export function moveCategory(
     .map(({ category, sort_order }) => ({ key: category.key, sort_order }));
 }
 
-/** The group name suggested for a new category: its name with an "s". */
+/**
+ * The group name suggested for a new category: its name with an "s", or the
+ * name alone when the "s" would make it longer than a group name may be.
+ */
 export function suggestedGroupLabel(label: string): string {
   const trimmed = label.trim();
-  return trimmed === '' ? '' : `${trimmed}s`;
+  if (trimmed === '') return '';
+  const plural = `${trimmed}s`;
+  return plural.length > MAX_LABEL_LENGTH ? trimmed : plural;
+}
+
+/** The form field each problem is about, so that field can be marked and focused. */
+const PROBLEM_FIELDS: Record<DraftProblem, keyof CategoryDraft> = {
+  [DraftProblem.MissingName]: 'label',
+  [DraftProblem.NameTooLong]: 'label',
+  [DraftProblem.DuplicateName]: 'label',
+  [DraftProblem.MissingGroupName]: 'group_label',
+  [DraftProblem.GroupNameTooLong]: 'group_label',
+  [DraftProblem.DuplicateGroupName]: 'group_label',
+  [DraftProblem.MissingDescription]: 'description',
+  [DraftProblem.DescriptionTooLong]: 'description',
+};
+
+/** The field a problem is about, or null when there is none. */
+export function problemField(problem: DraftProblem | null): keyof CategoryDraft | null {
+  return problem === null ? null : PROBLEM_FIELDS[problem];
 }
 
 /** The draft with surrounding spaces taken off every text field. */
@@ -162,13 +221,42 @@ export function trimDraft(draft: CategoryDraft): CategoryDraft {
   };
 }
 
-/** The first thing wrong with a draft, or null when it can be saved. */
-export function findDraftProblem(draft: CategoryDraft): DraftProblem | null {
+/**
+ * A name as it is compared for clashes: case, accents' composed forms and
+ * runs of spaces do not matter, so "customer" and " Customer" are the same.
+ */
+export function comparableName(name: string): string {
+  return name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** True when one of `others` already has `name` in `field`, ignoring case. */
+function nameIsTaken(
+  name: string,
+  field: 'label' | 'group_label',
+  others: readonly Category[],
+): boolean {
+  const wanted = comparableName(name);
+  return others.some((category) => comparableName(category[field]) === wanted);
+}
+
+/**
+ * The first thing wrong with a draft, or null when it can be saved.
+ *
+ * @param others Every other category, hidden ones included (not the one being
+ *   edited): two categories with the same name would show as two identical
+ *   columns and filter buttons.
+ */
+export function findDraftProblem(
+  draft: CategoryDraft,
+  others: readonly Category[],
+): DraftProblem | null {
   const { label, group_label, description } = trimDraft(draft);
   if (label === '') return DraftProblem.MissingName;
   if (label.length > MAX_LABEL_LENGTH) return DraftProblem.NameTooLong;
+  if (nameIsTaken(label, 'label', others)) return DraftProblem.DuplicateName;
   if (group_label === '') return DraftProblem.MissingGroupName;
   if (group_label.length > MAX_LABEL_LENGTH) return DraftProblem.GroupNameTooLong;
+  if (nameIsTaken(group_label, 'group_label', others)) return DraftProblem.DuplicateGroupName;
   if (description === '') return DraftProblem.MissingDescription;
   if (description.length > MAX_DESCRIPTION_LENGTH) return DraftProblem.DescriptionTooLong;
   return null;

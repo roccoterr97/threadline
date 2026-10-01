@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
@@ -24,16 +24,19 @@ from tests.imap_world import (
     GMAIL_ACCOUNT,
     FakeImapServer,
     StoredMessage,
+    body_fetches,
     mail,
     session_on,
     writes_sent,
 )
 from tests.test_collectors import collect_email, rows_of
+from tests.test_summary_send import FakeSmtp
 from tracker.domain.enums import Channel, RunStep
 from tracker.domain.mail import MailMessage
 from tracker.infrastructure.imap.connection import ImapConnection, StoreAccess
 from tracker.infrastructure.imap.reader import ImapMailbox
 from tracker.infrastructure.secret_store import SecretStore, imap_password_name
+from tracker.infrastructure.smtp import SmtpAccount
 from tracker.repositories import Repositories, build_repositories
 from tracker.services.collection.calendar_collector import CalendarCollector
 from tracker.services.collection.email_collector import EmailCollector
@@ -252,6 +255,65 @@ def test_a_newsletter_read_over_imap_keeps_no_subject_and_no_body(
     assert len(body_fetches) == 2  # the two messages of the kept thread, never the newsletter
 
 
+def test_a_kept_threads_bodies_are_read_with_one_command_per_folder(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    server = outlook_twin()
+    elodie = "Élodie Martin <elodie.martin@acme.example>"
+    chain = "<h1@acme.example> <r1@mailbox.example>"
+    server.folders["INBOX"].append(
+        StoredMessage(
+            3,
+            mail(
+                sender=elodie,
+                to=OWNER,
+                subject="RE: Coffee next week?",
+                body="Tuesday at ten?",
+                sent=moment(11, 9),
+                message_id="<h2@acme.example>",
+                references=chain,
+                in_reply_to="<r1@mailbox.example>",
+            ),
+            moment(11, 9),
+        )
+    )
+    server.folders[SENT].append(
+        StoredMessage(
+            2,
+            mail(
+                sender=f"Sam Rivera <{OWNER}>",
+                to=elodie,
+                subject="RE: Coffee next week?",
+                body="Tuesday at ten it is.",
+                sent=moment(11, 10),
+                message_id="<r2@mailbox.example>",
+                references=f"{chain} <h2@acme.example>",
+                in_reply_to="<h2@acme.example>",
+            ),
+            moment(11, 10),
+        )
+    )
+
+    EmailCollector(repositories, settings, clock, JOB_SEARCH_RULES, [imap_source(server)]).collect()
+
+    assert sorted(body_fetches(server)) == ["1,2", "2,3"]
+    kept = sorted(
+        (str(row["sent_at"]), row["direction"], row["body"])
+        for row in rows_of(fake_client, "messages")
+        if row["body"] is not None
+    )
+    assert [(direction, body) for _sent_at, direction, body in kept] == [
+        ("inbound", "Made-up body text."),
+        ("outbound", "Made-up body text."),
+        ("inbound", "Tuesday at ten?"),
+        ("outbound", "Tuesday at ten it is."),
+    ]
+    assert writes_sent(server) == []
+
+
 def test_a_reply_filed_in_sent_is_outbound_even_from_an_unlisted_address(
     repositories: Repositories,
     fake_client: FakeSupabaseClient,
@@ -308,6 +370,9 @@ class _SlowEmptyMailbox:
 
     async def fetch_body(self, message_id: str) -> str:
         return ""
+
+    async def fetch_bodies(self, message_ids: Sequence[str]) -> list[str]:
+        return ["" for _ in message_ids]
 
 
 def test_two_mailboxes_are_read_at_the_same_time(
@@ -424,3 +489,20 @@ def test_the_set_up_checks_a_password_live_and_keeps_it_encrypted(
     assert (survey.inbox_messages, survey.sent_folder) == (2, SENT)
     assert asyncio.run(connection.has_password(access, GMAIL_ACCOUNT.username))
     assert writes_sent(server) == []
+
+
+def test_the_set_up_signs_in_to_the_sending_server_without_sending(
+    fake_client: FakeSupabaseClient, clock: FixedClock
+) -> None:
+    smtp = FakeSmtp()
+    connection = ImapConnection(
+        lambda _url, _key: as_client(fake_client),
+        clock,
+        smtp_connector=lambda *_: smtp,
+    )
+    account = SmtpAccount("smtp.mail.example", 587, "sam", "Mail", "Mail Inc.")
+
+    asyncio.run(connection.check_sending(account, SecretStr(APP_PASSWORD)))
+
+    assert smtp.calls == ["starttls", "login sam", "quit"]
+    assert smtp.sent == []

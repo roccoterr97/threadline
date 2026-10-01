@@ -17,7 +17,11 @@
 /** A run marked "running" that started longer ago than this is treated as dead. */
 export const RUN_IN_PROGRESS_WINDOW_MINUTES = 30;
 
-/** The shortest gap between two refreshes started from the dashboard. */
+/**
+ * The shortest gap between two refreshes started from the dashboard. The
+ * database enforces the same length (migration 0014's `cooldown_until`
+ * default); a backend test keeps the two equal.
+ */
 export const REFRESH_COOLDOWN_MINUTES = 10;
 
 /** The workflow file the GitHub target starts (agreed with the workflow's author). */
@@ -118,6 +122,9 @@ export class StoreError extends Error {
 // (or 0002) has not been applied; PGRST301 is an expired or invalid sign-in.
 const NOT_SET_UP_DATABASE_CODES = new Set(['42P01', '42883', 'PGRST202', 'PGRST205']);
 const NOT_SIGNED_IN_DATABASE_CODES = new Set(['PGRST301', 'PGRST302']);
+
+/** Postgres "exclusion_violation": another request already holds the cool-down. */
+export const COOLDOWN_TAKEN_DATABASE_CODE = '23P01';
 
 /** Turns a database error code into the answer the dashboard understands. */
 export function codeForDatabaseError(code: string | undefined): RefreshCode {
@@ -298,6 +305,11 @@ export function codeForRunnerStatus(status: number): RefreshCode | null {
 
 type LogFields = Record<string, string | number | boolean | null>;
 
+/** The stored request that holds the cool-down while the run is being started. */
+export interface Claim {
+  id: string;
+}
+
 /** Everything the handler needs from outside, built per request by `index.ts`. */
 export interface RefreshPorts {
   config: RefreshConfig | null;
@@ -306,8 +318,14 @@ export interface RefreshPorts {
   checkOwner: () => Promise<OwnerCheck>;
   /** @throws {StoreError} */
   readActivity: () => Promise<Activity>;
-  /** @throws {StoreError} */
-  recordRequest: (target: RefreshTarget) => Promise<void>;
+  /**
+   * Stores the request, which the database accepts only once per cool-down.
+   * Resolves to null when another request already holds it.
+   * @throws {StoreError}
+   */
+  claimRequest: (target: RefreshTarget) => Promise<Claim | null>;
+  /** Gives the cool-down back after the runner refused. @throws {StoreError} */
+  releaseRequest: (claim: Claim) => Promise<void>;
   /** Sends the request and returns the HTTP status. Throws when unreachable. */
   send: (request: DispatchRequest) => Promise<number>;
   log: (event: string, fields: LogFields) => void;
@@ -373,14 +391,47 @@ async function dispatch(config: RefreshConfig, ports: RefreshPorts): Promise<Ref
   }
 }
 
-async function record(target: RefreshTarget, ports: RefreshPorts): Promise<void> {
+/** The whole cool-down, for a press that lost the race to another one. */
+const COOLDOWN_SECONDS =
+  (REFRESH_COOLDOWN_MINUTES * MILLISECONDS_PER_MINUTE) / MILLISECONDS_PER_SECOND;
+
+/**
+ * Takes the cool-down before the runner is asked, so two presses a moment
+ * apart can never both start a run: the database lets only one row in.
+ */
+async function claim(
+  target: RefreshTarget,
+  ports: RefreshPorts,
+): Promise<Claim | GuardVerdict | RefreshCode> {
   try {
-    await ports.recordRequest(target);
+    const claimed = await ports.claimRequest(target);
+    return claimed ?? { code: RefreshCode.TooSoon, retryAfterSeconds: COOLDOWN_SECONDS };
+  } catch (error) {
+    if (error instanceof StoreError) return error.code;
+    throw error;
+  }
+}
+
+async function release(claimed: Claim, target: RefreshTarget, ports: RefreshPorts): Promise<void> {
+  try {
+    await ports.releaseRequest(claimed);
   } catch (error) {
     if (!(error instanceof StoreError)) throw error;
-    // The run has started; only the cool-down reminder is lost.
-    ports.log('refresh.record_failed', { target, code: error.code });
+    // Nothing started; the next press only has to wait out the cool-down.
+    ports.log('refresh.release_failed', { target, code: error.code });
   }
+}
+
+function replyToVerdict(
+  verdict: GuardVerdict | RefreshCode,
+  cors: Record<string, string>,
+  target: RefreshTarget,
+): Response {
+  if (typeof verdict === 'string') return reply(verdict, cors, { target });
+  if (verdict.code === RefreshCode.TooSoon) {
+    return reply(verdict.code, cors, { target, retryAfterSeconds: verdict.retryAfterSeconds });
+  }
+  return reply(verdict.code, cors, { target });
 }
 
 /** Answers one request to start a refresh. */
@@ -399,21 +450,23 @@ export async function handleRefresh(request: Request, ports: RefreshPorts): Prom
   if (config === null) return reply(RefreshCode.NotSetUp, cors);
   const { target } = config;
 
+  // The read gives the usual answers (a run is going, wait N seconds); the
+  // claim is what makes two simultaneous presses start one run, not two.
   const verdict = await readVerdict(ports);
-  if (typeof verdict === 'string') return reply(verdict, cors, { target });
-  if (verdict.code === RefreshCode.TooSoon) {
-    return reply(verdict.code, cors, { target, retryAfterSeconds: verdict.retryAfterSeconds });
+  if (typeof verdict === 'string' || verdict.code !== RefreshCode.Started) {
+    return replyToVerdict(verdict, cors, target);
   }
-  if (verdict.code !== RefreshCode.Started) return reply(verdict.code, cors, { target });
+  const claimed = await claim(target, ports);
+  if (typeof claimed === 'string' || 'code' in claimed) return replyToVerdict(claimed, cors, target);
 
   const requestedAt = ports.now();
   const refusal = await dispatch(config, ports);
   if (refusal !== null) {
+    await release(claimed, target, ports);
     ports.log('refresh.refused_by_runner', { target, code: refusal });
     return reply(refusal, cors, { target });
   }
 
-  await record(target, ports);
   ports.log('refresh.started', { target });
   return reply(RefreshCode.Started, cors, { target, requestedAt });
 }

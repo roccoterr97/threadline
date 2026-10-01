@@ -4,7 +4,8 @@ Each setting becomes an Actions *secret* (hidden in every log) or, when it is
 neither secret nor personal, an Actions *variable*; ``shared/constants/github.py``
 decides which. It first makes sure a private copy exists on GitHub (``github_copy``), since
 the settings are saved into it. With the GitHub CLI signed in, the step saves them all after one
-yes, handing each value to ``gh`` on its standard input. Without it, the step
+yes, handing each value to ``gh`` on its standard input, then offers once to delete
+the settings emptied in ``.env`` that GitHub still holds. Without it, the step
 lists the names and opens the page, and can copy each value to the clipboard.
 
 The Claude subscription key from ``claude setup-token`` is asked for here and
@@ -20,15 +21,20 @@ from pydantic import SecretStr
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.github_copy import find_or_create_copy
 from tracker.services.setup.models import StepName
-from tracker.services.setup.step_cloud import cloud_variable_names, copy_values
+from tracker.services.setup.step_cloud import (
+    cloud_setting_names,
+    cloud_variable_names,
+    copy_values,
+)
 from tracker.shared.constants.github import (
     ACTIONS_SECRETS_PAGE,
     CLAUDE_TOKEN_SECRET,
     REQUIRED_SECRETS,
     VARIABLE_SETTINGS,
+    WORKFLOW_FIXED_SETTINGS,
     WORKFLOW_PAGE,
 )
-from tracker.shared.errors import ValidationFailedError
+from tracker.shared.errors import SourceUnavailableError, ValidationFailedError
 
 #: Where the page is when the repository's name is not known.
 _PAGE_BY_HAND: Final[str] = (
@@ -122,9 +128,47 @@ def _save_with_cli(
     for name in variables:
         github.set_variable(repository, name, ctx.env.get(name) or "")
         ctx.io.say(f"  variable {name} saved")
+    _remove_emptied(ctx, repository, secrets, variables)
     ctx.io.say(
         f"Done. Next, start the first run by hand: {WORKFLOW_PAGE.format(repository=repository)}"
     )
+
+
+def _remove_emptied(
+    ctx: SetupContext, repository: str, secrets: tuple[str, ...], variables: tuple[str, ...]
+) -> None:
+    """Offer, once, to delete the settings emptied in ``.env`` but still on GitHub.
+
+    Only Threadline's own setting names are ever considered, never the Claude
+    key (it is not kept in ``.env``) and never anything else in the repository.
+    """
+    github = ctx.gateways.github
+    known = set(cloud_setting_names()) - WORKFLOW_FIXED_SETTINGS
+    try:
+        on_github_secrets = github.secret_names(repository)
+        on_github_variables = github.variable_names(repository)
+    except SourceUnavailableError as error:
+        ctx.io.say(f"  {error.message}, so a setting you emptied may still be on GitHub.")
+        return
+    stale_secrets = sorted((on_github_secrets & (known - VARIABLE_SETTINGS)) - set(secrets))
+    stale_variables = sorted((on_github_variables & known & VARIABLE_SETTINGS) - set(variables))
+    if not stale_secrets and not stale_variables:
+        return
+    ctx.io.say("These settings are empty in your .env but still saved on GitHub:")
+    for name in stale_secrets:
+        ctx.io.say(f"  secret {name}")
+    for name in stale_variables:
+        ctx.io.say(f"  variable {name}")
+    question = "Delete them on GitHub, so the daily run stops using them?"
+    if not ctx.io.confirm(question, default=True):
+        ctx.io.say("Kept them on GitHub.")
+        return
+    for name in stale_secrets:
+        github.delete_secret(repository, name)
+        ctx.io.say(f"  secret {name} deleted")
+    for name in stale_variables:
+        github.delete_variable(repository, name)
+        ctx.io.say(f"  variable {name} deleted")
 
 
 def _show_by_hand(

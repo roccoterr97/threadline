@@ -11,6 +11,7 @@
     "build": "tsc --noEmit -p tsconfig.app.json && vite build",
     "build:demo": "tsc --noEmit -p tsconfig.app.json && vite build --mode demo",
     "icons": "node scripts/generate-icons.ts",
+    "social-card": "node scripts/generate-social-card.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p tsconfig.node.json",

@@ -1,12 +1,13 @@
 """The set-up's view of an IMAP mailbox: check an app password live, and keep it.
 
-It puts together what Threadline already has — the read-only IMAP reader and
-the encrypted store — so the set-up can try a password before saving it,
-without knowing how either works.
+It puts together what Threadline already has — the read-only IMAP reader, the
+summary's SMTP mailer and the encrypted store — so the set-up can try a
+password before saving it, without knowing how any of them works.
 """
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,6 +23,7 @@ from tracker.infrastructure.imap.session import (
     connect_tls,
 )
 from tracker.infrastructure.secret_store import SecretStore, imap_password_name
+from tracker.infrastructure.smtp import SmtpAccount, SmtpConnector, SmtpMailer, connect_smtp
 from tracker.repositories.app_secrets import AppSecretRepository
 from tracker.shared.clock import Clock
 
@@ -49,6 +51,7 @@ class ImapConnection:
         connect: Callable[[str, SecretStr], Client],
         clock: Clock,
         connect_imap: ImapConnector = connect_tls,
+        smtp_connector: SmtpConnector = connect_smtp,
     ) -> None:
         """Bind the connection to a database client factory and a clock.
 
@@ -56,10 +59,12 @@ class ImapConnection:
             connect: Builds a Supabase client from an address and a secret key.
             clock: Supplies the rotation time of the stored password.
             connect_imap: Opens an IMAP connection; replaced in tests.
+            smtp_connector: Opens an SMTP connection; replaced in tests.
         """
         self._connect = connect
         self._clock = clock
         self._connect_imap = connect_imap
+        self._smtp_connector = smtp_connector
 
     async def has_password(self, access: StoreAccess, username: str) -> bool:
         """Tell whether an app password is stored for a mailbox.
@@ -94,6 +99,20 @@ class ImapConnection:
         session = ImapSession(account, password, connect=self._connect_imap)
         async with ImapMailbox(session) as mailbox:
             return await mailbox.survey(since)
+
+    async def check_sending(self, account: SmtpAccount, password: SecretStr) -> None:
+        """Sign in to the server the summary is sent through, then leave without sending.
+
+        Args:
+            account: The sending server and the sign-in name.
+            password: The app password, which opens both servers.
+
+        Raises:
+            MailboxPasswordError: If the server refused the password.
+            SourceUnavailableError: If the server could not be reached.
+        """
+        mailer = SmtpMailer(account, password, connect=self._smtp_connector)
+        await asyncio.to_thread(mailer.verify)
 
     async def save_password(self, access: StoreAccess, username: str, password: SecretStr) -> None:
         """Store an app password, encrypted, replacing any earlier one.

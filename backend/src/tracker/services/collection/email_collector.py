@@ -19,7 +19,7 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
 
-from tracker.domain.enums import Channel, Direction, Relevance
+from tracker.domain.enums import Channel, Direction, Relevance, RunStep
 from tracker.domain.mail import MailMessage
 from tracker.domain.prefilter import EmailThreadEvidence, is_relay_sender, judge_email_thread
 from tracker.domain.relay import real_sender
@@ -34,7 +34,7 @@ from tracker.services.collection.models import (
     RawParticipant,
     SaveStep,
 )
-from tracker.services.collection.window import last_successful_run_at, window_start
+from tracker.services.collection.window import last_collected_at, window_start
 from tracker.services.collection.writer import ConversationWriter
 from tracker.services.identity.matcher import IdentityMatcher
 from tracker.shared.clock import Clock
@@ -119,7 +119,7 @@ class EmailCollector:
             return lambda: CollectionReport(channel=Channel.EMAIL, not_configured=True)
         start = window_start(
             self._clock,
-            last_run_at=last_successful_run_at(self._repositories),
+            last_run_at=last_collected_at(self._repositories, RunStep.COLLECT_EMAIL),
             since=since,
         )
         conversations, failures = await self._read_all(start)
@@ -282,8 +282,12 @@ class EmailCollector:
         mailbox: MailboxReader,
         messages: Sequence[MailMessage],
     ) -> list[MailMessage]:
-        """Fetch the plain-text body of every message of a kept thread."""
-        bodies = await gather_all(mailbox.fetch_body(message.message_id) for message in messages)
+        """Fetch the plain-text body of every message of a kept thread.
+
+        The thread's bodies are asked for in one go, so each reader can fetch
+        them the cheapest way it has.
+        """
+        bodies = await mailbox.fetch_bodies([message.message_id for message in messages])
         return [
             dataclasses.replace(message, body=body)
             for message, body in zip(messages, bodies, strict=True)

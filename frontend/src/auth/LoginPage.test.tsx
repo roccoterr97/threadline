@@ -41,6 +41,12 @@ describe('LoginPage', () => {
 
     expect(await screen.findByText(copy.login.invalidEmail)).toBeInTheDocument();
     expect(sendSignInLink).not.toHaveBeenCalled();
+    const field = screen.getByLabelText(copy.login.emailLabel);
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(field).toHaveFocus();
+    expect(field).toHaveAccessibleDescription(
+      `${copy.login.invalidEmail} ${copy.login.emailHint}`,
+    );
   });
 
   it('tells the owner to try again when the link could not be sent', async () => {

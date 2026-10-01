@@ -90,7 +90,7 @@ const SALES_PRESET: readonly CategorySuggestion[] = [
 export const DEMO_UNUSED_CATEGORY: CategoryKey = 'referrer';
 
 const UNKNOWN_CATEGORY: Category = {
-  ...category('unknown', 'Not known', 'Unknown', 'grey', 'Not sorted yet.'),
+  ...category('unknown', 'Not known', 'Not known', 'grey', 'Not sorted yet.'),
   sort_order: RESERVED_SORT_ORDER,
   archived_at: null,
 };

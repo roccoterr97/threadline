@@ -13,10 +13,11 @@ from tests.setup_world import (
     GOOD_SECRET,
     OWNER_EMAIL,
     FakeWorkflow,
+    World,
     configured_env,
     make_world,
 )
-from tracker.infrastructure.github_cli import GitHubCli, GitRepository
+from tracker.infrastructure.github_cli import GitHubCli, GitHubRepository, GitRepository
 from tracker.services.setup.models import StepName
 from tracker.services.setup.step_github import GitHubStep
 from tracker.services.setup.step_schedule import (
@@ -105,6 +106,16 @@ async def test_a_new_zone_is_saved_as_the_owners_time_zone_too() -> None:
 
     assert world.env.values["OWNER_TIME_ZONE"] == "Europe/Berlin"
     assert schedule_of(world.workflow.text)["timezone"] == "Europe/Berlin"
+
+
+@pytest.mark.asyncio
+async def test_the_timezone_line_uses_the_zone_as_the_database_spells_it() -> None:
+    world = make_world(["07:00", False], github_env() | {"OWNER_TIME_ZONE": "europe/berlin"})
+
+    await ScheduleStep().run(world.context())
+
+    assert schedule_of(world.workflow.text)["timezone"] == "Europe/Berlin"
+    assert world.env.values["OWNER_TIME_ZONE"] == "Europe/Berlin"
 
 
 @pytest.mark.asyncio
@@ -206,6 +217,69 @@ async def test_the_claude_key_is_never_written_to_env() -> None:
     assert CLAUDE_TOKEN_SECRET in world.io.secret_prompts[0]
 
 
+def _with_emptied_settings(answers: list[str | bool]) -> World:
+    """A repository that still holds two settings emptied in .env, and one of its own."""
+    world = make_world(answers, github_env())
+    world.github.secrets = {"LINKEDIN_ACCESS_TOKEN": "old", "SOMETHING_ELSE": "theirs"}
+    world.github.variables = {"SMTP_HOST": "smtp.old.example"}
+    return world
+
+
+@pytest.mark.asyncio
+async def test_settings_emptied_in_env_are_deleted_on_github_after_one_yes() -> None:
+    world = _with_emptied_settings([CLAUDE_KEY, True, True])
+
+    await GitHubStep().run(world.context())
+
+    assert sorted(world.github.deleted) == ["LINKEDIN_ACCESS_TOKEN", "SMTP_HOST"]
+    assert "SOMETHING_ELSE" in world.github.secrets
+    assert CLAUDE_TOKEN_SECRET in world.github.secrets
+    said = world.io.said
+    assert "  secret LINKEDIN_ACCESS_TOKEN" in said
+    assert "  variable SMTP_HOST" in said
+    assert "old" not in world.io.text()
+
+
+@pytest.mark.asyncio
+async def test_settings_emptied_in_env_are_kept_on_github_after_a_no() -> None:
+    world = _with_emptied_settings([CLAUDE_KEY, True, False])
+
+    await GitHubStep().run(world.context())
+
+    assert world.github.deleted == []
+    assert "Kept them on GitHub." in world.io.said
+
+
+@pytest.mark.asyncio
+async def test_a_repository_that_cannot_be_listed_keeps_everything_and_says_so() -> None:
+    world = _with_emptied_settings([CLAUDE_KEY, True])
+    world.github.listable = False
+
+    await GitHubStep().run(world.context())
+
+    assert world.github.deleted == []
+    assert "a setting you emptied may still be on GitHub" in world.io.text()
+
+
+def test_gh_lists_names_and_deletes_one_setting_at_a_time() -> None:
+    listing = Recorder(output="SUPABASE_URL\nLINKEDIN_ACCESS_TOKEN\n")
+    cli = GitHubCli(listing, which=lambda _: "/usr/bin/gh")
+    deleting = Recorder()
+
+    names = cli.secret_names("you/threadline")
+    GitHubCli(deleting, which=lambda _: "/usr/bin/gh").delete_variable(
+        "you/threadline", "SMTP_HOST"
+    )
+
+    assert names == {"SUPABASE_URL", "LINKEDIN_ACCESS_TOKEN"}
+    assert listing.calls[0][0][:3] == ["gh", "secret", "list"]
+    assert deleting.calls == [
+        (["gh", "variable", "delete", "SMTP_HOST", "--repo", "you/threadline"], None)
+    ]
+    with pytest.raises(SourceUnavailableError):
+        GitHubCli(Recorder(status=1), which=lambda _: "/usr/bin/gh").variable_names("x/y")
+
+
 @pytest.mark.asyncio
 async def test_without_gh_the_names_and_page_are_shown_and_values_copied() -> None:
     world = make_world([CLAUDE_KEY, True], github_env())
@@ -289,6 +363,31 @@ async def test_a_link_to_someone_elses_copy_is_kept_under_another_name() -> None
 
     assert world.git.remotes == {"template": "https://github.com/you/threadline.git"}
     assert world.github.created == ["threadline"]
+
+
+@pytest.mark.asyncio
+async def test_a_link_to_the_public_template_is_never_taken_for_your_copy() -> None:
+    world = make_world([True, "", CLAUDE_KEY, True], github_env())
+    world.git.origin = "https://github.com/maker/threadline.git"
+    world.github.name = "maker/threadline"
+    world.github.private = False
+
+    await GitHubStep().run(world.context())
+
+    assert "maker/threadline, which is not a private copy you administer" in world.io.text()
+    assert world.git.remotes == {"template": "https://github.com/maker/threadline.git"}
+    assert world.github.created == ["threadline"]
+
+
+@pytest.mark.asyncio
+async def test_the_schedule_is_never_pushed_to_a_repository_you_do_not_administer() -> None:
+    world = make_world(["08:07", True], github_env())
+    world.github.admin = False
+
+    await ScheduleStep().run(world.context())
+
+    assert world.git.committed == [(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)]
+    assert world.git.pushed == []
 
 
 @pytest.mark.asyncio
@@ -393,10 +492,34 @@ def test_gh_that_is_not_signed_in_is_not_ready() -> None:
 
 
 def test_the_repository_is_read_from_gh() -> None:
-    cli = GitHubCli(Recorder(output="you/threadline\n"), which=lambda _: "/usr/bin/gh")
+    answer = '{"nameWithOwner":"you/threadline","visibility":"PRIVATE","viewerPermission":"ADMIN"}'
+    run = Recorder(output=answer + "\n")
+    cli = GitHubCli(run, which=lambda _: "/usr/bin/gh")
 
-    assert cli.repository() == "you/threadline"
+    assert cli.repository() == GitHubRepository("you/threadline", private=True, admin=True)
+    assert run.calls[0][0][-1] == "nameWithOwner,visibility,viewerPermission"
     assert GitHubCli(Recorder(status=1), which=lambda _: "/usr/bin/gh").repository() is None
+    garbled = GitHubCli(Recorder(output="not json"), which=lambda _: "/usr/bin/gh")
+    assert garbled.repository() is None
+
+
+@pytest.mark.parametrize(
+    ("visibility", "permission"),
+    [("PUBLIC", "ADMIN"), ("PRIVATE", "WRITE"), ("PUBLIC", "READ")],
+)
+def test_only_a_private_repository_you_administer_is_your_copy(
+    visibility: str, permission: str
+) -> None:
+    answer = (
+        f'{{"nameWithOwner":"maker/threadline","visibility":"{visibility}",'
+        f'"viewerPermission":"{permission}"}}'
+    )
+    cli = GitHubCli(Recorder(output=answer), which=lambda _: "/usr/bin/gh")
+
+    repository = cli.repository()
+
+    assert repository is not None
+    assert not repository.is_own_private_copy
 
 
 def test_git_adds_commits_and_pushes_the_one_file() -> None:

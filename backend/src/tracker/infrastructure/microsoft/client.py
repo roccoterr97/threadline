@@ -16,7 +16,7 @@ Drafts and Outbox are skipped.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import TracebackType
@@ -26,6 +26,7 @@ from urllib.parse import quote
 import httpx
 
 from tracker.domain.mail import MailMessage
+from tracker.shared.concurrency import gather_all
 from tracker.shared.constants.collection import (
     CALENDAR_FIELDS,
     GRAPH_CALENDAR_MESSAGE_TYPE,
@@ -242,6 +243,17 @@ class GraphMailbox:
         if not isinstance(body, dict):
             return ""
         return str(body.get("content", ""))
+
+    async def fetch_bodies(self, message_ids: Sequence[str]) -> list[str]:
+        """Read several messages' bodies as plain text, side by side.
+
+        Args:
+            message_ids: Graph's identifiers for the messages.
+
+        Returns:
+            One body per identifier, in the order asked.
+        """
+        return await gather_all(self.fetch_body(message_id) for message_id in message_ids)
 
     def _readable(self, message: MailMessage, folder_id: str) -> bool:
         """Whether a message is read at all.

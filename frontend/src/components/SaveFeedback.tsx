@@ -4,6 +4,12 @@ import { useEffect, useRef } from 'react';
 export interface SaveOutcome {
   tone: 'success' | 'error';
   text: string;
+  /**
+   * Leave the keyboard where it is: set when the owner is working through a
+   * list (moving a row) and taking focus would throw them out of it. The
+   * sentence is still announced.
+   */
+  keepFocus?: boolean;
 }
 
 interface SaveFeedbackProps {
@@ -34,12 +40,13 @@ function scrollBehaviour(): ScrollBehavior {
 export function SaveFeedback({ outcome }: SaveFeedbackProps) {
   const banner = useRef<HTMLParagraphElement>(null);
 
+  const keepFocus = outcome.keepFocus === true;
   useEffect(() => {
     const element = banner.current;
-    if (element === null) return;
+    if (element === null || keepFocus) return;
     element.focus({ preventScroll: true });
     element.scrollIntoView({ behavior: scrollBehaviour(), block: 'nearest' });
-  }, [outcome.text]);
+  }, [outcome.text, keepFocus]);
 
   return (
     <p

@@ -14,6 +14,10 @@
 
 name: Threadline run
 
+# The title each run shows on GitHub. The gate below tells the two kinds of run
+# apart by it, so keep both titles as they are.
+run-name: ${{ inputs.mode == 'refresh' && 'Threadline refresh' || 'Threadline daily run' }}
+
 on:
   schedule:
     # The daily time. 'uv run tracker setup schedule' rewrites these two lines.
@@ -29,26 +33,39 @@ on:
           - refresh
         default: daily
 
+# actions: read lets the gate see whether the other kind of run is going.
 permissions:
   contents: read
+  actions: read
 
-# Two runs never overlap: a refresh that starts during the daily run waits.
+# Daily runs and refreshes queue separately. GitHub keeps one waiting run per
+# group and drops an older waiting one for a newer, so with one shared group a
+# refresh pressed while a refresh was running would have dropped the daily run
+# waiting behind it. Now a newer refresh can only replace an older refresh, and
+# two daily runs, or two refreshes, still never overlap. A daily run and a
+# refresh take turns in the gate: the daily run waits for a refresh that is
+# going, and a refresh that finds the daily run going stops, since the daily
+# run reads everything new anyway.
 concurrency:
-  group: threadline-run
+  group: threadline-${{ inputs.mode == 'refresh' && 'refresh' || 'daily' }}
   cancel-in-progress: false
 
 jobs:
   run:
     name: Threadline
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Up to 45 minutes waiting for a refresh to finish, then up to 45 running.
+    timeout-minutes: 90
     steps:
-      # Decides whether to run at all, and in which mode. Prints names only,
-      # never a value.
+      # Decides whether to run at all, and in which mode, then takes turns with
+      # the other kind of run. Prints names only, never a value.
       - name: Check the set-up
         id: gate
         env:
           MODE: ${{ inputs.mode }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -70,6 +87,31 @@ jobs:
             refresh) trigger=refresh ;;
             *) echo "::error::mode must be daily or refresh"; exit 1 ;;
           esac
+          # How many other runs with this title are going; 0 when GitHub cannot say.
+          going() {
+            local count
+            count=$(gh run list --workflow threadline-run.yml --status in_progress \
+              --json databaseId,displayTitle \
+              --jq "[.[] | select(.databaseId != $RUN_ID and .displayTitle == \"$1\")] | length" \
+              2>/dev/null) || count=0
+            echo "${count:-0}"
+          }
+          if [ "$trigger" = refresh ] && [ "$(going 'Threadline daily run')" -gt 0 ]; then
+            echo "::notice::The daily run is going and reads everything new, so this refresh stops here."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$trigger" = github ]; then
+            # A refresh lives 45 minutes at most (its own timeout); look every 30 seconds.
+            wait_limit_seconds=2700
+            poll_seconds=30
+            waited=0
+            while [ "$(going 'Threadline refresh')" -gt 0 ] && [ "$waited" -lt "$wait_limit_seconds" ]; do
+              echo "A refresh is going; waiting for it to finish."
+              sleep "$poll_seconds"
+              waited=$((waited + poll_seconds))
+            done
+          fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
           echo "mode=${MODE:-daily}" >> "$GITHUB_OUTPUT"
           echo "trigger=$trigger" >> "$GITHUB_OUTPUT"

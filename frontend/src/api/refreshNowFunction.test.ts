@@ -45,6 +45,7 @@ function settings(values: Record<string, string>) {
 }
 
 const QUIET: Activity = { runningSince: null, lastRequestAt: null };
+const CLAIM = { id: 'request-1' };
 
 function ports(overrides: Partial<RefreshPorts> = {}): RefreshPorts {
   return {
@@ -53,7 +54,8 @@ function ports(overrides: Partial<RefreshPorts> = {}): RefreshPorts {
     now: () => NOW,
     checkOwner: vi.fn(() => Promise.resolve(OwnerCheck.Owner)),
     readActivity: vi.fn(() => Promise.resolve(QUIET)),
-    recordRequest: vi.fn(() => Promise.resolve()),
+    claimRequest: vi.fn(() => Promise.resolve(CLAIM)),
+    releaseRequest: vi.fn(() => Promise.resolve()),
     send: vi.fn(() => Promise.resolve(204)),
     log: vi.fn(),
     ...overrides,
@@ -193,7 +195,8 @@ describe('handleRefresh', () => {
     const { status, body } = await answer(await handleRefresh(post(), deps));
     expect(status).toBe(202);
     expect(body).toEqual({ code: 'started', target: 'github', requested_at: NOW.toISOString() });
-    expect(deps.recordRequest).toHaveBeenCalledWith(RefreshTarget.GitHub);
+    expect(deps.claimRequest).toHaveBeenCalledWith(RefreshTarget.GitHub);
+    expect(deps.releaseRequest).not.toHaveBeenCalled();
   });
 
   it('answers the browser pre-flight for the dashboard', async () => {
@@ -271,7 +274,7 @@ describe('handleRefresh', () => {
     expect(JSON.parse(text)).toEqual({ code: 'runner_auth_failed', target: 'github' });
     expect(text).not.toContain(GITHUB_TOKEN);
     expect(JSON.stringify(vi.mocked(deps.log).mock.calls)).not.toContain(GITHUB_TOKEN);
-    expect(deps.recordRequest).not.toHaveBeenCalled();
+    expect(deps.releaseRequest).toHaveBeenCalledWith(CLAIM);
   });
 
   it('treats an unreachable runner as unavailable and logs no message text', async () => {
@@ -281,12 +284,34 @@ describe('handleRefresh', () => {
     expect(JSON.stringify(vi.mocked(deps.log).mock.calls)).not.toContain(GITHUB_TOKEN);
   });
 
-  it('still reports "started" when only the reminder could not be saved', async () => {
+  it('tells a press that lost the race to wait, without starting a second run', async () => {
+    const deps = ports({ claimRequest: () => Promise.resolve(null) });
+    const response = await handleRefresh(post(), deps);
+    const { status, body } = await answer(response);
+    expect([status, body.code, body.retry_after_seconds]).toEqual([
+      429,
+      'too_soon',
+      REFRESH_COOLDOWN_MINUTES * 60,
+    ]);
+    expect(deps.send).not.toHaveBeenCalled();
+  });
+
+  it('starts nothing when the cool-down cannot be claimed', async () => {
     const deps = ports({
-      recordRequest: () => Promise.reject(new StoreError(RefreshCode.DatabaseUnavailable)),
+      claimRequest: () => Promise.reject(new StoreError(RefreshCode.DatabaseUnavailable)),
     });
-    const { status } = await answer(await handleRefresh(post(), deps));
-    expect(status).toBe(202);
+    const { status, body } = await answer(await handleRefresh(post(), deps));
+    expect([status, body.code]).toEqual([503, 'database_unavailable']);
+    expect(deps.send).not.toHaveBeenCalled();
+  });
+
+  it('still answers the runner refusal when the claim cannot be given back', async () => {
+    const deps = ports({
+      send: () => Promise.resolve(500),
+      releaseRequest: () => Promise.reject(new StoreError(RefreshCode.DatabaseUnavailable)),
+    });
+    const { status, body } = await answer(await handleRefresh(post(), deps));
+    expect([status, body.code]).toEqual([502, 'runner_unavailable']);
   });
 });
 

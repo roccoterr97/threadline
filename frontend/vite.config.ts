@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFileSync } from 'node:fs';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -16,15 +17,65 @@ function demoFlag(mode: string): 'true' | 'false' {
   return mode === DEMO_MODE || env.VITE_DEMO === 'true' ? 'true' : 'false';
 }
 
-/** What search engines show for the public demo. */
+/** What search engines and link previews show for the public demo. */
+const DEMO_TITLE = 'Threadline demo';
 const DEMO_DESCRIPTION =
   'Threadline demo: every conversation, one clear line. A self-hosted tracker that reads your mailbox and LinkedIn and tells you who is waiting for whom. Made-up data.';
+const DEMO_IMAGE_ALT = 'The Threadline tick beside a list of people, each with a status chip.';
+
+/** The link-preview picture (made by `npm run social-card`) and the name it is published under. */
+const SOCIAL_CARD_SOURCE = new URL('./assets/social-card.png', import.meta.url);
+const SOCIAL_CARD_FILE = 'social-card.png';
+const SOCIAL_CARD_SIZE = { width: 1200, height: 630 } as const;
 
 /**
- * Only the public demo may be listed by search engines. A real dashboard keeps
- * its "do not list" tag; the demo build swaps it for a public description.
+ * The demo's public address, for link previews, which need full addresses.
+ * `DEMO_SITE_URL` wins; on Vercel the project's production address is used.
+ * Null when neither is set: the preview tags then use a path alone.
  */
-function demoListing(isDemo: boolean): Plugin {
+function demoSiteUrl(mode: string): string | null {
+  const env = loadEnv(mode, import.meta.dirname, '');
+  const raw = env.DEMO_SITE_URL || env.VERCEL_PROJECT_PRODUCTION_URL || '';
+  if (raw === '') return null;
+  return new URL(/^https?:\/\//.test(raw) ? raw : `https://${raw}`).origin;
+}
+
+/** Text made safe to sit inside a double-quoted HTML attribute. */
+function attribute(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/** The Open Graph and X (Twitter) tags that make a shared demo link show a card. */
+function previewTags(siteUrl: string | null): string {
+  const image = `${siteUrl ?? ''}/${SOCIAL_CARD_FILE}`;
+  const tags: Array<[string, string, string]> = [
+    ['property', 'og:type', 'website'],
+    ['property', 'og:site_name', 'Threadline'],
+    ['property', 'og:title', DEMO_TITLE],
+    ['property', 'og:description', DEMO_DESCRIPTION],
+    ['property', 'og:image', image],
+    ['property', 'og:image:width', String(SOCIAL_CARD_SIZE.width)],
+    ['property', 'og:image:height', String(SOCIAL_CARD_SIZE.height)],
+    ['property', 'og:image:alt', DEMO_IMAGE_ALT],
+    ['name', 'twitter:card', 'summary_large_image'],
+    ['name', 'twitter:title', DEMO_TITLE],
+    ['name', 'twitter:description', DEMO_DESCRIPTION],
+    ['name', 'twitter:image', image],
+    ['name', 'twitter:image:alt', DEMO_IMAGE_ALT],
+  ];
+  if (siteUrl !== null) tags.push(['property', 'og:url', `${siteUrl}/`]);
+  return tags
+    .map(([kind, key, value]) => `<meta ${kind}="${key}" content="${attribute(value)}" />`)
+    .join('\n    ');
+}
+
+/**
+ * Only the public demo may be listed by search engines or show a link
+ * preview. A real dashboard keeps its "do not list" tag and publishes no
+ * picture; the demo build swaps the tag for a public description, adds the
+ * preview tags and publishes the preview picture.
+ */
+function demoListing(isDemo: boolean, siteUrl: string | null): Plugin {
   return {
     name: 'threadline-demo-listing',
     transformIndexHtml(html) {
@@ -33,14 +84,26 @@ function demoListing(isDemo: boolean): Plugin {
         .replace(/\s*<meta name="robots" content="noindex, nofollow" \/>/, '')
         .replace(
           '<meta name="description" content="Private Threadline dashboard." />',
-          `<meta name="description" content="${DEMO_DESCRIPTION}" />`,
+          `<meta name="description" content="${attribute(DEMO_DESCRIPTION)}" />\n    ${previewTags(siteUrl)}`,
         );
+    },
+    generateBundle() {
+      if (!isDemo) return;
+      this.emitFile({
+        type: 'asset',
+        fileName: SOCIAL_CARD_FILE,
+        source: readFileSync(SOCIAL_CARD_SOURCE),
+      });
     },
   };
 }
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react(), tailwindcss(), demoListing(demoFlag(mode) === 'true')],
+  plugins: [
+    react(),
+    tailwindcss(),
+    demoListing(demoFlag(mode) === 'true', demoSiteUrl(mode)),
+  ],
   define: {
     'import.meta.env.VITE_DEMO': JSON.stringify(demoFlag(mode)),
   },

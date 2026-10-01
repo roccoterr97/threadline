@@ -26,6 +26,12 @@ MISSING_OBJECT_CODES: Final[frozenset[str]] = frozenset(
     {"42P01", "42703", "22P02", "PGRST200", "PGRST204", "PGRST205"}
 )
 
+#: Postgres code for "not a value of this enum" — only an enum column says it.
+INVALID_ENUM_VALUE_CODE: Final[str] = "22P02"
+
+#: A value no Threadline enum lists, used to see whether a column is an enum.
+UNLISTED_ENUM_VALUE: Final[str] = "threadline-structure-probe"
+
 #: Auth server code for "a user with this address already exists".
 EMAIL_EXISTS_CODE: Final[str] = "email_exists"
 
@@ -81,6 +87,37 @@ class SupabaseAdmin:
         return self._answers(
             lambda: self._client.table(table).select(column).eq(column, value).limit(1).execute()
         )
+
+    def is_enum_column(self, table: str, column: str) -> bool:
+        """Tell whether a column is enum-typed, by filtering on a value no enum lists.
+
+        An enum column refuses the value outright; a text column — even one
+        with a check constraint — simply finds no row.
+
+        Args:
+            table: Name in the ``public`` schema.
+            column: The column to look at.
+
+        Returns:
+            ``True`` only when the database refuses the value as not in the enum.
+
+        Raises:
+            DatabaseUnavailableError: If the database could not answer.
+        """
+        try:
+            self._client.table(table).select(column).eq(column, UNLISTED_ENUM_VALUE).limit(
+                1
+            ).execute()
+        except APIError as error:
+            code = str(error.code)
+            if code == INVALID_ENUM_VALUE_CODE:
+                return True
+            if code in MISSING_OBJECT_CODES:
+                return False
+            raise _unavailable("probe", error) from error
+        except (SupabaseException, httpx.HTTPError) as error:
+            raise _unavailable("probe", error) from error
+        return False
 
     def owner_ids(self) -> tuple[str, ...]:
         """List the logins recorded as the dashboard owner.

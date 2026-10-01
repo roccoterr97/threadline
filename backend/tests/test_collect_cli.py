@@ -49,11 +49,11 @@ def test_the_microsoft_group_offers_the_one_time_sign_in(runner: CliRunner) -> N
     assert "login" in result.output
 
 
-def test_the_people_group_offers_list_merge_and_link(runner: CliRunner) -> None:
+def test_the_people_group_offers_list_merge_link_and_tidy(runner: CliRunner) -> None:
     result = runner.invoke(build_cli(), ["people", "--help"])
 
     assert result.exit_code == 0
-    for command in ("list", "merge", "link"):
+    for command in ("list", "merge", "link", "tidy"):
         assert command in result.output
 
 

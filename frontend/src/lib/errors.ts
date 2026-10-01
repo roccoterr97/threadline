@@ -33,9 +33,17 @@ export enum RefusalReason {
 /** The database understood the write and refused it for a known reason. */
 export class RefusedError extends DashboardError {
   readonly reason: RefusalReason;
+  /** The database rule that refused the write, when the database named one. */
+  readonly constraint: string | null;
 
-  constructor(reason: RefusalReason, message: string, options?: ErrorOptions) {
+  constructor(
+    reason: RefusalReason,
+    message: string,
+    constraint: string | null = null,
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.reason = reason;
+    this.constraint = constraint;
   }
 }

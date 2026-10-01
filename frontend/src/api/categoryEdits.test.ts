@@ -67,7 +67,13 @@ describe('removeCategory', () => {
 
   it('hides a category instead when people still have it (23503)', async () => {
     calls = fakeClient([refusal('23503')]);
+    const info = vi.spyOn(console, 'info').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     await expect(removeCategory('network', NOW)).resolves.toBe(RemovalOutcome.Archived);
+    expect(error).not.toHaveBeenCalled();
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'query.refused_as_expected', code: '23503' }),
+    );
     expect(calls.slice(3)).toEqual([
       ['from', 'categories'],
       ['update', { archived_at: NOW.toISOString() }],
@@ -77,10 +83,12 @@ describe('removeCategory', () => {
 
   it('passes on a refusal for any other reason, without hiding anything', async () => {
     calls = fakeClient([refusal('23514')]);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const removal = removeCategory('unknown', NOW);
     await expect(removal).rejects.toBeInstanceOf(RefusedError);
     await expect(removal).rejects.toMatchObject({ reason: RefusalReason.BreaksRule });
     expect(calls.some(([method]) => method === 'update')).toBe(false);
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({ event: 'query.refused' }));
   });
 });
 

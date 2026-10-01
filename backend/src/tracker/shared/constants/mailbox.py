@@ -146,8 +146,19 @@ IMAP_TIMEOUT_SECONDS: Final[float] = 30.0
 #: Messages whose headers are asked for in one FETCH command.
 IMAP_FETCH_BATCH_SIZE: Final[int] = 100
 
-#: Most messages one folder may hold inside the window before the read stops,
-#: the same ceiling the Graph reader has (50 a page, 200 pages).
+#: Messages whose bodies are asked for in one FETCH command. Far fewer than
+#: headers: a body may be as large as ``IMAP_MAX_FETCH_BYTES``, and the whole
+#: answer has to arrive within ``IMAP_TIMEOUT_SECONDS`` and fit in memory.
+IMAP_BODY_BATCH_SIZE: Final[int] = 10
+
+#: Days the IMAP SINCE search starts before the window. SINCE compares dates
+#: in the server's own time zone, and the window's start is a UTC moment, so
+#: one day earlier never misses a message; the exact start is applied after.
+IMAP_SINCE_SLACK_DAYS: Final[int] = 1
+
+#: Most messages read from one folder in one search; when more match, only the
+#: newest this many are read. The same order of size as the Graph reader's
+#: ceiling (50 a page, 200 pages).
 IMAP_MAX_MESSAGES_PER_FOLDER: Final[int] = 10_000
 
 #: Bytes of a message fetched for its body. The text comes first in almost

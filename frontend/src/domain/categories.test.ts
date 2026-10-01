@@ -6,7 +6,13 @@ import {
   withArchived,
 } from '../test/__fixtures__/sampleData';
 import type { Category } from '../types/database';
-import { categoriesInUse, categoryChoices, categoryFor, isArchived } from './categories';
+import {
+  categoriesInUse,
+  categoryChoices,
+  categoryFor,
+  isArchived,
+  nameReservedCategory,
+} from './categories';
 
 /** The sample preset with `network` retired. */
 const withNetworkArchived = withArchived(sampleCategories, 'network');
@@ -83,5 +89,18 @@ describe('categoryChoices', () => {
 
   it('does not repeat a saved value that is still live', () => {
     expect(keys(categoryChoices(sampleCategories, 'vc'))).toEqual(keys(sampleCategories));
+  });
+});
+
+describe('nameReservedCategory', () => {
+  it('gives the reserved category one name, as itself and as a group', () => {
+    const named = nameReservedCategory(sampleCategories, 'Not known');
+    expect(named.find((category) => category.key === 'unknown')).toMatchObject({
+      label: 'Not known',
+      group_label: 'Not known',
+    });
+    expect(named.filter((category) => category.key !== 'unknown')).toEqual(
+      sampleCategories.filter((category) => category.key !== 'unknown'),
+    );
   });
 });

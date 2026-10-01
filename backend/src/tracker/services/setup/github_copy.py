@@ -42,10 +42,15 @@ def find_or_create_copy(ctx: SetupContext) -> str | None:
     ready = ctx.gateways.github.ready()
     if origin is not None and not ready:
         return None
-    repository = ctx.gateways.github.repository() if origin is not None else None
-    if repository is not None:
-        return repository
+    linked = ctx.gateways.github.repository() if origin is not None else None
+    if linked is not None and linked.is_own_private_copy:
+        return linked.name
     ctx.io.say("GitHub can only run Threadline from your own private copy of this project.")
+    if linked is not None:
+        ctx.io.say(
+            f"This folder is linked to {linked.name}, which is not a private copy you "
+            "administer, so nothing is saved there."
+        )
     ctx.io.say("This folder is not linked to a copy of yours on GitHub yet, so that comes first.")
     if ready and ctx.io.confirm(
         "Create your private copy now with the GitHub CLI, and upload this folder to it?",
@@ -74,8 +79,18 @@ def repository_from_origin(origin: str | None) -> str | None:
 
 
 def has_copy(ctx: SetupContext) -> bool:
-    """Tell whether this folder is linked to a copy on GitHub that git can push to."""
-    return ctx.gateways.git.origin_url() is not None
+    """Tell whether this folder is linked to the owner's own copy that git can push to.
+
+    With the GitHub CLI signed in, the link must lead to a private repository
+    the owner administers — never the public template. Without it, a link is
+    all that can be seen.
+    """
+    if ctx.gateways.git.origin_url() is None:
+        return False
+    if not ctx.gateways.github.ready():
+        return True
+    linked = ctx.gateways.github.repository()
+    return linked is not None and linked.is_own_private_copy
 
 
 def _create(ctx: SetupContext, *, has_origin: bool) -> str | None:
@@ -88,7 +103,8 @@ def _create(ctx: SetupContext, *, has_origin: bool) -> str | None:
         ctx.gateways.git.rename_origin(TEMPLATE_REMOTE)
         ctx.io.say(f"This folder's old link to GitHub is kept under the name '{TEMPLATE_REMOTE}'.")
     ctx.gateways.github.create_private_copy(name)
-    repository = ctx.gateways.github.repository()
+    created = ctx.gateways.github.repository()
+    repository = created.name if created is not None else None
     ctx.io.say(f"Created your private copy {repository or name} and uploaded this folder to it.")
     return repository
 

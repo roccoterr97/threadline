@@ -2,8 +2,8 @@
 
 The project keeps no table of applied migrations, and Threadline reaches the
 database only through Supabase's data API. So each known migration is paired
-with one object it creates — a table, a column or an enum value — and the
-object's presence stands for the migration's. A migration that only changes
+with one object it creates — a table, a column, an enum value or an enum-typed
+column — and the object's presence stands for the migration's. A migration that only changes
 behaviour (a trigger, a function body) leaves nothing the data API can see, and
 a migration newer than this module is unknown to it: both are reported as
 "unconfirmed" rather than guessed at.
@@ -34,6 +34,10 @@ class StructureProbe(Protocol):
         """Tell whether a column's enum type knows a value yet."""
         ...
 
+    def is_enum_column(self, table: str, column: str) -> bool:
+        """Tell whether a column is enum-typed, so it refuses a value outside its list."""
+        ...
+
 
 @dataclass(frozen=True, slots=True)
 class ColumnsProbe:
@@ -60,8 +64,28 @@ class EnumValueProbe:
         return probe.accepts_value(self.table, self.column, self.value)
 
 
+@dataclass(frozen=True, slots=True)
+class EnumColumnProbe:
+    """A migration is present when it has turned a column into an enum.
+
+    A text column with a check constraint filters on any value without
+    complaint, so looking for one of the enum's values cannot tell the two
+    shapes apart. Only the enum refuses a value it does not list.
+    """
+
+    table: str
+    column: str
+
+    def present(self, probe: StructureProbe) -> bool:
+        """Ask the database."""
+        return probe.is_enum_column(self.table, self.column)
+
+
+#: A migration's visible mark: the object its presence is judged by.
+type MigrationMarker = ColumnsProbe | EnumValueProbe | EnumColumnProbe
+
 #: What each known migration leaves behind; ``None`` when nothing is visible.
-KNOWN_MIGRATIONS: Final[dict[str, ColumnsProbe | EnumValueProbe | None]] = {
+KNOWN_MIGRATIONS: Final[dict[str, MigrationMarker | None]] = {
     "0001_schema": ColumnsProbe("app_secrets", "name,encrypted_value"),
     "0002_access_rules": ColumnsProbe("app_owner", "user_id"),
     "0003_people_overview": ColumnsProbe("people_overview", "person_id,has_override"),
@@ -73,8 +97,12 @@ KNOWN_MIGRATIONS: Final[dict[str, ColumnsProbe | EnumValueProbe | None]] = {
     "0009_categories": ColumnsProbe("categories", "key,label,colour"),
     "0010_status_in_process": ColumnsProbe("status_labels", "status,label"),
     "0011_function_access": None,
-    "0012_refresh_trigger": EnumValueProbe("run_logs", "trigger", "refresh"),
+    "0012_refresh_trigger": EnumColumnProbe("run_logs", "trigger"),
     "0013_refresh_requests": ColumnsProbe("refresh_requests", "requested_at,target"),
+    "0014_refresh_cooldown": ColumnsProbe("refresh_requests", "cooldown_until"),
+    # Two unique indexes and renamed rows: the data API cannot see an index
+    # without trying to write a clash, and no probe reads a row's value.
+    "0015_category_names": None,
 }
 
 

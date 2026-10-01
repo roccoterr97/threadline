@@ -13,10 +13,12 @@ from pathlib import Path
 
 from pydantic import SecretStr
 
+from tracker.infrastructure.github_cli import GitHubRepository
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.microsoft.connection import MicrosoftAccess, ShowCode
+from tracker.infrastructure.smtp import SmtpAccount
 from tracker.services.database_structure import KNOWN_MIGRATIONS, MigrationFile
 from tracker.services.profile.applier import ApplyReport, CategoryChanges
 from tracker.services.profile.choice import Choice, Effect, SavedChoice
@@ -111,9 +113,20 @@ class MemoryEnv:
         return tuple(name for name, value in self.values.items() if value)
 
 
+#: Columns that were text with a check constraint until a migration made them enums.
+TEXT_UNTIL: dict[tuple[str, str], str] = {("run_logs", "trigger"): "0012_refresh_trigger"}
+
+#: The migration that creates every table the probes look at.
+SCHEMA_MIGRATION = "0001_schema"
+
+
 @dataclass
 class FakeAdmin:
-    """The service-key helper, over sets of present objects."""
+    """The service-key helper, over sets of present objects.
+
+    It answers like the database would: a column still text before the
+    migration that made it an enum filters on any value without complaint.
+    """
 
     present: set[str] = field(default_factory=lambda: set(KNOWN_MIGRATIONS))
     owners: list[str] = field(default_factory=list)
@@ -124,7 +137,16 @@ class FakeAdmin:
         return self._marker_present(table, columns)
 
     def accepts_value(self, table: str, column: str, value: str) -> bool:
+        if self._still_text(table, column):
+            return True
         return self._marker_present(table, f"{column}={value}")
+
+    def is_enum_column(self, table: str, column: str) -> bool:
+        return SCHEMA_MIGRATION in self.present and not self._still_text(table, column)
+
+    def _still_text(self, table: str, column: str) -> bool:
+        migration = TEXT_UNTIL.get((table, column))
+        return migration is not None and migration not in self.present
 
     def check_service_key(self) -> None:
         if not self.key_ok:
@@ -254,6 +276,8 @@ class FakeMailbox:
     sent_folder: str | None = "[Gmail]/Sent Mail"
     saved: dict[str, str] = field(default_factory=dict)
     checked: list[tuple[ImapAccount, str]] = field(default_factory=list)
+    smtp_hosts: set[str] = field(default_factory=lambda: {"smtp.mail.example"})
+    sending_checked: list[SmtpAccount] = field(default_factory=list)
 
     async def has_password(self, access: StoreAccess, username: str) -> bool:
         return username in self.saved
@@ -266,6 +290,15 @@ class FakeMailbox:
             message = f"{account.company} refused the app password"
             raise MailboxPasswordError(message)
         return MailboxSurvey(inbox_messages=self.inbox_messages, sent_folder=self.sent_folder)
+
+    async def check_sending(self, account: SmtpAccount, password: SecretStr) -> None:
+        self.sending_checked.append(account)
+        if account.host not in self.smtp_hosts:
+            message = f"{account.label} could not send the summary"
+            raise SourceUnavailableError(message)
+        if password.get_secret_value() != self.good_password:
+            message = f"{account.company} refused the app password for sending"
+            raise MailboxPasswordError(message)
 
     async def save_password(self, access: StoreAccess, username: str, password: SecretStr) -> None:
         self.saved[username] = password.get_secret_value()
@@ -343,15 +376,21 @@ class FakeGitHub:
 
     signed_in: bool = True
     name: str | None = "you/threadline"
+    private: bool = True
+    admin: bool = True
     secrets: dict[str, str] = field(default_factory=dict)
     variables: dict[str, str] = field(default_factory=dict)
     created: list[str] = field(default_factory=list)
+    deleted: list[str] = field(default_factory=list)
+    listable: bool = True
 
     def ready(self) -> bool:
         return self.signed_in
 
-    def repository(self) -> str | None:
-        return self.name
+    def repository(self) -> GitHubRepository | None:
+        if self.name is None:
+            return None
+        return GitHubRepository(self.name, private=self.private, admin=self.admin)
 
     def set_secret(self, repository: str, name: str, value: SecretStr) -> None:
         self.secrets[name] = value.get_secret_value()
@@ -359,9 +398,28 @@ class FakeGitHub:
     def set_variable(self, repository: str, name: str, value: str) -> None:
         self.variables[name] = value
 
+    def secret_names(self, repository: str) -> frozenset[str]:
+        if not self.listable:
+            message = "the GitHub CLI could not list the repository's secrets"
+            raise SourceUnavailableError(message)
+        return frozenset(self.secrets)
+
+    def variable_names(self, repository: str) -> frozenset[str]:
+        return frozenset(self.variables)
+
+    def delete_secret(self, repository: str, name: str) -> None:
+        del self.secrets[name]
+        self.deleted.append(name)
+
+    def delete_variable(self, repository: str, name: str) -> None:
+        del self.variables[name]
+        self.deleted.append(name)
+
     def create_private_copy(self, name: str) -> None:
         self.created.append(name)
         self.name = f"you/{name}"
+        self.private = True
+        self.admin = True
 
 
 @dataclass

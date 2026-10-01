@@ -1,3 +1,4 @@
+import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
 
 interface ConfirmPanelProps {
@@ -14,7 +15,9 @@ interface ConfirmPanelProps {
 
 /**
  * An "are you sure?" step shown in the page itself rather than in a pop-up, so
- * it stays keyboard-friendly and readable at phone width.
+ * it stays keyboard-friendly and readable at phone width. It takes focus when
+ * it opens, since the button that opened it is gone, and is named after its
+ * question so a screen reader says what is being asked.
  */
 export function ConfirmPanel({
   title,
@@ -26,9 +29,24 @@ export function ConfirmPanel({
   isBusy,
   errorText,
 }: ConfirmPanelProps) {
+  const titleId = useId();
+  const panel = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    panel.current?.focus();
+  }, []);
+
   return (
-    <div className="rounded-token-lg border border-danger bg-danger-soft p-4">
-      <h3 className="text-base font-semibold text-danger">{title}</h3>
+    <div
+      ref={panel}
+      tabIndex={-1}
+      role="group"
+      aria-labelledby={titleId}
+      className="rounded-token-lg border border-danger bg-danger-soft p-4"
+    >
+      <h3 id={titleId} className="text-base font-semibold text-danger">
+        {title}
+      </h3>
       <p className="mt-1 text-ink">{body}</p>
       {errorText !== null && (
         <p role="alert" className="mt-2 text-danger">

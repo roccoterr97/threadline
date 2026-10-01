@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 from cryptography.fernet import Fernet
 from supabase import Client
+from typer.testing import Result
 
 from tracker.domain.rules import RulePack
 from tracker.infrastructure.database import reset_database_client_cache
@@ -289,6 +290,11 @@ def as_client(fake: FakeSupabaseClient) -> Client:
         The same object, typed as the real client so repositories accept it.
     """
     return cast("Client", fake)
+
+
+def printed_lines(result: Result) -> list[str]:
+    """The lines a command printed, without the log lines written next to them."""
+    return result.stdout.splitlines()
 
 
 @pytest.fixture(autouse=True)

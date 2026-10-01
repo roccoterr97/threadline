@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ReactElement } from 'react';
+import type { AppParts } from '../App';
 import type { Clock } from '../lib/clock';
 import { installSupabaseClient } from '../lib/supabaseClient';
 import { createDemoClient, type DemoClient } from './demoClient';
 import { DemoBanner } from './DemoBanner';
+import { DemoSignIn } from './DemoSignIn';
 
 /**
  * The demo client stands in for the real one. It implements only the calls
@@ -15,11 +17,17 @@ function asSupabaseClient(demo: DemoClient): SupabaseClient {
   return demo as unknown as SupabaseClient;
 }
 
+/** What the demo adds to the dashboard: its banner and its own sign-in page. */
+export interface DemoParts extends AppParts {
+  banner: ReactElement;
+  signInPage: ReactElement;
+}
+
 /**
  * Switches the dashboard to invented data for this page load and returns the
- * banner to show above every page. Loaded only when the build flag is on.
+ * pieces that differ from a real dashboard. Loaded only when the build flag is on.
  */
-export function startDemo(clock: Clock): ReactElement {
+export function startDemo(clock: Clock): DemoParts {
   installSupabaseClient(asSupabaseClient(createDemoClient(clock)));
-  return <DemoBanner />;
+  return { banner: <DemoBanner />, signInPage: <DemoSignIn /> };
 }

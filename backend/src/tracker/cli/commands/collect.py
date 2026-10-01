@@ -8,6 +8,7 @@ one clean line and exit status 1.
 ``collect all --record`` is the exception the daily run is built on: a source
 that fails is printed and recorded as that step's result, and the command still
 ends normally so the run carries on with the sources that worked.
+``people tidy`` does the same for the two commands it folds into one.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from uuid import UUID
 
 import typer
 
+from tracker.cli.commands._parts import attempt
 from tracker.domain.enums import Channel, RunStep
 from tracker.domain.rules import RulePack
 from tracker.infrastructure.database import create_database_client
@@ -96,7 +98,7 @@ RecordOption = Annotated[
 
 RunOption = Annotated[
     UUID | None,
-    typer.Option("--run", help="With --record: record into this run instead of the most recent."),
+    typer.Option("--run", help="With --record: record into this run, not the one still open."),
 ]
 
 ShowFoldersOption = Annotated[
@@ -259,6 +261,18 @@ def people_link() -> None:
         typer.echo(f"questions added to the review list: {report.asked}")
     if report.already_asked:
         typer.echo(f"already asked before: {report.already_asked}")
+
+
+@people_app.command("tidy")
+def people_tidy() -> None:
+    """Act on your "same person" answers, then ask about new likely pairs.
+
+    The daily run's two steps after collecting, as one command: "people merge",
+    then "people link", each printing what it prints on its own. If one fails,
+    its code is printed and the other still runs.
+    """
+    attempt("people merge", people_merge)
+    attempt("people link", people_link)
 
 
 @people_app.command("untangle")

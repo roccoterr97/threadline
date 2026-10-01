@@ -16,7 +16,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from tracker.domain.enums import RunStep
+from tracker.domain.enums import RunStatus, RunStep
 from tracker.infrastructure.smtp import SmtpAccount
 from tracker.schemas.summary import SummaryEmail
 from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
@@ -129,16 +129,19 @@ class SummarySender:
 
         Args:
             path: The summary file.
-            run_id: The run to record against; the most recent one when omitted.
+            run_id: The run to record against; the one still open when omitted.
 
         Returns:
             What was sent.
 
         Raises:
+            ValidationFailedError: If this run's summary already went out; nothing
+                is sent and the step keeps its success.
             TrackerError: If anything stopped the sending; the step is recorded
                 as failed with the error's code first.
         """
         run = self._recorder.resolve(run_id)
+        self._refuse_a_second_send(run.id)
         try:
             summary = self._checked(read_summary(path))
             self._mailer_for().send(compose(summary, self._sender()))
@@ -151,6 +154,15 @@ class SummarySender:
         self._recorder.record_step(run.id, outcome)
         _log.info("summary_sent", run_id=str(run.id))
         return summary
+
+    def _refuse_a_second_send(self, run_id: UUID) -> None:
+        """Stop before sending when this run's summary already went out."""
+        sent = self._recorder.find_step(run_id, RunStep.SUMMARY_EMAIL)
+        if sent is None or sent.status is not RunStatus.SUCCESS:
+            return
+        _log.info("summary_already_sent", run_id=str(run_id))
+        message = "this run's summary was already sent, so it was not sent again"
+        raise ValidationFailedError(message)
 
     def _checked(self, summary: SummaryEmail) -> SummaryEmail:
         """Refuse a file whose recipient or subject is not what the settings say."""

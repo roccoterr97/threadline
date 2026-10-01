@@ -21,7 +21,7 @@ from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.github_copy import has_copy
 from tracker.services.setup.models import StepName
-from tracker.services.setup.step_time_zone import OWNER_TIME_ZONE, ask_time_zone
+from tracker.services.setup.step_time_zone import ask_time_zone, saved_time_zone
 from tracker.shared.config import REPOSITORY_ROOT
 from tracker.shared.constants.github import (
     DEFAULT_RUN_TIME,
@@ -130,7 +130,7 @@ class ScheduleStep:
 
 def _zone(ctx: SetupContext) -> str:
     """The owner's saved time zone; asked for now only when none is saved."""
-    saved = ctx.env.get(OWNER_TIME_ZONE)
+    saved = saved_time_zone(ctx)
     if saved is None:
         return ask_time_zone(ctx)
     ctx.io.say(

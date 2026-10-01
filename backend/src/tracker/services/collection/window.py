@@ -1,7 +1,8 @@
 """How far back a collection run looks.
 
 The first run reads the last thirty days. Every later run reads from the last
-successful run, minus an overlap (two days; more for LinkedIn), because a
+successful run — for the mailboxes, the last run whose mailbox read succeeded —
+minus an overlap (two days; more for LinkedIn), because a
 message can reach a mailbox later than it was sent and a run that ended at 07:00
 must not create a hole for anything that arrived at 06:59.
 
@@ -63,6 +64,28 @@ def last_successful_run_at(repositories: Repositories) -> datetime | None:
     return run.started_at if run is not None else None
 
 
+def last_collected_at(repositories: Repositories, step: RunStep) -> datetime | None:
+    """Look up when the newest run that read one source successfully started.
+
+    Unlike :func:`last_successful_run_at`, a run another source made partial
+    still counts, so one failing source does not widen this one's window day
+    after day.
+
+    Args:
+        repositories: The repository container.
+        step: The source's collection step, such as ``collect_email``.
+
+    Returns:
+        That run's start, or ``None`` when the source was never read
+        successfully — which makes the next read a first read.
+    """
+    collected = repositories.run_step_logs.find_latest_successful(step)
+    if collected is None:
+        return None
+    run = repositories.run_logs.get(collected.run_id)
+    return run.started_at if run is not None else None
+
+
 def refresh_since(repositories: Repositories, step: RunStep) -> datetime | None:
     """Work out where a refresh starts reading one source.
 
@@ -78,10 +101,7 @@ def refresh_since(repositories: Repositories, step: RunStep) -> datetime | None:
         The start of the window, or ``None`` when the source was never read
         successfully, which leaves the usual window in charge.
     """
-    collected = repositories.run_step_logs.find_latest_successful(step)
-    if collected is None:
+    collected_at = last_collected_at(repositories, step)
+    if collected_at is None:
         return None
-    run = repositories.run_logs.get(collected.run_id)
-    if run is None:
-        return None
-    return run.started_at - timedelta(hours=REFRESH_OVERLAP_HOURS)
+    return collected_at - timedelta(hours=REFRESH_OVERLAP_HOURS)

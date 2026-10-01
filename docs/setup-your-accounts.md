@@ -25,25 +25,50 @@ Do not skip a check. Each step builds on the one before it.
 
 | What | Why | Cost |
 |------|-----|------|
-| A Mac or a Linux computer with a terminal | to run the set-up once | – |
-| A GitHub account | runs Threadline every day from your private copy (GitHub Actions) | free (2,000 minutes a month for private copies; a month of runs uses about 150–300) |
+| A **Mac or a Linux** computer with a terminal | to run the set-up once. **Windows is not supported.** | – |
+| A paid Claude plan: **Pro, Max or Team** | runs the daily job on GitHub with your own subscription, with your laptop shut. The daily run uses part of your plan's usage limits, like any other use of Claude | your existing plan |
+| **Claude Code** installed on that computer | makes the key that lets GitHub use your Claude plan (`claude setup-token`). Install it from the official page, <https://code.claude.com/docs/en/setup>, and sign in once | included in your plan |
+| A GitHub account | runs Threadline every day from your private copy (GitHub Actions) | free (2,000 minutes a month for private copies at the time of writing; a month of runs uses about 150–300) |
+| *Optional, recommended:* the GitHub command-line tool `gh` (<https://cli.github.com>) | signs you in to GitHub for the download in part 1 and lets the set-up create your private copy and save your settings for you | free |
 | A Supabase account | the database that keeps your people and conversations | free plan |
 | A Vercel account | publishes the dashboard so it opens on your phone | free "Hobby" plan, personal use only |
 | At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any mailbox that offers IMAP | the mail Threadline reads, read-only; Gmail and the others also send you the summary (with only Outlook, see the alternative route at the end) | free (Fastmail: a paid plan above Basic) |
 | *Optional:* a Microsoft personal account (Outlook.com, Hotmail, Live) | the calendar, which is read from Outlook only for now | free |
-| A paid Claude plan: **Pro, Max or Team** | runs the daily job on GitHub with your own subscription, with your laptop shut | your existing plan |
-| *Optional:* a LinkedIn account | reads your LinkedIn messages too | free |
+| *Optional:* a LinkedIn account | reads your LinkedIn messages too (only for members located in the EEA or Switzerland, see below) | free |
+| *Optional:* [Node.js](https://nodejs.org) 22 or newer | only for the manual way of switching on the dashboard's Refresh now button ([`refresh-now.md`](refresh-now.md)); the guided way needs nothing | free |
+| *Optional:* an Azure account | only if you want your own Microsoft application instead of the public one (see "Your own Microsoft application" in part 5) | free |
+
+**Check Claude Code now.** In Terminal, type:
+
+```bash
+claude --version
+```
+
+**✅ Check:** it prints a version number.
+
+**If not:** `command not found` means Claude Code is not installed yet, or
+Terminal was not reopened after installing it. Follow the official install page
+above, close Terminal, open it again and retry. Then type `claude` once and
+sign in with your Claude plan.
 
 **The LinkedIn limit.** LinkedIn lets only members whose profile is located in
 the **European Economic Area or Switzerland** export their messages this way.
 If you live elsewhere, skip LinkedIn: everything else works without it.
 
-**Time.** About an hour and a half the first time, most of it waiting for pages
-to load. You can stop at any point: `uv run tracker setup` carries on where you
-left off.
+**The sign-in e-mail limit.** You will sign in to the dashboard with a link that
+Supabase e-mails to you. Supabase's built-in e-mail only reaches the address
+your Supabase account was registered with (or members of your Supabase
+organisation), unless you set up your own sending service ("custom SMTP"). Part 2
+explains what that means for you.
 
-**What it costs.** Nothing beyond your Claude plan. Supabase, Vercel, GitHub,
-Google, Microsoft and LinkedIn are all used on their free plans.
+**Time.** About an hour and a half the first time, most of it waiting for pages
+to load (at the time of writing). You can stop at any point:
+`uv run tracker setup` carries on where you left off.
+
+**What it costs.** No other paid service is needed. Supabase, Vercel, GitHub,
+Google, Microsoft and LinkedIn are all used on their free plans; the only
+exception would be a paid mailbox you choose yourself, such as Fastmail.
+Free-plan limits change, so check the providers' pricing pages if in doubt.
 
 **Your keys.** Every key you paste is saved in a file called `.env` in the
 project folder, readable only by you. Never paste a key into a chat, an e-mail
@@ -66,19 +91,39 @@ or a document.
    ```
 
    Then close Terminal and open it again.
-4. Download your copy. Replace `<your-user>` with your GitHub name:
+4. Download your copy. GitHub no longer accepts your account password for
+   this, so the easiest way is the GitHub command-line tool. Install it from
+   <https://cli.github.com> (on a Mac with Homebrew: `brew install gh`), then
+   sign in once. Choose **GitHub.com**, **HTTPS**, say **yes** to
+   authenticating Git, and **Login with a web browser**:
 
    ```bash
-   git clone https://github.com/<your-user>/<your-copy>.git tracker
+   gh auth login
+   ```
+
+   Then download your copy. Replace `<your-user>` with your GitHub name and
+   `<your-copy>` with the name you gave the copy in step 1:
+
+   ```bash
+   gh repo clone <your-user>/<your-copy> tracker
    cd tracker/backend
    uv sync
    ```
+
+   *Without the GitHub tool:* `git clone https://github.com/<your-user>/<your-copy>.git tracker`
+   also works, but when it asks for a password, do not type your GitHub
+   password: it will be refused. Sign in through the browser window that
+   Git's credential helper opens instead, or paste a personal access token
+   (GitHub: **Settings → Developer settings → Personal access tokens**).
+   Installing `gh` and running `gh auth login` first avoids all of this.
 
 **✅ Check:** `uv run tracker --help` prints a list of commands that includes
 `setup` and `doctor`.
 
 **If not:** if the Mac asks to install "command line developer tools", click
-**Install**, wait, then repeat step 4. If it says `uv: command not found`, close
+**Install**, wait, then repeat step 4. If `gh` says `authentication required`
+or `Repository not found`, run `gh auth login` again and check the spelling of
+your user and copy names. If it says `uv: command not found`, close
 Terminal, open it again and repeat step 4.
 
 **Where to type the commands.** Every `uv run tracker …` command in this guide
@@ -90,8 +135,8 @@ type this first (it works from any folder):
 cd ~/tracker/backend
 ```
 
-**✅ Check:** the last line in Terminal, before the cursor, ends with
-`backend %`.
+**✅ Check:** the last line in Terminal, the one before your cursor, ends with
+`backend`.
 
 **If not:** `Failed to spawn: tracker` or `No such file or directory` means
 Terminal is in another folder: type `cd ~/tracker/backend` and try again. If
@@ -123,10 +168,11 @@ up.
 error, delete the project and create it again.
 
 **Important: which e-mail address you sign in with.** You will sign in to the
-dashboard with a link Supabase e-mails to you. Supabase's free e-mail sends
-only **two messages an hour**, and **only to the members of your Supabase
-account**. So later, when the set-up asks for your dashboard e-mail, use the
-same address you signed up to Supabase with. (Using another address needs your
+dashboard with a link Supabase e-mails to you. Supabase's built-in e-mail sends
+only **two messages an hour**, and **only to the address your Supabase account
+was registered with (or to members of your Supabase organisation)**. So later,
+when the set-up asks for your dashboard e-mail, use the same address you signed
+up to Supabase with. (Using another address needs your
 own e-mail sending service, called "custom SMTP" in Supabase. This guide does
 not cover it.)
 
@@ -134,14 +180,34 @@ not cover it.)
 
 ## 3. Connect Supabase and build the database
 
-Now start the guided set-up. It runs every step below in order, and you can
-stop it at any time with Ctrl + C.
+Now start the guided set-up. It runs the steps of parts 3 to 6 in order, and
+you can stop it at any time with Ctrl + C. Everything it has saved stays saved.
 
 ```bash
 uv run tracker setup
 ```
 
-To run one step again later, name it, for example `uv run tracker setup database`.
+The full set-up goes through these steps in this order: `supabase`,
+`encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`,
+`microsoft`, `linkedin`, `dashboard`, `schedule`, `github`, `refresh` (and
+`cloud`, only for the alternative route). This guide follows the same order,
+with one detour: the dashboard needs Vercel, which comes in part 7.
+
+**The first time you run it:** carry on through parts 3 to 6 as the set-up asks.
+When it reaches `Is the dashboard published already?`, answer **no**, then
+press Ctrl + C to stop. Do part 7 (Vercel), then run
+`uv run tracker setup dashboard`. The schedule, GitHub and Refresh now steps
+follow in part 8, one at a time.
+
+**✅ Check:** after you answer **no**, you see `Skipped. Run 'uv run tracker
+setup dashboard' once it is published.`
+
+**If not:** if you let it run on by mistake, nothing is lost: the steps after
+the dashboard ask for things that do not exist yet, so stop them with Ctrl + C
+and carry on from part 7.
+
+To run one step again later, name it, for example
+`uv run tracker setup database`.
 
 ### 3a. The address and the two keys (`tracker setup supabase`)
 
@@ -283,7 +349,8 @@ other settings.
 **What you do:**
 
 1. Press Return to keep the zone offered, or type yours in the same form
-   (`America/New_York`, `Asia/Tokyo`, `UTC`).
+   (`America/New_York`, `Asia/Tokyo`, `UTC`). Capital letters do not matter:
+   `europe/rome` is accepted and saved as `Europe/Rome`.
 2. It then asks for your name as people write it (such as `Sam Rivera`). This
    is optional: it helps only when your e-mail address does not spell your name
    (`jd123@…`). Press Return to skip it.
@@ -410,7 +477,8 @@ password** — see "Renew a mailbox app password" in
    **If not:** Apple's help says the sign-in name is usually the part of your
    address **before the @**. Run `uv run tracker setup mailbox` again, answer
    `other`, server `imap.mail.me.com`, port `993`, and type only the part
-   before the @ as the sign-in name.
+   before the @ as the sign-in name. When it asks for the sending server, type
+   `smtp.mail.me.com` and port `587`.
 
 Good to know: changing or resetting your Apple Account password removes every
 app-specific password.
@@ -474,10 +542,24 @@ IMAP needs a paid Fastmail plan above Basic.
 2. Type `other`, then the server, the port (press Return for 993), the name
    you sign in with (usually your address), and paste the password.
 
-   **✅ Check:** the general check above.
+3. The set-up then asks for the **sending server** (SMTP), which it needs to
+   e-mail you the morning summary from this mailbox (the usual way; it skips
+   this when you chose another way to send the summary). Your provider's help
+   pages list it next to the IMAP server. It suggests a name (for
+   `imap.example.com` it offers `smtp.example.com`): press Return to accept
+   it, or type the right one. Then type the port, **465** or **587** (press
+   Return for 465). The set-up signs in to that server once with the same
+   app password, to catch a wrong server now rather than every morning. It
+   sends nothing.
+
+   **✅ Check:** you see `Signed in to the sending server. Nothing was sent.`
+   and then the general check above.
 
    **If not:** "did not answer" means the server name or port is wrong, or the
-   provider does not offer IMAP over TLS on that port.
+   provider does not offer it over TLS on that port. You get three tries; check
+   the name and port in your provider's help pages and run
+   `uv run tracker setup mailbox` again. Later, `uv run tracker doctor` shows a
+   **Summary e-mail** line for the sending server.
 
 ### 5c. Outlook mailbox and calendar (`tracker setup microsoft`)
 
@@ -713,9 +795,9 @@ Site URL was not saved.
 
 Every morning GitHub starts Threadline on your private copy, runs the daily
 job with **your own Claude subscription**, and e-mails you the summary from
-your own mailbox, with your laptop shut. GitHub's free plan includes 2,000
-minutes a month for private repositories; one run takes about five to ten, so
-a month of mornings uses roughly 150 to 300.
+your own mailbox, with your laptop shut. At the time of writing, GitHub's
+free plan includes 2,000 minutes a month for private repositories; one run takes
+about five to ten minutes, so a month of mornings uses roughly 150 to 300.
 
 **Which mailbox sends the summary.** Threadline sends it from the Gmail,
 iCloud, Yahoo, Fastmail or other mailbox you connected in part 5, with the same
@@ -776,7 +858,11 @@ settings go into your copy's **secrets** (hidden in every log) and
 
 **Your private copy comes first.** The settings are saved into your own private
 copy on GitHub, so the set-up first checks that this folder is linked to one.
-If it is not, it says so and, when the GitHub command-line tool `gh` is
+Only a **private** repository that **you administer** counts as your copy: a
+folder still linked to the public Threadline project, or to someone else's
+copy, is not, and nothing is saved there. (Without `gh` the set-up can only see
+that the folder is linked to GitHub, not whose copy it is.) If it is not
+linked to your copy, it says so and, when the GitHub command-line tool `gh` is
 installed and signed in (`gh auth login`), offers to create it for you: answer
 **y**, then press Return to accept the name `threadline` or type another. It
 creates a **private** copy and uploads this folder to it. Without `gh`, it
@@ -809,8 +895,26 @@ subscription, so never paste it anywhere else.
   for each name in the secrets list; on the **Variables** tab, click **New
   repository variable** for each name in the variables list.
 
-**✅ Check:** on GitHub, **Settings → Secrets and variables → Actions** shows at
-least `CLAUDE_CODE_OAUTH_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+When it saves, the set-up lists every secret and every variable it sets, by
+name. The **secrets** include the Claude key, your Supabase keys, the
+encryption key, your own addresses (`OWNER_EMAIL_ADDRESSES`), and, when you
+have set them, `IMAP_USERNAME`, `DASHBOARD_BASE_URL`, `OWNER_DISPLAY_NAME` and
+the LinkedIn values. The **variables** are the harmless settings, such as
+`OWNER_TIME_ZONE`, `MAIL_SOURCES` and `IMAP_PROVIDER`.
+
+If you emptied a setting on your computer (for example you removed
+`OWNER_DISPLAY_NAME` from `.env`) and GitHub still holds it, the set-up then
+lists each one by name and asks once whether to delete them on GitHub, so the
+daily run stops using the old values. Answer **y** (or press Return) and it
+deletes them and names each one; answer **n** and they stay. This only happens
+when `gh` saves the settings for you; by hand, delete them yourself on the
+same page.
+
+**✅ Check:** the set-up's list names every secret and variable it set,
+including `IMAP_USERNAME`, `DASHBOARD_BASE_URL` and `OWNER_DISPLAY_NAME`
+(secrets) and `OWNER_TIME_ZONE` (a variable) if you gave them a value. On
+GitHub, **Settings → Secrets and variables → Actions** shows at least
+`CLAUDE_CODE_OAUTH_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
 `SUPABASE_ANON_KEY`, `TOKEN_ENCRYPTION_KEY` and `OWNER_EMAIL_ADDRESSES` on the
 Secrets tab.
 
@@ -987,7 +1091,7 @@ never have to open `.env`.
 2. **Name:** for example `Threadline`.
 3. **Network access:** **Custom**. In **Allowed domains**, add one per line the
    domains the set-up printed:
-   - `<your-project-id>.supabase.co`
+   - `<project-id>.supabase.co`
    - `graph.microsoft.com` (only if you connected Outlook)
    - your mailbox's IMAP server, such as `imap.gmail.com` (only if you
      connected Gmail or another IMAP mailbox)

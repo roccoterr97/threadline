@@ -9,6 +9,12 @@ the summary goes by SMTP rather than through the Gmail connector.
 Each handler does the same three things and nothing else: build the service,
 call one method, print the result. Nothing here chooses the recipient or the
 words: both are the ones in the file, checked against the settings.
+
+Two options fold the small commands around a run into its first and last step,
+because every step of the recipe costs the session the same few seconds
+whatever it does. ``run start --prepare`` goes on to the health check and
+``profile apply``; ``run finish --clean`` goes on to ``ai clean``. Each folded
+command prints what it prints on its own.
 """
 
 from __future__ import annotations
@@ -19,6 +25,10 @@ from uuid import UUID
 
 import typer
 
+from tracker.cli.commands._parts import attempt
+from tracker.cli.commands.ai import clean as clean_work_files
+from tracker.cli.commands.profile import apply as apply_profile
+from tracker.cli.commands.system import healthcheck
 from tracker.domain.enums import RunStep, RunTrigger
 from tracker.infrastructure.database import create_database_client
 from tracker.infrastructure.secret_store import SecretStore
@@ -59,6 +69,19 @@ TriggerOption = Annotated[
     typer.Option("--trigger", help="What started this run."),
 ]
 
+PrepareOption = Annotated[
+    bool,
+    typer.Option(
+        "--prepare",
+        help="Also run the health check and 'profile apply', and say whether the run can go on.",
+    ),
+]
+
+CleanOption = Annotated[
+    bool,
+    typer.Option("--clean", help="Also remove the exchanged work files, as 'ai clean' does."),
+]
+
 StepOption = Annotated[
     RunStep,
     typer.Option("--step", help="Which part of the run this was.", show_default=False),
@@ -95,7 +118,12 @@ ErrorDetailOption = Annotated[
 
 RunOption = Annotated[
     UUID | None,
-    typer.Option("--run", help="Act on this run instead of the most recent one."),
+    typer.Option("--run", help="Act on this run instead of the one still open."),
+]
+
+ReportedRunOption = Annotated[
+    UUID | None,
+    typer.Option("--run", help="Report on this run instead of the most recent one."),
 ]
 
 OutOption = Annotated[
@@ -120,20 +148,15 @@ def register(cli: typer.Typer) -> None:
 
 
 @run_app.command("start")
-def start_run(trigger: TriggerOption = RunTrigger.CLOUD) -> None:
+def start_run(trigger: TriggerOption = RunTrigger.CLOUD, prepare: PrepareOption = False) -> None:
     """Open today's run, print its identifier, and pass the owner's time zone on."""
     settings = get_settings()
     repositories = _repositories(settings)
     run = _recorder(settings, repositories).start(trigger)
     typer.echo(f"run {run.id} started · trigger {trigger.value}")
-    try:
-        zone = publish_owner_settings(repositories, settings)
-    except DatabaseUnavailableError:
-        # The run itself is open and every later step still works; only the
-        # dashboard keeps measuring "today" in the zone it had before.
-        typer.echo("time zone not saved · the dashboard keeps its previous time zone")
-        return
-    typer.echo(f"time zone: {zone}")
+    typer.echo(_time_zone_line(repositories, settings))
+    if prepare:
+        typer.echo(f"ready: {'yes' if _prepare() else 'no'}")
 
 
 @run_app.command("step")
@@ -165,16 +188,19 @@ def record_step(
 
 
 @run_app.command("finish")
-def finish_run(run: RunOption = None) -> None:
+def finish_run(run: RunOption = None, clean: CleanOption = False) -> None:
     """Close the run with the status its steps add up to."""
-    recorder = _recorder(get_settings())
-    target = recorder.resolve(run)
-    finished = recorder.finish(target.id)
-    typer.echo(f"run {finished.id} finished · status {finished.status.value}")
+    try:
+        _close(run)
+    finally:
+        # Message text must not stay on disk, whether or not the run could be
+        # closed: the recipe used to clean up after a failed closing too.
+        if clean:
+            attempt("ai clean", clean_work_files)
 
 
 @summary_app.command("build")
-def build_summary(out: OutOption = SUMMARY_FILE, run: RunOption = None) -> None:
+def build_summary(out: OutOption = SUMMARY_FILE, run: ReportedRunOption = None) -> None:
     """Write the morning summary to a file, ready for the session to send."""
     settings = get_settings()
     builder = SummaryBuilder(_repositories(settings), settings, SystemClock(settings.owner_zone))
@@ -200,6 +226,40 @@ def send_summary(file: FileOption = SUMMARY_FILE, run: RunOption = None) -> None
 
     sent = SummarySender(settings, mailer, _recorder(settings, repositories)).send(file, run)
     typer.echo(f"summary sent · to: {sent.recipient}")
+
+
+def _time_zone_line(repositories: Repositories, settings: Settings) -> str:
+    """Copy the owner's time zone into the database and say how that went."""
+    try:
+        zone = publish_owner_settings(repositories, settings)
+    except DatabaseUnavailableError:
+        # The run itself is open and every later step still works; only the
+        # dashboard keeps measuring "today" in the zone it had before.
+        return "time zone not saved · the dashboard keeps its previous time zone"
+    return f"time zone: {zone}"
+
+
+def _prepare() -> bool:
+    """Check the plumbing, then put the owner's profile into effect.
+
+    Returns:
+        Whether the health check passed, which is what decides if the run goes
+        on. The profile is not attempted after a failed check. A profile that
+        could not be applied does not stop the run: the guide and the
+        categories from the last successful apply are still in place.
+    """
+    if not attempt("healthcheck", healthcheck):
+        return False
+    attempt("profile apply", apply_profile)
+    return True
+
+
+def _close(run: UUID | None) -> None:
+    """Close the named run, or the one still open, and print its status."""
+    recorder = _recorder(get_settings())
+    target = recorder.resolve(run)
+    finished = recorder.finish(target.id)
+    typer.echo(f"run {finished.id} finished · status {finished.status.value}")
 
 
 def _write(email: SummaryEmail, out: Path) -> None:

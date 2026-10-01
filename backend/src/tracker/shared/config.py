@@ -29,6 +29,7 @@ from tracker.shared.constants.mailbox import (
     MailSource,
 )
 from tracker.shared.errors import ConfigurationError
+from tracker.shared.time_zones import UTC_ZONE, canonical_zone_name
 
 #: Repository root, four levels above ``src/tracker/shared``.
 REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
@@ -38,7 +39,7 @@ ENV_FILE: Path = REPOSITORY_ROOT / ".env"
 
 _EMAIL_SEPARATOR: Final[str] = ","
 
-# --- Owner settings (Plan 18) --------------------------------------------------
+# --- Owner settings ------------------------------------------------------------
 # Everything about the person running Threadline. Each has a default that works
 # for anybody, so a new owner sets only what differs. Kept in one block.
 
@@ -49,7 +50,11 @@ DEFAULT_PRODUCT_NAME: Final[str] = "Threadline"
 DEFAULT_SUMMARY_SUBJECT_PREFIX: Final[str] = "[Threadline]"
 
 #: Zone "today" is read in unless ``OWNER_TIME_ZONE`` is set.
-DEFAULT_TIME_ZONE: Final[str] = "UTC"
+DEFAULT_TIME_ZONE: Final[str] = UTC_ZONE
+
+_UNKNOWN_ZONE_MESSAGE: Final[str] = (
+    "OWNER_TIME_ZONE must be a time-zone name such as Europe/Rome or UTC"
+)
 
 #: Days off unless ``OWNER_WEEKEND_DAYS`` is set.
 DEFAULT_WEEKEND_DAYS: Final[frozenset[Day]] = frozenset({Day.SATURDAY, Day.SUNDAY})
@@ -70,7 +75,7 @@ _WEEKDAYS_BY_NAME: Final[dict[str, Day]] = {
 _ONE_ADDRESS: Final[re.Pattern[str]] = re.compile(r"^[^@\s,;<>]+@[^@\s,;<>]+\.[^@\s,;<>]+$")
 # --- End of owner settings constants -------------------------------------------
 
-#: Plan 20: what an empty Microsoft setting falls back to.
+#: What an empty Microsoft sign-in setting falls back to.
 _MICROSOFT_DEFAULTS: Final[dict[str, str]] = {
     "microsoft_client_id": MICROSOFT_CLIENT_ID,
     "microsoft_tenant": MICROSOFT_DEFAULT_TENANT,
@@ -137,7 +142,7 @@ class Settings(BaseSettings):
     #: links rather than pointing at an address that is not the owner's.
     dashboard_base_url: str | None = None
 
-    # --- Owner settings (Plan 18) ----------------------------------------------
+    # --- Owner settings --------------------------------------------------------
     #: Where the summary goes; the first owner address when unset.
     summary_recipient: str | None = None
     #: The owner's name, for when an address such as ``jd123@`` does not spell it.
@@ -173,12 +178,13 @@ class Settings(BaseSettings):
     @field_validator("owner_time_zone")
     @classmethod
     def _require_known_zone(cls, value: str) -> str:
-        """Accept an IANA zone name this machine knows."""
+        """Accept an IANA zone name this machine knows, in any case; keep its real spelling."""
         cleaned = value.strip() or DEFAULT_TIME_ZONE
-        if cleaned.upper() == DEFAULT_TIME_ZONE:
-            return DEFAULT_TIME_ZONE
-        _load_time_zone(cleaned)
-        return cleaned
+        canonical = canonical_zone_name(cleaned)
+        if canonical is None:
+            raise ValueError(_UNKNOWN_ZONE_MESSAGE)
+        _load_time_zone(canonical)
+        return canonical
 
     @field_validator("owner_weekend_days", mode="before")
     @classmethod
@@ -242,7 +248,7 @@ class Settings(BaseSettings):
 
     # --- End of owner settings --------------------------------------------------
 
-    # --- Plan 20: Microsoft sign-in application (begin) ---------------------
+    # --- Microsoft sign-in application (begin) -------------------------------
     #: Which registered application the mailbox sign-in uses. The default is a
     #: public open-source one; your own registration can replace it.
     microsoft_client_id: str = MICROSOFT_CLIENT_ID
@@ -262,7 +268,7 @@ class Settings(BaseSettings):
             raise ValueError(message)
         return cleaned
 
-    # --- Plan 20: Microsoft sign-in application (end) -----------------------
+    # --- Microsoft sign-in application (end) ---------------------------------
 
     # --- Mailboxes (begin) --------------------------------------------------
     #: Which mailboxes are read: ``outlook``, ``imap`` or both. At least one.
@@ -454,8 +460,7 @@ def _load_time_zone(name: str) -> tzinfo:
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError) as error:
-        message = "OWNER_TIME_ZONE must be a time-zone name such as Europe/Rome or UTC"
-        raise ValueError(message) from error
+        raise ValueError(_UNKNOWN_ZONE_MESSAGE) from error
 
 
 def reset_settings_cache() -> None:

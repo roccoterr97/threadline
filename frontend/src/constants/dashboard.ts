@@ -57,5 +57,11 @@ export const REFRESH_WATCH_LIMIT_MINUTES = 15;
 /** A run that started this long before the refresh was asked for still counts as its run. */
 export const REFRESH_RUN_MATCH_SLACK_MS = 60_000;
 
+/**
+ * How long "Refresh finished" stays under the header once everything worked.
+ * A refresh that went wrong keeps its message until the next one starts.
+ */
+export const REFRESH_DONE_SHOWN_MS = 10_000;
+
 /** How long the demo's pretend refresh takes before it finishes. */
 export const DEMO_REFRESH_SECONDS = 4;

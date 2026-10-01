@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import * as copy from '../copy/en';
-import {
-  findDraftProblem,
-  trimDraft,
-  type CategoryDraft,
-  type DraftProblem,
-} from '../domain/categorySettings';
+import type { CategoryDraft } from '../domain/categorySettings';
+import { useDraftCheck } from '../hooks/useDraftCheck';
 import type { Category } from '../types/database';
 import { Button } from './Button';
 import { CategoryFields } from './CategoryFields';
@@ -13,6 +9,8 @@ import { DraftProblemText } from './DraftProblemText';
 
 interface CategoryEditFormProps {
   category: Category;
+  /** Every other category, so a name already taken can be turned down. */
+  others: readonly Category[];
   /** Called with the trimmed values once they pass every check. */
   onSave: (draft: CategoryDraft) => void;
   onCancel: () => void;
@@ -29,23 +27,36 @@ function draftOf(category: Category): CategoryDraft {
 }
 
 /** Changing one category's names, description or colour. Its key stays the same. */
-export function CategoryEditForm({ category, onSave, onCancel, isBusy }: CategoryEditFormProps) {
+export function CategoryEditForm({
+  category,
+  others,
+  onSave,
+  onCancel,
+  isBusy,
+}: CategoryEditFormProps) {
   const [draft, setDraft] = useState(() => draftOf(category));
-  const [problem, setProblem] = useState<DraftProblem | null>(null);
+  const { formRef, problem, problemId, check } = useDraftCheck(others);
   const actions = copy.categorySettings.actions;
 
   return (
     <form
+      ref={formRef}
+      noValidate
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        const found = findDraftProblem(draft);
-        setProblem(found);
-        if (found === null) onSave(trimDraft(draft));
+        const values = check(draft);
+        if (values !== null) onSave(values);
       }}
     >
-      <CategoryFields draft={draft} onChange={setDraft} disabled={isBusy} />
-      <DraftProblemText problem={problem} />
+      <CategoryFields
+        draft={draft}
+        onChange={setDraft}
+        disabled={isBusy}
+        problem={problem}
+        problemId={problemId}
+      />
+      <DraftProblemText id={problemId} problem={problem} />
       <div className="flex flex-wrap gap-3">
         <Button type="submit" variant="primary" disabled={isBusy}>
           {isBusy ? actions.working : actions.save}

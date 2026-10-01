@@ -10,6 +10,7 @@ import {
   activeOwnCategories,
   canAddCategory,
   categoryKeyFromName,
+  colourForSuggestion,
   DraftProblem,
   findDraftProblem,
   firstFreeColour,
@@ -17,9 +18,18 @@ import {
   moveCategory,
   MoveDirection,
   nextSortOrder,
+  problemField,
   suggestedGroupLabel,
   suggestionsToOffer,
 } from './categorySettings';
+
+const MENTOR: CategorySuggestion = {
+  key: 'mentor',
+  label: 'Mentor',
+  group_label: 'Mentors',
+  description: 'Gives advice.',
+  colour: 'teal',
+};
 
 const HUES = ['violet', 'cyan', 'orange', 'pink', 'indigo', 'teal', 'olive', 'brown'] as const;
 
@@ -97,6 +107,17 @@ describe('the lists on the settings page', () => {
     expect(firstFreeColour(sampleCategories)).toBe('pink');
     expect(firstFreeColour(FULL)).toBe('grey');
   });
+
+  it('adds a suggestion in its own colour while nobody else has it', () => {
+    const mentor = { ...MENTOR, colour: 'teal' as const };
+    expect(colourForSuggestion(mentor, sampleCategories)).toBe('teal');
+  });
+
+  it('gives a suggestion a free colour when its own is taken', () => {
+    const mentor = { ...MENTOR, colour: 'violet' as const };
+    expect(colourForSuggestion(mentor, sampleCategories)).toBe('pink');
+    expect(colourForSuggestion(mentor, withArchived(sampleCategories, 'startup'))).toBe('violet');
+  });
 });
 
 describe('moveCategory', () => {
@@ -138,6 +159,20 @@ describe('drafts', () => {
     expect(suggestedGroupLabel('  ')).toBe('');
   });
 
+  it('never suggests a group name longer than a group name may be', () => {
+    expect(suggestedGroupLabel('x'.repeat(39))).toBe(`${'x'.repeat(39)}s`);
+    expect(suggestedGroupLabel('x'.repeat(40))).toBe('x'.repeat(40));
+  });
+
+  it.each([
+    [DraftProblem.DuplicateName, 'label'],
+    [DraftProblem.GroupNameTooLong, 'group_label'],
+    [DraftProblem.MissingDescription, 'description'],
+    [null, null],
+  ] as const)('ties %s to the field it is about', (problem, field) => {
+    expect(problemField(problem)).toBe(field);
+  });
+
   it.each([
     [{ label: '   ' }, DraftProblem.MissingName],
     [{ label: 'x'.repeat(41) }, DraftProblem.NameTooLong],
@@ -146,10 +181,27 @@ describe('drafts', () => {
     [{ description: ' ' }, DraftProblem.MissingDescription],
     [{ description: 'x'.repeat(1001) }, DraftProblem.DescriptionTooLong],
   ])('finds the problem in %o', (change, problem) => {
-    expect(findDraftProblem({ ...good, ...change })).toBe(problem);
+    expect(findDraftProblem({ ...good, ...change }, [])).toBe(problem);
   });
 
   it('accepts a complete draft', () => {
-    expect(findDraftProblem(good)).toBeNull();
+    expect(findDraftProblem(good, sampleCategories)).toBeNull();
+  });
+
+  it.each([
+    [{ label: 'startup' }, DraftProblem.DuplicateName],
+    [{ label: '  INVESTOR ' }, DraftProblem.DuplicateName],
+    [{ label: 'not  known' }, DraftProblem.DuplicateName],
+    [{ group_label: 'startups' }, DraftProblem.DuplicateGroupName],
+    [{ group_label: 'NETWORK' }, DraftProblem.DuplicateGroupName],
+  ])('turns down a name another category has, whatever its case (%o)', (change, problem) => {
+    expect(findDraftProblem({ ...good, ...change }, sampleCategories)).toBe(problem);
+  });
+
+  it('counts a hidden category as taken', () => {
+    const hidden = withArchived(sampleCategories, 'network');
+    expect(findDraftProblem({ ...good, label: 'network' }, hidden)).toBe(
+      DraftProblem.DuplicateName,
+    );
   });
 });

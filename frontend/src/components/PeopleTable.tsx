@@ -3,7 +3,7 @@ import * as copy from '../copy/en';
 import type { Clock } from '../lib/clock';
 import { categoryFor } from '../domain/categories';
 import type { Vocabulary } from '../domain/vocabulary';
-import { formatDate, formatRelative } from '../lib/format';
+import { formatDate, formatRelative, formatRoleLine } from '../lib/format';
 import type { PeopleOverviewRow } from '../types/database';
 import { FollowUpBadge } from './FollowUpBadge';
 import { PersonCard } from './PersonCard';
@@ -82,8 +82,7 @@ export function PeopleTable({ people, clock, vocabulary }: PeopleTableProps) {
                     {person.full_name}
                   </Link>
                   <span className="block text-ink-muted">
-                    {person.role_title ?? copy.values.unknown}
-                    {person.organisation_name !== null && ` · ${person.organisation_name}`}
+                    {formatRoleLine(person.role_title, person.organisation_name)}
                   </span>
                 </th>
                 <td className={CELL}>

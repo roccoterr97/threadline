@@ -5,6 +5,10 @@ read over IMAP with an app password: the step explains what that is, opens
 the provider's page, tries the password live (sign in, open the inbox
 read-only, count the recent messages) and only then stores it, encrypted, in
 the database. The password never goes into ``.env``.
+
+The morning summary is sent from the same mailbox by SMTP. The known providers'
+sending servers are built in; for another provider the step asks for it and
+signs in to it once, so a wrong server shows up now rather than every morning.
 """
 
 from __future__ import annotations
@@ -17,20 +21,35 @@ from pydantic import SecretStr
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
+from tracker.infrastructure.smtp import SmtpAccount
 from tracker.services.setup import values
-from tracker.services.setup.context import SetupContext
+from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
 from tracker.services.setup.mail_sources import save_sources, saved_sources
 from tracker.services.setup.models import StepName
 from tracker.services.setup.owner_address import remember_address
 from tracker.services.setup.step_microsoft import microsoft_access
 from tracker.shared.constants.collection import INITIAL_WINDOW_DAYS
-from tracker.shared.constants.mailbox import IMAP_PRESETS, ImapPreset, ImapProvider, MailSource
-from tracker.shared.errors import ValidationFailedError
+from tracker.shared.constants.mailbox import (
+    IMAP_PRESETS,
+    SMTP_TLS_PORT,
+    DeliveryRoute,
+    ImapPreset,
+    ImapProvider,
+    MailSource,
+)
+from tracker.shared.errors import SourceAuthError, SourceUnavailableError, ValidationFailedError
 
 IMAP_PROVIDER: Final[str] = "IMAP_PROVIDER"
 IMAP_USERNAME: Final[str] = "IMAP_USERNAME"
 IMAP_HOST: Final[str] = "IMAP_HOST"
 IMAP_PORT: Final[str] = "IMAP_PORT"
+SMTP_HOST: Final[str] = "SMTP_HOST"
+SMTP_PORT: Final[str] = "SMTP_PORT"
+SUMMARY_DELIVERY: Final[str] = "SUMMARY_DELIVERY"
+
+#: How a provider's receiving server is usually named, and its sending one.
+_IMAP_HOST_PREFIX: Final[str] = "imap."
+_SMTP_HOST_PREFIX: Final[str] = "smtp."
 
 #: The answers understood, and what each one means.
 _CHOICES: Final[dict[str, MailSource | ImapProvider]] = {
@@ -137,9 +156,10 @@ async def _connect_imap(ctx: SetupContext, provider: ImapProvider) -> None:
         accept,
     )
     _report(ctx, survey)
+    sending = await _sending_server(ctx, provider, account, password)
     await ctx.gateways.mailbox.save_password(store_access(ctx), account.username, password)
     ctx.io.say("Saved the app password, encrypted, in your database - it is not in .env.")
-    _save_account(ctx, provider, account)
+    _save_account(ctx, provider, account, sending)
     await _save_sources(ctx)
     if "@" in account.username:
         remember_address(ctx, account.username.lower())
@@ -172,6 +192,68 @@ def _account(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> I
         lambda raw: values.non_empty(raw, "the sign-in name"),
     )
     return ImapAccount(host, port, username, preset.label, preset.company)
+
+
+async def _sending_server(
+    ctx: SetupContext, provider: ImapProvider, account: ImapAccount, password: SecretStr
+) -> SmtpAccount | None:
+    """For another provider, ask the summary's sending server and sign in to it once.
+
+    Returns:
+        The checked server, or ``None`` when the provider's is built in or the
+        summary does not go by SMTP.
+
+    Raises:
+        SourceAuthError: If the server refused the password every time.
+        SourceUnavailableError: If the server could not be reached every time.
+    """
+    if provider is not ImapProvider.CUSTOM or not _summary_goes_by_smtp(ctx):
+        return None
+    ctx.io.say("The morning summary is sent from this mailbox, through its sending (SMTP) server.")
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        sending = _ask_sending_server(ctx, account)
+        try:
+            await ctx.gateways.mailbox.check_sending(sending, password)
+        except (SourceAuthError, SourceUnavailableError) as error:
+            if attempt == MAX_ATTEMPTS:
+                raise
+            ctx.io.say(f"  {error.message}. Please check the server and port.")
+            continue
+        ctx.io.say("Signed in to the sending server. Nothing was sent.")
+        return sending
+    message = "no attempt was made"  # pragma: no cover - MAX_ATTEMPTS >= 1
+    raise ValidationFailedError(message)  # pragma: no cover
+
+
+def _ask_sending_server(ctx: SetupContext, account: ImapAccount) -> SmtpAccount:
+    """Ask the sending server and its port, offering what is saved or likely."""
+    host = ctx.ask_until_valid(
+        lambda: ctx.io.ask(
+            "Your provider's SMTP server, such as smtp.example.com",
+            default=ctx.env.get(SMTP_HOST) or _likely_smtp_host(account.host),
+        ),
+        values.server_name,
+    )
+    port = ctx.ask_until_valid(
+        lambda: ctx.io.ask(
+            "Its port (465 or 587)", default=ctx.env.get(SMTP_PORT) or str(SMTP_TLS_PORT)
+        ),
+        values.port_number,
+    )
+    return SmtpAccount(host, port, account.username, account.label, account.company)
+
+
+def _likely_smtp_host(imap_host: str) -> str | None:
+    """Guess ``smtp.example.com`` from ``imap.example.com``; nothing otherwise."""
+    if not imap_host.startswith(_IMAP_HOST_PREFIX):
+        return None
+    return _SMTP_HOST_PREFIX + imap_host.removeprefix(_IMAP_HOST_PREFIX)
+
+
+def _summary_goes_by_smtp(ctx: SetupContext) -> bool:
+    """Whether the summary is sent by SMTP: the default once an IMAP mailbox is read."""
+    chosen = (ctx.env.get(SUMMARY_DELIVERY) or DeliveryRoute.SMTP.value).strip().lower()
+    return chosen == DeliveryRoute.SMTP.value
 
 
 def _explain(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> None:
@@ -207,18 +289,25 @@ def _report(ctx: SetupContext, survey: MailboxSurvey) -> None:
     ctx.io.say(f"Your own replies are read from the folder '{survey.sent_folder}'.")
 
 
-def _save_account(ctx: SetupContext, provider: ImapProvider, account: ImapAccount) -> None:
-    """Write the provider, the sign-in name and, for another provider, the server."""
+def _save_account(
+    ctx: SetupContext, provider: ImapProvider, account: ImapAccount, sending: SmtpAccount | None
+) -> None:
+    """Write the provider, the sign-in name and, for another provider, the servers."""
     ctx.env.set(IMAP_PROVIDER, provider.value)
     ctx.env.set(IMAP_USERNAME, account.username)
     if provider is ImapProvider.CUSTOM:
         ctx.env.set(IMAP_HOST, account.host)
         ctx.env.set(IMAP_PORT, str(account.port))
     else:
-        for name in (IMAP_HOST, IMAP_PORT):
+        # A server left from another provider would win over the built-in one.
+        for name in (IMAP_HOST, IMAP_PORT, SMTP_HOST, SMTP_PORT):
             if ctx.env.get(name) is not None:
                 ctx.env.set(name, "")
     ctx.io.say(f"Saved {IMAP_PROVIDER} and {IMAP_USERNAME} in .env.")
+    if sending is not None:
+        ctx.env.set(SMTP_HOST, sending.host)
+        ctx.env.set(SMTP_PORT, str(sending.port))
+        ctx.io.say(f"Saved {SMTP_HOST} and {SMTP_PORT} in .env.")
 
 
 async def _save_sources(ctx: SetupContext) -> None:

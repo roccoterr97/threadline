@@ -7,7 +7,7 @@ Microsoft Graph and a standard (IMAP) mailbox both satisfy
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,6 +30,14 @@ class MailboxReader(Protocol):
 
     async def fetch_body(self, message_id: str) -> str:
         """Read one message's body as plain text."""
+        ...
+
+    async def fetch_bodies(self, message_ids: Sequence[str]) -> list[str]:
+        """Read several messages' bodies as plain text, in the order asked.
+
+        The reader decides how: Graph asks for them side by side, IMAP sends one
+        command for all those in a folder.
+        """
         ...
 
 

@@ -1,9 +1,22 @@
 import type { Category, CategoryKey, PeopleOverviewRow } from '../types/database';
+import { RESERVED_CATEGORY_KEY } from './categorySettings';
 
 /**
  * Rules for the owner-defined categories. Pure: the list comes from the
  * database, and nothing here knows what any category means.
  */
+
+/**
+ * The list with the reserved category called `name`, both as one and as a
+ * group. The owner can never change that category, so its words are the
+ * dashboard's own, and using one name everywhere avoids "Not known" in one
+ * place and "Unknown" in another.
+ */
+export function nameReservedCategory(categories: readonly Category[], name: string): Category[] {
+  return categories.map((category) =>
+    category.key === RESERVED_CATEGORY_KEY ? { ...category, label: name, group_label: name } : category,
+  );
+}
 
 /** Sorts a category the list does not know after every real one. */
 const STRAY_SORT_ORDER = Number.MAX_SAFE_INTEGER;

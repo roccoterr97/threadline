@@ -306,6 +306,7 @@ reads it. `uv run tracker doctor` names it.
   environment you created for Threadline (the gear next to its name) and check
   every variable is there: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
   `SUPABASE_ANON_KEY`, `TOKEN_ENCRYPTION_KEY`, `OWNER_EMAIL_ADDRESSES`,
+  the mailbox settings (`MAIL_SOURCES`, `IMAP_PROVIDER`, `IMAP_USERNAME`),
   `OWNER_LINKEDIN_PROFILE_URL`, `LINKEDIN_ACCESS_TOKEN`,
   `LINKEDIN_TOKEN_EXPIRES_ON` and `DASHBOARD_BASE_URL` (plus
   `MICROSOFT_CLIENT_ID` and `MICROSOFT_TENANT` if you set them). Running

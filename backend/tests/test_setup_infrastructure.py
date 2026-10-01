@@ -60,6 +60,7 @@ def test_the_computers_zone_is_read_from_the_localtime_link(tmp_path: Path) -> N
     assert detect_time_zone(link, {}) == "Europe/Paris"
     assert detect_time_zone(link, {"TZ": "Asia/Tokyo"}) == "Asia/Tokyo"
     assert detect_time_zone(tmp_path / "missing", {"TZ": "nonsense"}) == "UTC"
+    assert detect_time_zone(tmp_path / "missing", {"TZ": "asia/tokyo"}) == "Asia/Tokyo"
 
 
 # --- .env ----------------------------------------------------------------------
@@ -318,6 +319,37 @@ def test_an_existing_table_is_present() -> None:
     admin, _ = _admin_with()
 
     assert admin.has_columns("app_owner", "user_id") is True
+
+
+def _enum_probe_with(error: APIError | None = None) -> SupabaseAdmin:
+    client = MagicMock()
+    query = client.table.return_value.select.return_value.eq.return_value.limit.return_value
+    if error is not None:
+        query.execute.side_effect = error
+    return SupabaseAdmin(client)
+
+
+def test_a_column_that_refuses_an_unlisted_value_is_an_enum() -> None:
+    admin = _enum_probe_with(APIError({"code": "22P02", "message": "invalid input value"}))
+
+    assert admin.is_enum_column("run_logs", "trigger") is True
+
+
+def test_a_text_column_that_finds_nothing_is_not_an_enum() -> None:
+    assert _enum_probe_with().is_enum_column("run_logs", "trigger") is False
+
+
+def test_a_missing_table_has_no_enum_column() -> None:
+    admin = _enum_probe_with(APIError({"code": "PGRST205", "message": "not found"}))
+
+    assert admin.is_enum_column("run_logs", "trigger") is False
+
+
+def test_an_outage_during_the_enum_probe_is_typed() -> None:
+    admin = _enum_probe_with(APIError({"code": "57014", "message": "timeout"}))
+
+    with pytest.raises(DatabaseUnavailableError):
+        admin.is_enum_column("run_logs", "trigger")
 
 
 def test_owner_is_recorded_once_and_listed() -> None:

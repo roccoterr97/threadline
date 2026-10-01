@@ -13,6 +13,7 @@ from typing import Final
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
+from tracker.shared.time_zones import canonical_zone_name
 
 OWNER_TIME_ZONE: Final[str] = "OWNER_TIME_ZONE"
 OWNER_DISPLAY_NAME: Final[str] = "OWNER_DISPLAY_NAME"
@@ -45,7 +46,7 @@ def ask_time_zone(ctx: SetupContext) -> str:
     Returns:
         The zone's name, such as ``Europe/Paris``.
     """
-    saved = ctx.env.get(OWNER_TIME_ZONE)
+    saved = saved_time_zone(ctx)
     offered = saved or ctx.gateways.local_time_zone()
     zone = ctx.ask_until_valid(
         lambda: ctx.io.ask("Your time zone", default=offered), values.time_zone
@@ -54,6 +55,29 @@ def ask_time_zone(ctx: SetupContext) -> str:
         ctx.env.set(OWNER_TIME_ZONE, zone)
         ctx.io.say(f"Saved {OWNER_TIME_ZONE}={zone} in .env.")
     return zone
+
+
+def saved_time_zone(ctx: SetupContext) -> str | None:
+    """Read the saved time zone, putting it right if only its case is wrong.
+
+    A name saved as ``europe/paris`` worked on a Mac but stops the daily run
+    on GitHub, whose machines care about case.
+
+    Args:
+        ctx: The set-up's context.
+
+    Returns:
+        The zone as the time-zone database spells it, or ``None`` when none is
+        saved or the saved one is not a zone at all.
+    """
+    saved = ctx.env.get(OWNER_TIME_ZONE)
+    if saved is None:
+        return None
+    canonical = canonical_zone_name(saved)
+    if canonical is not None and canonical != saved:
+        ctx.env.set(OWNER_TIME_ZONE, canonical)
+        ctx.io.say(f"Saved {OWNER_TIME_ZONE}={canonical} in .env, spelled the way GitHub needs.")
+    return canonical
 
 
 def _ask_display_name(ctx: SetupContext) -> None:

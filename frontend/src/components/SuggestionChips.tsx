@@ -1,5 +1,10 @@
 import * as copy from '../copy/en';
-import { canAddCategory, nextSortOrder, suggestionsToOffer } from '../domain/categorySettings';
+import {
+  canAddCategory,
+  colourForSuggestion,
+  nextSortOrder,
+  suggestionsToOffer,
+} from '../domain/categorySettings';
 import type { CategoryEditor } from '../hooks/useCategoryEditor';
 import type { Category, CategorySuggestion } from '../types/database';
 import { LimitNote } from './LimitNote';
@@ -17,7 +22,8 @@ const CHIP =
 
 /**
  * The preset's categories the owner does not have yet, each added with one
- * tap, description and colour included. Absent when there is nothing to offer.
+ * tap, description and colour included (a free colour if its own is taken).
+ * Absent when there is nothing to offer.
  */
 export function SuggestionChips({ categories, suggestions, editor }: SuggestionChipsProps) {
   const offered = suggestionsToOffer(suggestions, categories);
@@ -27,7 +33,11 @@ export function SuggestionChips({ categories, suggestions, editor }: SuggestionC
   const add = (suggestion: CategorySuggestion) => {
     editor.run({
       kind: 'add',
-      category: { ...suggestion, sort_order: nextSortOrder(categories) },
+      category: {
+        ...suggestion,
+        colour: colourForSuggestion(suggestion, categories),
+        sort_order: nextSortOrder(categories),
+      },
     });
   };
 
@@ -48,7 +58,7 @@ export function SuggestionChips({ categories, suggestions, editor }: SuggestionC
               add(suggestion);
             }}
           >
-            <TypeDot colour={suggestion.colour} />
+            <TypeDot colour={colourForSuggestion(suggestion, categories)} />
             {copy.categorySettings.actions.addSuggestion(suggestion.label)}
           </button>
         ))}

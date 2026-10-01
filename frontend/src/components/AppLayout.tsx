@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { Link, Outlet } from 'react-router-dom';
 import { fetchOpenReviewItems, reviewQueryKey } from '../api/review';
 import { useAuth } from '../auth/useAuth';
 import * as copy from '../copy/en';
+import { usePageScroll } from '../hooks/usePageScroll';
 import { useRefreshNow } from '../hooks/useRefreshNow';
 import { BottomNav } from './BottomNav';
 import { Button } from './Button';
@@ -15,6 +17,11 @@ import { RefreshStatus } from './RefreshStatus';
 const MAIN_ID = 'main-content';
 const REFRESH_STATUS_ID = 'refresh-status';
 
+interface AppLayoutProps {
+  /** A strip above the header (the demo's notice). It comes after the "skip" link. */
+  banner?: ReactNode;
+}
+
 /**
  * The frame every signed-in screen sits inside: header, navigation, content.
  *
@@ -23,7 +30,7 @@ const REFRESH_STATUS_ID = 'refresh-status';
  * and the content gets extra room below so nothing hides behind that bar.
  * What "Refresh now" is doing shows on one line under the header.
  */
-export function AppLayout() {
+export function AppLayout({ banner }: AppLayoutProps) {
   const { signOut } = useAuth();
   const openReview = useQuery({
     queryKey: reviewQueryKey,
@@ -31,6 +38,7 @@ export function AppLayout() {
   });
   const openCount = openReview.data?.length ?? 0;
   const refresh = useRefreshNow();
+  usePageScroll();
 
   return (
     <div className="min-h-dvh bg-bg">
@@ -40,6 +48,7 @@ export function AppLayout() {
       >
         {copy.app.skipToContent}
       </a>
+      {banner}
 
       <header className="border-b border-line bg-surface">
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">

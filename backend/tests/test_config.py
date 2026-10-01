@@ -174,6 +174,18 @@ def test_an_explicit_time_zone_is_loaded(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 @pytest.mark.usefixtures("valid_environment")
+def test_a_time_zone_in_the_wrong_case_is_kept_in_its_real_spelling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _with(monkeypatch, "OWNER_TIME_ZONE", "america/new_york")
+
+    settings = get_settings()
+
+    assert settings.owner_time_zone == "America/New_York"
+    assert settings.owner_zone == ZoneInfo("America/New_York")
+
+
+@pytest.mark.usefixtures("valid_environment")
 def test_utc_is_accepted_in_any_case(monkeypatch: pytest.MonkeyPatch) -> None:
     _with(monkeypatch, "OWNER_TIME_ZONE", "utc")
 

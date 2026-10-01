@@ -15,6 +15,7 @@ fail, it did not run, and it must not turn a clean morning into a "partial" one.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
 from uuid import UUID
 
@@ -25,6 +26,7 @@ from tracker.services.runs.interrupted_runs import close_interrupted_runs
 from tracker.services.runs.run_status import derive_run_status
 from tracker.shared.clock import Clock
 from tracker.shared.config import Settings
+from tracker.shared.constants.runs import INTERRUPTED_RUN_AFTER_HOURS
 from tracker.shared.constants.summary import MAX_ERROR_DETAIL_LENGTH
 from tracker.shared.errors import ValidationFailedError
 from tracker.shared.logging import get_logger
@@ -156,7 +158,7 @@ class RunRecorder:
             error_code=self._error_code(outcome),
             error_detail=_shorten(outcome.error_detail),
         )
-        existing = self._find_step(run_id, outcome.step)
+        existing = self.find_step(run_id, outcome.step)
         if existing is not None:
             step = step.model_copy(update={"id": existing.id})
         self._repositories.run_step_logs.bulk_upsert([step])
@@ -204,32 +206,57 @@ class RunRecorder:
     def resolve(self, run_id: UUID | None) -> RunLog:
         """Find the run a command should act on.
 
+        Without a named run, only the newest run counts, and only while it is
+        still open: when today's ``run start`` failed, the newest run is
+        yesterday's, closed, and today's steps must not overwrite it.
+
         Args:
-            run_id: The run the owner named, or ``None`` for the latest one.
+            run_id: The run the owner named, or ``None`` for the open one.
 
         Returns:
             The run.
 
         Raises:
-            ValidationFailedError: If that run does not exist, or if nothing has
-                ever run.
+            ValidationFailedError: If that run does not exist, if nothing has
+                ever run, or if no run is open.
         """
-        run = (
-            self._repositories.run_logs.find_latest()
-            if run_id is None
-            else self._repositories.run_logs.get(run_id)
-        )
+        if run_id is not None:
+            return self._named(run_id)
+        run = self._repositories.run_logs.find_latest()
         if run is None:
+            message = "there is no run to work with — start one with 'tracker run start'"
+            raise ValidationFailedError(message)
+        if run.status is not RunStatus.RUNNING or self._is_stale(run):
             message = (
-                "there is no run to work with — start one with 'tracker run start'"
-                if run_id is None
-                else f"no run with identifier {run_id}"
+                "no run is open: the latest one has already finished or was abandoned. "
+                "Start today's run with 'tracker run start', or name a run with --run"
             )
             raise ValidationFailedError(message)
         return run
 
-    def _find_step(self, run_id: UUID, step: RunStep) -> RunStepLog | None:
-        """Return the row already written for this step of this run, if any."""
+    def _named(self, run_id: UUID) -> RunLog:
+        """Fetch the run the owner named, whatever its status."""
+        run = self._repositories.run_logs.get(run_id)
+        if run is None:
+            message = f"no run with identifier {run_id}"
+            raise ValidationFailedError(message)
+        return run
+
+    def _is_stale(self, run: RunLog) -> bool:
+        """Whether an open run started so long ago that it died part-way."""
+        age = self._clock.now() - run.started_at
+        return age >= timedelta(hours=INTERRUPTED_RUN_AFTER_HOURS)
+
+    def find_step(self, run_id: UUID, step: RunStep) -> RunStepLog | None:
+        """Return the row already written for this step of this run, if any.
+
+        Args:
+            run_id: The run to look in.
+            step: The step to look for.
+
+        Returns:
+            The stored step row, or ``None`` when the run has not recorded it.
+        """
         recorded = self._repositories.run_step_logs.list_for_run(run_id)
         return next((row for row in recorded if row.step is step), None)
 

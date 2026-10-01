@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginPage } from './auth/LoginPage';
 import { RequireAuth } from './auth/RequireAuth';
@@ -16,16 +16,24 @@ const SettingsPage = lazy(async () => ({
   default: (await import('./pages/SettingsPage')).SettingsPage,
 }));
 
+/** Pieces a special build (the demo) puts in place of the usual ones. */
+export interface AppParts {
+  /** A strip shown above every signed-in page, after the "skip" link. */
+  banner?: ReactNode;
+  /** Shown at `/login` instead of the e-mail sign-in form. */
+  signInPage?: ReactNode;
+}
+
 /** Every route in the dashboard. */
-export function App() {
+export function App({ banner, signInPage }: AppParts = {}) {
   return (
     <Suspense fallback={<LoadingState label={copy.states.loading} />}>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={signInPage ?? <LoginPage />} />
         <Route
           element={
             <RequireAuth>
-              <AppLayout />
+              <AppLayout banner={banner} />
             </RequireAuth>
           }
         >

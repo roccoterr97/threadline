@@ -241,6 +241,32 @@ def test_the_latest_run_is_the_one_a_command_acts_on_by_default(
     assert later.resolve(None).id == today.id
 
 
+def test_a_closed_latest_run_is_not_the_default(repositories: Repositories) -> None:
+    yesterday = RunRecorder(repositories, FixedClock(NOW - timedelta(days=1)))
+    closed = yesterday.start(RunTrigger.CLOUD)
+    yesterday.finish(closed.id)
+    today = RunRecorder(repositories, FixedClock(NOW))
+
+    with pytest.raises(ValidationFailedError, match="no run is open"):
+        today.resolve(None)
+
+
+def test_an_abandoned_open_run_is_not_the_default(repositories: Repositories) -> None:
+    started = NOW - timedelta(hours=INTERRUPTED_RUN_AFTER_HOURS)
+    RunRecorder(repositories, FixedClock(started)).start(RunTrigger.CLOUD)
+
+    with pytest.raises(ValidationFailedError, match="no run is open"):
+        RunRecorder(repositories, FixedClock(NOW)).resolve(None)
+
+
+def test_a_named_run_is_used_even_when_it_is_closed(repositories: Repositories) -> None:
+    yesterday = RunRecorder(repositories, FixedClock(NOW - timedelta(days=1)))
+    closed = yesterday.start(RunTrigger.CLOUD)
+    yesterday.finish(closed.id)
+
+    assert RunRecorder(repositories, FixedClock(NOW)).resolve(closed.id).id == closed.id
+
+
 def test_asking_for_a_run_before_anything_has_run_is_refused(recorder: RunRecorder) -> None:
     with pytest.raises(ValidationFailedError):
         recorder.resolve(None)

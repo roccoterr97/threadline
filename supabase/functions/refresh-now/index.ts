@@ -2,9 +2,10 @@
  * Supabase Edge Function "refresh-now": the dashboard's "Refresh now" button.
  *
  * It checks that the caller is the dashboard's owner, refuses while a run is
- * going or right after the previous refresh, then asks the configured runner
- * (a GitHub Actions workflow, or a Claude cloud routine) for one quick extra
- * run. The runner's key lives only in this function's secrets.
+ * going or right after the previous refresh, claims the cool-down in the
+ * database, then asks the configured runner (a GitHub Actions workflow, or a
+ * Claude cloud routine) for one quick extra run. The runner's key lives only
+ * in this function's secrets.
  *
  * This file only connects `refresh.ts` to Deno and the database; every
  * decision is made (and tested) there. Setup: docs/refresh-now.md.
@@ -12,6 +13,7 @@
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2';
 import {
   codeForDatabaseError,
+  COOLDOWN_TAKEN_DATABASE_CODE,
   handleRefresh,
   OwnerCheck,
   readConfig,
@@ -19,6 +21,7 @@ import {
   runningWindowStart,
   StoreError,
   type Activity,
+  type Claim,
   type DispatchRequest,
   type RefreshPorts,
   type RefreshTarget,
@@ -77,8 +80,19 @@ async function readActivity(client: SupabaseClient, now: Date): Promise<Activity
   };
 }
 
-async function recordRequest(client: SupabaseClient, target: RefreshTarget): Promise<void> {
-  const { error } = await client.from('refresh_requests').insert({ target });
+async function claimRequest(client: SupabaseClient, target: RefreshTarget): Promise<Claim | null> {
+  const { data, error } = await client
+    .from('refresh_requests')
+    .insert({ target })
+    .select('id')
+    .single();
+  if (error?.code === COOLDOWN_TAKEN_DATABASE_CODE) return null;
+  if (error !== null) throw new StoreError(codeForDatabaseError(error.code));
+  return { id: String((data as { id: unknown }).id) };
+}
+
+async function releaseRequest(client: SupabaseClient, claimed: Claim): Promise<void> {
+  const { error } = await client.from('refresh_requests').delete().eq('id', claimed.id);
   if (error !== null) throw new StoreError(codeForDatabaseError(error.code));
 }
 
@@ -106,9 +120,13 @@ function portsFor(request: Request): RefreshPorts {
       if (client === null) throw new StoreError(RefreshCode.DatabaseUnavailable);
       return readActivity(client, now());
     },
-    recordRequest: async (target) => {
+    claimRequest: async (target) => {
       if (client === null) throw new StoreError(RefreshCode.DatabaseUnavailable);
-      return recordRequest(client, target);
+      return claimRequest(client, target);
+    },
+    releaseRequest: async (claimed) => {
+      if (client === null) throw new StoreError(RefreshCode.DatabaseUnavailable);
+      return releaseRequest(client, claimed);
     },
     send,
     log,

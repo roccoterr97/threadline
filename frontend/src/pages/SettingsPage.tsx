@@ -15,6 +15,7 @@ import { VOCABULARY_STALE_TIME_MS } from '../constants/dashboard';
 import * as copy from '../copy/en';
 import { useCategories } from '../hooks/useCategories';
 import { useCategoryEditor } from '../hooks/useCategoryEditor';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 /**
  * The settings page. Today it holds one thing: the owner's categories, which
@@ -22,6 +23,7 @@ import { useCategoryEditor } from '../hooks/useCategoryEditor';
  * categories are only offered as suggestions.
  */
 export function SettingsPage() {
+  usePageTitle(copy.settings.title);
   const headingId = useId();
   const categories = useCategories();
   const suggestions = useQuery({

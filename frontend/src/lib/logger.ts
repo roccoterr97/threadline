@@ -10,7 +10,7 @@ type LogFields = Record<string, string | number | boolean | null>;
 
 interface LogRecord extends LogFields {
   event: string;
-  level: 'warn' | 'error';
+  level: 'info' | 'warn' | 'error';
 }
 
 function emit(record: LogRecord): void {
@@ -18,6 +18,11 @@ function emit(record: LogRecord): void {
      Structured logging sink. The browser console is the only transport a static
      site has; every other module logs through this function. */
   console[record.level](record);
+}
+
+/** Something that went as designed but is worth seeing while debugging. */
+export function logInfo(event: string, fields: LogFields = {}): void {
+  emit({ ...fields, event, level: 'info' });
 }
 
 export function logWarning(event: string, fields: LogFields = {}): void {

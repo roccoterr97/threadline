@@ -25,8 +25,8 @@ from tests.test_microsoft import (
     mock_folders,
     mock_renewal,
 )
-from tracker.domain.enums import Channel, Direction, Relevance, RunStatus, RunTrigger
-from tracker.domain.models import Conversation, Message, RunLog
+from tracker.domain.enums import Channel, Direction, Relevance, RunStatus, RunStep, RunTrigger
+from tracker.domain.models import Conversation, Message, RunLog, RunStepLog
 from tracker.infrastructure.secret_store import MICROSOFT_REFRESH_TOKEN, SecretStore
 from tracker.repositories import Repositories
 from tracker.services.collection.email_collector import EmailCollector
@@ -631,6 +631,35 @@ def test_the_mailbox_is_never_asked_for_a_message_outside_the_window(
         asked = listing.calls[0].request.url.params["$filter"]
 
     assert asked == "receivedDateTime ge 2026-08-19T07:00:00Z"
+
+
+def test_a_run_partial_for_another_source_still_moves_the_mailbox_window(
+    repositories: Repositories,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    SecretStore(repositories.app_secrets, SecretStr(TEST_ENCRYPTION_KEY), clock).put_secret(
+        MICROSOFT_REFRESH_TOKEN, "old-long-lived-key"
+    )
+    run = RunLog(
+        started_at=datetime(2026, 9, 17, 7, 0, tzinfo=UTC),
+        status=RunStatus.PARTIAL,
+        trigger=RunTrigger.GITHUB,
+    )
+    repositories.run_logs.bulk_upsert([run])
+    repositories.run_step_logs.bulk_upsert(
+        [
+            RunStepLog(run_id=run.id, step=RunStep.COLLECT_LINKEDIN, status=RunStatus.FAILED),
+            RunStepLog(run_id=run.id, step=RunStep.COLLECT_EMAIL, status=RunStatus.SUCCESS),
+        ]
+    )
+
+    with respx.mock:
+        listing, _ = mock_mailbox(MAILBOX)
+        EmailCollector(repositories, settings, clock, JOB_SEARCH_RULES).collect()
+        asked = listing.calls[0].request.url.params["$filter"]
+
+    assert asked == "receivedDateTime ge 2026-09-15T07:00:00Z"
 
 
 def test_the_graph_reader_is_only_ever_asked_to_read(

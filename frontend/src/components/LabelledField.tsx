@@ -19,6 +19,6 @@ export function LabelledField({ label, children }: LabelledFieldProps) {
   );
 }
 
-/** Shared look for every text, date, select and textarea control. */
+/** Shared look for every text, date, select and textarea control; a field at fault gets a red edge. */
 export const fieldClassName =
-  'min-h-11 w-full rounded-token-md border border-line-strong bg-surface px-3 py-2 text-base text-ink';
+  'min-h-11 w-full rounded-token-md border border-line-strong bg-surface px-3 py-2 text-base text-ink aria-invalid:border-2 aria-invalid:border-danger';

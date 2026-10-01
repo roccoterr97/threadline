@@ -78,8 +78,16 @@ every step there are two lines:
 
 ## 1. Update the database
 
-Refresh now needs one small addition to your database: a list of when the
-button was last used, so it can say "wait a few minutes".
+Refresh now needs a few small additions to your database, in three files.
+`tracker setup database` adds every one you do not have yet:
+
+- `0013_refresh_requests`: a list of when the button was last used, so it can
+  say "wait a few minutes".
+- `0014_refresh_cooldown`: makes the wait a rule the database keeps. If the
+  button is pressed twice in quick succession (two tabs, or a double tap),
+  only one update starts.
+- `0015_category_names`: not about this button, but applied in the same go. It
+  makes sure no two of your categories share a name, whatever the capitals.
 
 **What you do:** in Terminal, in your Threadline folder, run:
 
@@ -89,12 +97,14 @@ uv run tracker setup database
 
 and answer as in the main set-up guide ([step 3c](./setup-your-accounts.md)).
 
-**✅ Check:** you see `Applied 0013_refresh_requests` (or, if it was already
-there, `The database structure is in place.`).
+**✅ Check:** you see an `Applied …` line for each of those files you did not
+have yet, then `The database structure is in place.` (or, if you had them all
+already, `Every structure file is already applied.`).
 
 **If not:** open **Supabase → SQL Editor → New query**, paste the whole of
 `supabase/migrations/0013_refresh_requests.sql`, click **Run**, and wait for
-`Success. No rows returned`.
+`Success. No rows returned`. Then do the same with `0014_refresh_cooldown.sql`
+and `0015_category_names.sql`, in that order.
 
 ---
 
@@ -248,11 +258,11 @@ In Terminal, in your Threadline folder:
 
 ```bash
 npx supabase login
-npx supabase link --project-ref <your-project-ref>
+npx supabase link --project-ref <project-id>
 npx supabase functions deploy refresh-now --no-verify-jwt
 ```
 
-`<your-project-ref>` is the part before `.supabase.co` in your Supabase
+`<project-id>` is the part before `.supabase.co` in your Supabase
 address. `--no-verify-jwt` is needed and safe: the helper checks the sign-in
 itself (see 4A, point 6).
 

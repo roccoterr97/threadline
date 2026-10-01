@@ -151,9 +151,9 @@ jobs run from a daily scheduled task on the owner's Mac. Nothing else changes.
   and the answer given.
 - **Run log** — when each daily run happened, what it found, any errors.
 
-Status is a closed list (final wording set in the Milestone 2 plan): contacted –
-no reply yet · in conversation · meeting planned · in process · gone
-quiet · closed.
+Status is a closed list (the final wording is set in
+`docs/assessment-guide.md`): contacted – no reply yet · in conversation ·
+meeting planned · in process · gone quiet · closed.
 
 ## Non-Functional Requirements
 
@@ -281,7 +281,7 @@ record.
 
 - Database reachability from the cloud: the database is **Supabase, free plan,
   EU Central (Frankfurt)** and its address will be
-  `https://<project-ref>.supabase.co`. The cloud test used a made-up address of
+  `https://<project-id>.supabase.co`. The cloud test used a made-up address of
   that shape, so it proved "not blocked" rather than "works". Re-check with the
   real address once the project exists.
 - Reliability over time of the cloud route (key renewal every day, Microsoft

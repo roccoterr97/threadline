@@ -5,9 +5,11 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { RunRow } from '../components/RunRow';
 import * as copy from '../copy/en';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 /** The history of automatic updates, with plain-English problems. */
 export function RunsPage() {
+  usePageTitle(copy.runs.title);
   const runs = useQuery({ queryKey: runsQueryKey, queryFn: fetchRecentRuns });
 
   return (

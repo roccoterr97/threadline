@@ -56,10 +56,15 @@ class CloudStep:
             copy_values(ctx, {name: ctx.env.get(name) or "" for name in names})
 
 
+def cloud_setting_names() -> tuple[str, ...]:
+    """Every setting a run elsewhere may be given, in the order Threadline declares them."""
+    declared = [field.upper() for field in Settings.model_fields]
+    return tuple(name for name in declared if name not in LOCAL_ONLY_SETTINGS)
+
+
 def cloud_variable_names(ctx: SetupContext) -> tuple[str, ...]:
     """The saved settings Threadline reads, in the order it declares them."""
-    declared = [field.upper() for field in Settings.model_fields]
-    return tuple(name for name in declared if name not in LOCAL_ONLY_SETTINGS and ctx.env.get(name))
+    return tuple(name for name in cloud_setting_names() if ctx.env.get(name))
 
 
 def allowed_hosts(ctx: SetupContext) -> tuple[str, ...]:

@@ -63,12 +63,31 @@ All notable changes to this project are recorded here. The format follows
   commands and three `run step` commands in a row; `collect linkedin`,
   `collect email` and `collect calendar` still work by hand. `collect all`
   also takes `--refresh` and `--run`.
+- The daily run takes fewer steps around the collection. `tracker run start
+  --prepare` opens the run, runs the health check and applies the profile, and
+  ends with `ready: yes` or `ready: no`; `tracker people tidy` is `people
+  merge` followed by `people link`; `tracker run finish --clean` closes the run
+  and removes the exchanged files. Each prints what the separate commands
+  print, and a part that fails is printed with its code while the rest still
+  runs. The separate commands still work by hand.
+- The assessment records its own step. `tracker ai export --record` and
+  `tracker ai import --record` record the `assess` step of the run, which the
+  recipe used to do with a `run step` command; a second import in the same run
+  adds to the step. `tracker ai export` also makes the directory the verdicts
+  go in, so the `/assess` recipe no longer runs `mkdir`.
 - Mailboxes are read faster. The threads of a mailbox, and the messages of a
   thread, are asked for together instead of one at a time, and two mailboxes
   are read at the same time. Outlook is sent at most three requests at once
   (Microsoft accepts four per mailbox); a Gmail or other IMAP mailbox still
   takes one command at a time on its one connection. The same messages are
   read and the same rows stored.
+- A Gmail or other IMAP mailbox is read in fewer round trips. The bodies of a
+  kept thread are fetched with one command per folder instead of one per
+  message, and the folder that is already open is read first, so it is opened
+  less often. On a made-up mailbox of 17 threads the body pass went from 48
+  commands to 29. A connection that drops is reopened with its folder, even
+  when it drops again while reopening. The same messages are read and the same
+  rows stored; Outlook is read as before.
 - `tracker doctor` runs its checks side by side, so the waits overlap instead
   of adding up. The report keeps its order.
 - `tracker setup linkedin` walks a first connection through three stages —
@@ -144,6 +163,60 @@ All notable changes to this project are recorded here. The format follows
   and the summary's "replied since" no longer counts from an interrupted run.
   No migration is needed. "Refresh now" still treats a run younger than 30
   minutes as in progress.
+
+- The database check now handles the update to the Refresh now trigger
+  correctly.
+- A run can no longer overwrite what a previous run recorded.
+- Time zone names are accepted in any letter case (`europe/rome` is saved as
+  `Europe/Rome`).
+- Large mailboxes are now read reliably, in smaller pieces.
+- Mailboxes from other providers ("other") can now send the morning summary:
+  the mailbox step asks for the sending server (SMTP host, and port 465 or
+  587) and signs in to it once, sending nothing, so a wrong server shows up
+  during set-up. It saves `SMTP_HOST` and `SMTP_PORT`; choosing a known
+  provider empties them again.
+- The set-up now only ever saves settings into your own private copy on
+  GitHub: with `gh` signed in, only a private repository you administer
+  counts, never the project you copied it from.
+- Wrong mail server names or ports give a clearer error that says what to
+  check.
+- Refresh now can no longer start two runs at once: two quick presses start
+  one run (migration `0014_refresh_cooldown.sql`, applied by
+  `tracker setup database`).
+- Daily runs and refreshes queue separately on GitHub, so a refresh pressed
+  while another is going can no longer drop the daily run waiting behind it.
+  The daily run waits for a refresh in progress; a refresh steps aside while a
+  daily run is going. The workflow now also has `actions: read` to see this.
+- Settings emptied in `.env` but still saved on GitHub are listed the next
+  time `tracker setup github` saves with `gh`, and deleted there after one yes,
+  instead of staying there.
+- The morning summary e-mail is no longer sent twice.
+- The demo: signing out and hiding a person no longer leave you on a page with
+  nothing to click.
+- Two categories can no longer share a name or a group name, whatever the
+  capitals: the dashboard refuses the second one and says which name clashed,
+  and the database refuses it too (migration `0015_category_names.sql`, which
+  first adds " (2)" to any name that already clashes). The dashboard also
+  asks before it removes a category. The reserved category's group name is
+  now "Not known", like its name.
+- Clearer wording, colours, page titles and accessibility on the dashboard.
+
+### Security
+
+- Private vulnerability reporting is switched on for the repository; the
+  steps (and a fallback) are in `SECURITY.md`.
+
+### Documentation
+
+- The setup guide and the README list every prerequisite up front (Mac or
+  Linux, a Claude plan and its usage limits, Claude Code with a
+  `claude --version` check, GitHub and the optional GitHub CLI, and the
+  optional Node.js and Azure pieces), explain how to download your copy with
+  `gh auth login`, give the order of the wizard's steps (answer "no" at the
+  dashboard question the first time) and use one set-up time. The README
+  command table lists every `tracker setup <step>` and `--guide`. The cloud
+  variable list, placeholders (`<project-id>`) and `.env.example` headings are
+  consistent, and the demo-site page explains what a fork changes.
 
 ## [0.1.0] - 2026-09-29
 

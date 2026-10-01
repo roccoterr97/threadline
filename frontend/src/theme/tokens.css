@@ -51,21 +51,27 @@
   --tracker-neutral-text: #414c5b;
   --tracker-neutral-soft: #eaeef3;
 
-  /* Category slots — worst pair is 6.2:1 (orange text on its soft background) */
-  --tracker-category-violet-text: #5b21b6;
-  --tracker-category-violet-soft: #f0eafe;
-  --tracker-category-cyan-text: #0b5c73;
-  --tracker-category-cyan-soft: #dcf2f8;
+  /*
+   * Category slots. Worst contrast is 5.2:1 (teal text on its soft background).
+   * Each slot differs from the others in lightness as well as hue, so that
+   * neighbours on the colour wheel (violet and indigo, cyan and teal) never
+   * look like twins: the closest two text colours are 8.5 apart in OKLab
+   * (×100), where 2 is "barely different".
+   */
+  --tracker-category-violet-text: #6326b8;
+  --tracker-category-violet-soft: #f1eafe;
+  --tracker-category-cyan-text: #04678a;
+  --tracker-category-cyan-soft: #daf1fb;
   --tracker-category-orange-text: #9a3412;
   --tracker-category-orange-soft: #ffe8d6;
   --tracker-category-pink-text: #9d1c6a;
   --tracker-category-pink-soft: #fde4f1;
-  --tracker-category-indigo-text: #3730a3;
-  --tracker-category-indigo-soft: #e5e6fb;
-  --tracker-category-teal-text: #0f5f57;
-  --tracker-category-teal-soft: #d6f2ed;
-  --tracker-category-olive-text: #4b5714;
-  --tracker-category-olive-soft: #eef1d3;
+  --tracker-category-indigo-text: #26307a;
+  --tracker-category-indigo-soft: #e2e5f6;
+  --tracker-category-teal-text: #1f6e5c;
+  --tracker-category-teal-soft: #daf1ea;
+  --tracker-category-olive-text: #5a5a12;
+  --tracker-category-olive-soft: #f1f0cf;
   --tracker-category-brown-text: #6e4633;
   --tracker-category-brown-soft: #f2e7df;
 
@@ -100,23 +106,27 @@
     --tracker-neutral-text: #c0c9d6;
     --tracker-neutral-soft: #222a35;
 
-    /* Worst pair is 7.9:1 (indigo text on its soft background) */
-    --tracker-category-violet-text: #c4b5fd;
-    --tracker-category-violet-soft: #2a2146;
-    --tracker-category-cyan-text: #7dd3e0;
-    --tracker-category-cyan-soft: #0f2d33;
+    /*
+     * Worst contrast is 5.1:1 (indigo text on its soft background); closest
+     * two are 8.8 apart. Teal is deeper than the pale positive green, so a
+     * teal category chip never reads as a "Positive" chip beside it.
+     */
+    --tracker-category-violet-text: #c8b2ff;
+    --tracker-category-violet-soft: #2f1d42;
+    --tracker-category-cyan-text: #72cdf0;
+    --tracker-category-cyan-soft: #0c2a38;
     --tracker-category-orange-text: #fdba8c;
     --tracker-category-orange-soft: #3a2213;
     --tracker-category-pink-text: #f5a9d3;
     --tracker-category-pink-soft: #3a1630;
-    --tracker-category-indigo-text: #b0b8fc;
-    --tracker-category-indigo-soft: #22234a;
-    --tracker-category-teal-text: #6fe0cc;
-    --tracker-category-teal-soft: #0e2e2a;
+    --tracker-category-indigo-text: #8f90d6;
+    --tracker-category-indigo-soft: #22224a;
+    --tracker-category-teal-text: #10b7a1;
+    --tracker-category-teal-soft: #152220;
     --tracker-category-olive-text: #d2dc8c;
     --tracker-category-olive-soft: #272b0e;
-    --tracker-category-brown-text: #dcbba6;
-    --tracker-category-brown-soft: #31241d;
+    --tracker-category-brown-text: #c9b097;
+    --tracker-category-brown-soft: #30261d;
 
     --tracker-shadow-card: 0 1px 2px rgb(0 0 0 / 40%), 0 1px 3px rgb(0 0 0 / 30%);
   }

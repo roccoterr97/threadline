@@ -1,6 +1,7 @@
 import type { RunWithSteps } from '../api/schemas';
 import * as copy from '../copy/en';
 import {
+  describeStepCounts,
   explainRunError,
   explainRunTrigger,
   formatDateTime,
@@ -54,16 +55,11 @@ export function RunRow({ run }: RunRowProps) {
                   label={copy.runStatusLabels[step.status]}
                   description="Result:"
                 />
-                {step.items_found !== null && (
-                  <span className="text-sm text-ink-muted">
-                    {step.items_found} {copy.runs.found}
+                {describeStepCounts(step).map((count) => (
+                  <span key={count} className="text-sm text-ink-muted">
+                    {count}
                   </span>
-                )}
-                {step.items_new !== null && (
-                  <span className="text-sm text-ink-muted">
-                    {step.items_new} {copy.runs.new}
-                  </span>
-                )}
+                ))}
               </div>
               {problem !== null && <p className="text-sm text-danger">{problem}</p>}
             </li>

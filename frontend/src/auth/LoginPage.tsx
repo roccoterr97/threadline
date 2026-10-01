@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { fieldClassName, LabelledField } from '../components/LabelledField';
 import { LoadingState } from '../components/LoadingState';
 import * as copy from '../copy/en';
+import { useFocusFirstInvalid } from '../hooks/useFocusFirstInvalid';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { useAuth } from './useAuth';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -13,13 +15,17 @@ type FormState =
   | { kind: 'idle' }
   | { kind: 'sending' }
   | { kind: 'sent'; email: string }
+  | { kind: 'invalid' }
   | { kind: 'error'; message: string };
 
 /** The only page a signed-out visitor can reach. */
 export function LoginPage() {
+  usePageTitle(copy.login.title);
   const { status, sendSignInLink } = useAuth();
   const [email, setEmail] = useState('');
   const [form, setForm] = useState<FormState>({ kind: 'idle' });
+  const errorId = useId();
+  const { container: formRef, afterCheck } = useFocusFirstInvalid<HTMLFormElement>();
 
   if (status === 'not-configured') {
     return (
@@ -43,7 +49,8 @@ export function LoginPage() {
     event.preventDefault();
     const address = email.trim();
     if (!EMAIL_PATTERN.test(address)) {
-      setForm({ kind: 'error', message: copy.login.invalidEmail });
+      setForm({ kind: 'invalid' });
+      afterCheck();
       return;
     }
 
@@ -68,6 +75,7 @@ export function LoginPage() {
         </p>
       ) : (
         <form
+          ref={formRef}
           // The browser's own validation message is not plain English, so the
           // form checks the address itself and says it in its own words.
           noValidate
@@ -87,7 +95,10 @@ export function LoginPage() {
                   onChange={(event) => {
                     setEmail(event.target.value);
                   }}
-                  aria-describedby={`${id}-hint`}
+                  aria-invalid={form.kind === 'invalid' || undefined}
+                  aria-describedby={
+                    form.kind === 'invalid' ? `${errorId} ${id}-hint` : `${id}-hint`
+                  }
                 />
                 <p id={`${id}-hint`} className="text-sm text-ink-muted">
                   {copy.login.emailHint}
@@ -96,6 +107,11 @@ export function LoginPage() {
             )}
           </LabelledField>
 
+          {form.kind === 'invalid' && (
+            <p id={errorId} role="alert" className="text-danger">
+              {copy.login.invalidEmail}
+            </p>
+          )}
           {form.kind === 'error' && (
             <p role="alert" className="text-danger">
               {form.message}

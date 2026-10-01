@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import * as copy from '../copy/en';
 import {
   activeOwnCategories,
@@ -36,10 +37,22 @@ function ReservedCategoryRow({ category }: { category: Category }) {
 export function CategoryList({ categories, editor }: CategoryListProps) {
   const own = activeOwnCategories(categories);
   const reserved = categories.find(isReserved);
+  // The row just moved, set once the new order is in so it can take the keyboard back.
+  const [lastMove, setLastMove] = useState<{ key: string; direction: MoveDirection } | null>(
+    null,
+  );
 
   const move = (category: Category, direction: MoveDirection) => {
     const changes = moveCategory(categories, category.key, direction);
-    if (changes.length > 0) editor.run({ kind: 'move', label: category.label, changes });
+    if (changes.length === 0) return;
+    editor.run(
+      { kind: 'move', label: category.label, changes },
+      {
+        onSettled: () => {
+          setLastMove({ key: category.key, direction });
+        },
+      },
+    );
   };
 
   return (
@@ -50,10 +63,15 @@ export function CategoryList({ categories, editor }: CategoryListProps) {
           <CategoryRow
             key={category.key}
             category={category}
+            others={categories.filter((other) => other.key !== category.key)}
             canMoveUp={index > 0}
             canMoveDown={index < own.length - 1}
             onMove={(direction) => {
               move(category, direction);
+            }}
+            focusAfterMove={lastMove?.key === category.key ? lastMove.direction : null}
+            onMoveFocused={() => {
+              setLastMove(null);
             }}
             editor={editor}
           />

@@ -436,6 +436,30 @@ async def test_the_mailbox_is_never_sent_more_requests_at_once_than_it_accepts(
 
 
 @pytest.mark.asyncio
+async def test_two_threads_read_whole_never_exceed_what_the_mailbox_accepts(
+    secret_store: SecretStore,
+    clock: FixedClock,
+) -> None:
+    secret_store.put_secret(MICROSOFT_REFRESH_TOKEN, "old-long-lived-key")
+    first = [f"m-{number}" for number in range(GRAPH_CONCURRENT_REQUESTS * 2)]
+    second = [f"n-{number}" for number in range(GRAPH_CONCURRENT_REQUESTS * 2)]
+    in_flight = InFlight(body_answer)
+
+    with respx.mock:
+        mock_renewal()
+        respx.get(url__startswith=f"{MESSAGES_URL}/").mock(side_effect=in_flight)
+        authenticator = MicrosoftAuthenticator(secret_store, clock)
+        async with authenticator, GraphMailbox(authenticator) as mailbox:
+            threads = await gather_all([mailbox.fetch_bodies(first), mailbox.fetch_bodies(second)])
+
+    assert threads == [
+        [f"body of {message_id}" for message_id in first],
+        [f"body of {message_id}" for message_id in second],
+    ]
+    assert in_flight.peak == GRAPH_CONCURRENT_REQUESTS
+
+
+@pytest.mark.asyncio
 async def test_a_message_identifier_cannot_change_the_address_that_is_called(
     secret_store: SecretStore,
     clock: FixedClock,

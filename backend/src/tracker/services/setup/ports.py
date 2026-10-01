@@ -13,10 +13,12 @@ from typing import Protocol
 
 from pydantic import SecretStr
 
+from tracker.infrastructure.github_cli import GitHubRepository
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.microsoft.connection import MicrosoftAccess, ShowCode
+from tracker.infrastructure.smtp import SmtpAccount
 from tracker.services.database_structure import MigrationFile, StructureProbe
 from tracker.services.profile.choice import Choice, SavedChoice
 from tracker.shared.clock import Clock
@@ -155,6 +157,10 @@ class MailboxPort(Protocol):
         """Sign in read-only and count the inbox's messages since a moment."""
         ...
 
+    async def check_sending(self, account: SmtpAccount, password: SecretStr) -> None:
+        """Sign in to the summary's sending server, then leave without sending."""
+        ...
+
     async def save_password(self, access: StoreAccess, username: str, password: SecretStr) -> None:
         """Store an app password, encrypted."""
         ...
@@ -173,14 +179,14 @@ class ChoiceStore(Protocol):
 
 
 class GitHubPort(Protocol):
-    """The GitHub CLI: the repository's Actions secrets and variables."""
+    """The GitHub CLI: the repository and its Actions secrets and variables."""
 
     def ready(self) -> bool:
         """Tell whether the CLI is installed and signed in."""
         ...
 
-    def repository(self) -> str | None:
-        """Name the repository as ``owner/name``, or ``None`` when unknown."""
+    def repository(self) -> GitHubRepository | None:
+        """Describe the repository ``origin`` points at, or ``None`` when unknown."""
         ...
 
     def set_secret(self, repository: str, name: str, value: SecretStr) -> None:
@@ -189,6 +195,22 @@ class GitHubPort(Protocol):
 
     def set_variable(self, repository: str, name: str, value: str) -> None:
         """Save one variable."""
+        ...
+
+    def secret_names(self, repository: str) -> frozenset[str]:
+        """List the names of the repository's secrets."""
+        ...
+
+    def variable_names(self, repository: str) -> frozenset[str]:
+        """List the names of the repository's variables."""
+        ...
+
+    def delete_secret(self, repository: str, name: str) -> None:
+        """Delete one secret."""
+        ...
+
+    def delete_variable(self, repository: str, name: str) -> None:
+        """Delete one variable."""
         ...
 
     def create_private_copy(self, name: str) -> None:

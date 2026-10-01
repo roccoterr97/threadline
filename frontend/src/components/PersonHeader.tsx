@@ -1,5 +1,6 @@
 import * as copy from '../copy/en';
 import { categoryFor } from '../domain/categories';
+import { formatRoleLine } from '../lib/format';
 import type { Vocabulary } from '../domain/vocabulary';
 import type { PeopleOverviewRow } from '../types/database';
 import { Badge } from './Badge';
@@ -16,13 +17,11 @@ interface PersonHeaderProps {
 
 /** The person's name, role and organisation, with where things stand as badges. */
 export function PersonHeader({ person, vocabulary }: PersonHeaderProps) {
+  const roleLine = formatRoleLine(person.role_title, person.organisation_name);
   return (
     <div>
       <h1 className="text-2xl font-semibold text-ink">{person.full_name}</h1>
-      <p className="mt-1 text-ink-muted">
-        {person.role_title ?? copy.values.unknown}
-        {person.organisation_name !== null && ` · ${person.organisation_name}`}
-      </p>
+      {roleLine !== null && <p className="mt-1 text-ink-muted">{roleLine}</p>}
       <div
         role="group"
         aria-label={copy.person.stateGroupLabel}

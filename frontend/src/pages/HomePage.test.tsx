@@ -364,7 +364,7 @@ describe('HomePage — categories from the database', () => {
     const { user, container } = renderWithProviders(<HomePage />);
     await screen.findByRole('table', { name: copy.home.tableCaption });
 
-    const groups = ['Prospects', 'Customers', 'Partners', 'Referrers', 'Unknown'];
+    const groups = ['Prospects', 'Customers', 'Partners', 'Referrers', 'Not known'];
     expect(chipNames()).toEqual([copy.filterLabels.everyone, ...groups]);
     expect(gridColumnNames()).toEqual(groups);
 
@@ -383,8 +383,8 @@ describe('HomePage — categories from the database', () => {
     renderWithProviders(<HomePage />, { route: '/?type=member' });
     await screen.findByRole('table', { name: copy.home.tableCaption });
 
-    expect(chipNames()).toEqual([copy.filterLabels.everyone, 'Members', 'Unknown']);
-    expect(gridColumnNames()).toEqual(['Members', 'Unknown']);
+    expect(chipNames()).toEqual([copy.filterLabels.everyone, 'Members', 'Not known']);
+    expect(gridColumnNames()).toEqual(['Members', 'Not known']);
     expect(screen.getByRole('button', { name: 'Members' })).toHaveAttribute('aria-pressed', 'true');
     expect(shownPeople()).toBe(12);
   });

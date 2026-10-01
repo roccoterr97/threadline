@@ -83,17 +83,22 @@ Outlook-only set-ups). The design is described in
 
 | Item | What it is used for | Cost |
 |------|---------------------|------|
-| A [Supabase](https://supabase.com) project | The database and the dashboard sign-in | Free plan |
+| A Mac or a Linux computer with a terminal | Running the set-up once. Windows is not supported | – |
+| A paid Claude plan (Pro, Max or Team) | The Claude Code session that runs everything and does the judging. The daily run uses part of your plan's usage limits | Your existing subscription; no separate API key |
+| [Claude Code](https://code.claude.com/docs/en/setup), installed (check with `claude --version`) | Making the key that lets GitHub use your plan (`claude setup-token`) | Included in your plan |
+| A GitHub account (optional: the [GitHub CLI](https://cli.github.com), `gh`) | Your private copy of the code, and GitHub Actions, which starts the run every day. `gh` signs you in for the download and lets the set-up create your copy and save your settings | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
+| A [Supabase](https://supabase.com) project | The database and the dashboard sign-in. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
 | A [Vercel](https://vercel.com) account | Publishing the dashboard | Hobby plan, free for personal, non-commercial use |
-| A paid Claude plan (Pro, Max or Team) | The Claude Code session that runs everything and does the judging, through a key made with `claude setup-token` | Your existing subscription; no separate API key |
-| A GitHub account | Your private copy of the code, and GitHub Actions, which starts the run every day | Free (2,000 Actions minutes a month for private repositories; a month of runs uses about 150–300) |
 | At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any IMAP mailbox | The mail that is read (read-only). Gmail and the others need an app password, which also sends you the summary; Outlook needs a one-time sign-in | Free (Fastmail: a paid plan above Basic) |
 | *Optional:* a Microsoft personal account | The calendar, which is read from Outlook only for now | Free |
+| *Optional:* a LinkedIn developer app | Reading your LinkedIn messages; only for members located in the EEA or Switzerland (see below) | Free |
+| *Optional:* [Node.js](https://nodejs.org) 22 or newer | Only the manual way of switching on the dashboard's Refresh now button; also needed for the demo above | Free |
+| *Optional:* an Azure account | Only to use your own Microsoft application instead of the public one | Free |
 | *Only for the alternative route:* a Gmail account connected to Claude | Sending the summary from a Claude cloud routine, when you read Outlook alone | Free |
-| A LinkedIn developer app (optional) | Reading your LinkedIn messages | Free, but see the region limit below |
 
-Setting it up takes roughly an hour, most of it creating accounts and copying
-values from one screen to another.
+No other paid service is needed, unless you choose a paid mailbox such as
+Fastmail. Setting it up takes about an hour and a half the first time, most of
+it creating accounts and copying values from one screen to another.
 
 ### LinkedIn: only in the EEA and Switzerland
 
@@ -125,10 +130,13 @@ calendar entries are read as they are at the moment of the run.
    uv run tracker doctor
    ```
 
-4. The wizard ends with the daily time (`tracker setup schedule`), your
-   settings on GitHub (`tracker setup github`) and the dashboard's Refresh now
-   button (`tracker setup refresh`). Then start the first run by hand on
-   GitHub (**Actions → Threadline run → Run workflow**), as the setup guide
+4. The first time, answer **no** to "Is the dashboard published already?",
+   publish the dashboard on Vercel (part 7 of the guide), then run
+   `uv run tracker setup dashboard`. The steps after it are the daily time
+   (`tracker setup schedule`), your settings on GitHub
+   (`tracker setup github`) and the dashboard's Refresh now button
+   (`tracker setup refresh`). Then start the first run by hand on GitHub
+   (**Actions → Threadline run → Run workflow**), as the setup guide
    describes.
 
 Day-to-day operation — what to do when something fails, renewing the LinkedIn
@@ -147,9 +155,10 @@ information.
 | Command | What it does |
 |---------|--------------|
 | `tracker setup` | Guided setup that writes your `.env` |
-| `tracker setup mailbox` | Choose the mailbox to read; for Gmail and other IMAP mailboxes, check an app password live and store it encrypted |
+| `tracker setup <step>` | Re-run one step of the set-up. The steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `linkedin`, `dashboard`, `schedule`, `github`, `refresh` and `cloud` |
+| `tracker setup mailbox` | Choose the mailbox to read; for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
 | `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow; commit and push it only after a yes |
-| `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand |
+| `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. It only ever uses your own private copy |
 | `tracker setup refresh` | Switch on the dashboard's Refresh now button: deploy the `refresh-now` function and its settings through Supabase's Management API, with a GitHub key that can only start your workflow |
 | `tracker setup cloud` | The alternative route: what a Claude cloud routine needs |
 | `tracker doctor` | Check that every account and setting is in order |
@@ -170,6 +179,7 @@ information.
 | `tracker people list` | Show everybody the collectors have found, most recent first |
 | `tracker people merge` | Join the records you have confirmed are one person |
 | `tracker people link` | Ask about records that look like one person or one opportunity |
+| `tracker people tidy` | `people merge`, then `people link`, as one command; if one fails its code is printed and the other still runs — this is the command the daily run uses |
 | `tracker people untangle` | Split up records that were really a shared sender, such as a hiring system |
 
 Without `--since`, the first run reads the last 30 days and later runs continue
@@ -179,8 +189,8 @@ from the last successful run.
 
 | Command | What it does |
 |---------|--------------|
-| `tracker ai export [--limit N] [--batches DIR]` | Write one file per group of people who still need a verdict |
-| `tracker ai import [--results DIR] [--batches DIR]` | Check the verdict files, save the ones that pass, and delete the files it applied |
+| `tracker ai export [--limit N] [--batches DIR] [--results DIR] [--record] [--run ID]` | Write one file per group of people who still need a verdict, and make the directory their verdicts go in. `--record` also records the `assess` step of the run when there is nobody to assess |
+| `tracker ai import [--results DIR] [--batches DIR] [--record] [--run ID]` | Check the verdict files, save the ones that pass, and delete the files it applied. `--record` also records the `assess` step of the run: people assessed, and how many were sent to review |
 | `tracker ai status [--results DIR] [--batches DIR]` | Show what is waiting: people to judge, files to import, questions to answer |
 | `tracker ai clean` | Remove every exchanged file, including batches that were never answered |
 
@@ -192,9 +202,9 @@ calls an AI service.
 
 | Command | What it does |
 |---------|--------------|
-| `tracker profile choose [--preset NAME]` | Pick a preset, keep the suggested categories you use and add your own; saved to the database |
+| `tracker profile choose [--preset NAME] [--guide]` | Pick a preset, keep the suggested categories you use and add your own; saved to the database, and the assessment guide is rebuilt; `--guide PATH` chooses where it is written (default `docs/assessment-guide.md`) |
 | `tracker profile check [--file PATH \| --preset NAME]` | Check your profile (or a shipped preset) and print its suggested categories and stage labels; changes nothing |
-| `tracker profile apply [--file PATH] [--categories]` | Save the stage labels and suggestions and rebuild `docs/assessment-guide.md` from your categories; `--categories` also replaces your categories with the file's list |
+| `tracker profile apply [--file PATH] [--categories] [--guide PATH]` | Save the stage labels and suggestions and rebuild the assessment guide from your categories (written to `docs/assessment-guide.md`, or to `--guide PATH`); `--categories` also replaces your categories with the file's list |
 
 See [`docs/customising.md`](./docs/customising.md).
 
@@ -202,9 +212,9 @@ See [`docs/customising.md`](./docs/customising.md).
 
 | Command | What it does |
 |---------|--------------|
-| `tracker run start [--trigger github\|cloud\|refresh\|mac\|manual]` | Open today's run and print its identifier (default trigger: `cloud`) |
+| `tracker run start [--trigger github\|cloud\|refresh\|mac\|manual] [--prepare]` | Open today's run and print its identifier (default trigger: `cloud`). `--prepare` goes on to `tracker healthcheck` and `tracker profile apply` and ends with `ready: yes` or `ready: no` — this is how the daily run opens |
 | `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `assess` or `summary_email` |
-| `tracker run finish [--run ID]` | Close the run with the status its steps add up to |
+| `tracker run finish [--run ID] [--clean]` | Close the run with the status its steps add up to. `--clean` then removes the exchanged files, as `tracker ai clean` does — this is how the daily run closes |
 | `tracker summary build [--out PATH] [--run ID]` | Write the morning summary to a file, ready to send, and say how it is sent (`delivery: smtp` or `gmail_connector`) |
 | `tracker summary send [--file PATH] [--run ID]` | Send that file from your own mailbox by SMTP, exactly as built and only to your configured recipient, and record the step |
 
@@ -215,8 +225,8 @@ nothing.
 
 ## Customising
 
-Choose your categories on the dashboard's **Settings** page, or in the terminal
-with `tracker profile choose`. Categories, presets and wording are explained in
+Choose your categories on the dashboard's **Settings** page (it asks before
+removing one), or in the terminal with `tracker profile choose`. Categories, presets and wording are explained in
 [`docs/customising.md`](./docs/customising.md). What every status and
 waiting-on value means is defined in
 [`docs/assessment-guide.md`](./docs/assessment-guide.md).

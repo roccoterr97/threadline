@@ -172,6 +172,33 @@ describe('SettingsPage — adding', () => {
     expect(await screen.findByText(copy.categorySettings.done.added('Mentor'))).toBeInTheDocument();
   });
 
+  it('gives a suggestion a free colour when a category in use already has its own', async () => {
+    fetchSuggestionsMock.mockResolvedValue([{ ...MENTOR, colour: 'violet' }]);
+    const { user } = await renderSettings();
+    await user.click(screen.getByRole('button', { name: actions.addSuggestion('Mentor') }));
+
+    expect(addMock).toHaveBeenCalledWith({ ...MENTOR, colour: 'orange', sort_order: 40 });
+  });
+
+  it('starts "Add your own" on a colour nobody uses, and follows it until one is picked', async () => {
+    const { user } = await renderSettings();
+    const form = within(addSection());
+    expect(form.getByRole('radio', { name: 'Orange' })).toBeChecked();
+
+    // Mentor is added in orange somewhere else on the page.
+    fetchCategoriesMock.mockResolvedValue([
+      ...withArchived(sampleCategories, 'network'),
+      { ...MENTOR, colour: 'orange', sort_order: 40, archived_at: null },
+    ]);
+    await user.click(screen.getByRole('button', { name: actions.addSuggestion('Mentor') }));
+    await waitFor(() => {
+      expect(form.getByRole('radio', { name: 'Pink' })).toBeChecked();
+    });
+
+    await user.click(form.getByRole('radio', { name: 'Olive' }));
+    expect(form.getByRole('radio', { name: 'Olive' })).toBeChecked();
+  });
+
   it('adds a category of the owner\'s own, with a key made from its name', async () => {
     const { user } = await renderSettings();
     const form = within(addSection());
@@ -203,6 +230,71 @@ describe('SettingsPage — adding', () => {
 
     expect(form.getByRole('alert')).toHaveTextContent(
       copy.categoryDraftProblems.missing_description,
+    );
+    expect(addMock).not.toHaveBeenCalled();
+  });
+
+  it('marks the field at fault and moves the keyboard to it', async () => {
+    const { user } = await renderSettings();
+    const form = within(addSection());
+    await user.type(form.getByLabelText(fields.name), 'Customer');
+    await user.click(form.getByRole('button', { name: actions.add }));
+
+    const description = form.getByLabelText(fields.description);
+    expect(description).toHaveAttribute('aria-invalid', 'true');
+    expect(description).toHaveAccessibleDescription(copy.categoryDraftProblems.missing_description);
+    expect(description).toHaveFocus();
+    expect(form.getByLabelText(fields.name)).not.toHaveAttribute('aria-invalid');
+  });
+
+  it('counts the characters and says when a name is full', async () => {
+    const { user } = await renderSettings();
+    const form = within(addSection());
+    const length = copy.categorySettings.length;
+    const name = form.getByLabelText(fields.name);
+    await user.type(name, 'Key account');
+    expect(name).toHaveAccessibleDescription(length.count(11, 40));
+    expect(form.queryByText(length.atLimit(40))).not.toBeInTheDocument();
+
+    await user.clear(name);
+    await user.type(name, 'x'.repeat(45));
+    expect(name).toHaveValue('x'.repeat(40));
+    expect(form.getAllByText(length.atLimit(40))).toHaveLength(2);
+  });
+
+  it('keeps a long name\'s suggested group name within the limit', async () => {
+    const { user } = await renderSettings();
+    const form = within(addSection());
+    await user.type(form.getByLabelText(fields.name), 'x'.repeat(40));
+    await user.type(form.getByLabelText(fields.description), 'Long ones.');
+    expect(form.getByLabelText(fields.groupName)).toHaveValue('x'.repeat(40));
+    await user.click(form.getByRole('button', { name: actions.add }));
+
+    expect(addMock).toHaveBeenCalledWith(expect.objectContaining({ group_label: 'x'.repeat(40) }));
+  });
+
+  it('turns down a name another category already has, whatever its case', async () => {
+    const { user } = await renderSettings();
+    const form = within(addSection());
+    await user.type(form.getByLabelText(fields.name), 'startup');
+    await user.type(form.getByLabelText(fields.description), 'Founders.');
+    await user.click(form.getByRole('button', { name: actions.add }));
+
+    expect(form.getByRole('alert')).toHaveTextContent(copy.categoryDraftProblems.duplicate_name);
+    expect(addMock).not.toHaveBeenCalled();
+  });
+
+  it('turns down a group name a hidden category already has', async () => {
+    const { user } = await renderSettings();
+    const form = within(addSection());
+    await user.type(form.getByLabelText(fields.name), 'Contact');
+    await user.clear(form.getByLabelText(fields.groupName));
+    await user.type(form.getByLabelText(fields.groupName), 'network');
+    await user.type(form.getByLabelText(fields.description), 'People I know.');
+    await user.click(form.getByRole('button', { name: actions.add }));
+
+    expect(form.getByRole('alert')).toHaveTextContent(
+      copy.categoryDraftProblems.duplicate_group_name,
     );
     expect(addMock).not.toHaveBeenCalled();
   });
@@ -249,6 +341,23 @@ describe('SettingsPage — changing', () => {
     ).toBeInTheDocument();
   });
 
+  it('lets a category keep its own name but not take another one\'s', async () => {
+    const { user } = await renderSettings();
+    await user.click(screen.getByRole('button', { name: actions.changeLabel('Startup') }));
+    const row = within(screen.getByRole('button', { name: actions.save }).closest('li')!);
+
+    await user.clear(row.getByLabelText(fields.name));
+    await user.type(row.getByLabelText(fields.name), 'INVESTOR');
+    await user.click(row.getByRole('button', { name: actions.save }));
+    expect(row.getByRole('alert')).toHaveTextContent(copy.categoryDraftProblems.duplicate_name);
+    expect(updateMock).not.toHaveBeenCalled();
+
+    await user.clear(row.getByLabelText(fields.name));
+    await user.type(row.getByLabelText(fields.name), 'STARTUP');
+    await user.click(row.getByRole('button', { name: actions.save }));
+    expect(updateMock).toHaveBeenCalledWith('startup', expect.objectContaining({ label: 'STARTUP' }));
+  });
+
   it('moves a category up and saves the new order', async () => {
     const { user } = await renderSettings();
     expect(screen.getByRole('button', { name: actions.moveUpLabel('Startup') })).toBeDisabled();
@@ -260,10 +369,57 @@ describe('SettingsPage — changing', () => {
     ]);
   });
 
+  it('keeps the keyboard on the moved row once the new order is in', async () => {
+    const [startup, vc, network, unknown] = sampleCategories;
+    fetchCategoriesMock.mockResolvedValue(sampleCategories);
+    orderMock.mockImplementation(() => {
+      fetchCategoriesMock.mockResolvedValue([
+        { ...startup!, sort_order: 10 },
+        { ...network!, sort_order: 20 },
+        { ...vc!, sort_order: 30 },
+        unknown!,
+      ]);
+      return Promise.resolve();
+    });
+    const { user } = await renderSettings();
+
+    await user.click(screen.getByRole('button', { name: actions.moveUpLabel('Network') }));
+
+    expect(await screen.findByText(copy.categorySettings.done.moved('Network'))).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: actions.moveUpLabel('Network') })).toHaveFocus();
+    });
+    const items = within(screen.getByRole('region', { name: copy.categorySettings.yours }));
+    expect(items.getAllByRole('listitem')[1]).toHaveTextContent('Network');
+  });
+
+  it('moves the keyboard to the other move button when a row reaches the end', async () => {
+    const [startup, vc, , unknown] = sampleCategories;
+    orderMock.mockImplementation(() => {
+      fetchCategoriesMock.mockResolvedValue([
+        { ...vc!, sort_order: 10 },
+        { ...startup!, sort_order: 20 },
+        unknown!,
+      ]);
+      return Promise.resolve();
+    });
+    const { user } = await renderSettings();
+
+    await user.click(screen.getByRole('button', { name: actions.moveUpLabel('Investor') }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: actions.moveDownLabel('Investor') })).toHaveFocus();
+    });
+  });
+
   it('removes a category nobody has', async () => {
     const { user } = await renderSettings();
     const row = within(rowOf('Investor'));
     await user.click(row.getByRole('button', { name: actions.removeLabel('Investor') }));
+    expect(removeMock).not.toHaveBeenCalled();
+    const question = row.getByRole('group', { name: actions.removeConfirmTitle('Investor') });
+    expect(question).toHaveTextContent(actions.removeConfirmBody);
+    await user.click(within(question).getByRole('button', { name: actions.removeConfirm }));
 
     expect(removeMock).toHaveBeenCalledWith('vc', NOW);
     expect(
@@ -275,9 +431,19 @@ describe('SettingsPage — changing', () => {
     removeMock.mockResolvedValue(RemovalOutcome.Archived);
     const { user } = await renderSettings();
     await user.click(screen.getByRole('button', { name: actions.removeLabel('Startup') }));
+    await user.click(screen.getByRole('button', { name: actions.removeConfirm }));
     expect(
       await screen.findByText(copy.categorySettings.done.hiddenInstead('Startup')),
     ).toBeInTheDocument();
+  });
+
+  it('keeps a category when the owner thinks better of removing it', async () => {
+    const { user } = await renderSettings();
+    await user.click(screen.getByRole('button', { name: actions.removeLabel('Investor') }));
+    await user.click(screen.getByRole('button', { name: actions.removeCancel }));
+
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: actions.removeLabel('Investor') })).toHaveFocus();
   });
 
   it('shows a hidden category again', async () => {

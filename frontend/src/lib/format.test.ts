@@ -3,12 +3,14 @@ import * as copy from '../copy/en';
 import { NOW } from '../test/__fixtures__/sampleData';
 import { fixedClock } from './clock';
 import {
+  describeStepCounts,
   explainRunError,
   explainRunTrigger,
   formatClockTime,
   formatDate,
   formatDuration,
   formatRelative,
+  formatRoleLine,
   formatWeekday,
 } from './format';
 
@@ -103,7 +105,44 @@ describe('explainRunTrigger', () => {
     expect(explainRunTrigger('manual')).toBe(copy.runTriggerLabels.manual);
   });
 
+  it('never names the service behind the schedule', () => {
+    for (const trigger of ['cloud', 'github']) {
+      expect(explainRunTrigger(trigger)).toBe('the daily schedule');
+    }
+  });
+
   it('does not echo a value it does not recognise', () => {
     expect(explainRunTrigger('some_future_thing')).toBe(copy.runTriggerFallback);
+  });
+});
+
+describe('formatRoleLine', () => {
+  it.each([
+    ['Founder', 'Acme', 'Founder · Acme'],
+    ['Founder', null, 'Founder'],
+    [null, 'Acme', 'Acme'],
+    [null, null, null],
+    ['', null, null],
+  ])('joins %j and %j as %j', (role, organisation, expected) => {
+    expect(formatRoleLine(role, organisation)).toBe(expected);
+  });
+});
+
+describe('describeStepCounts', () => {
+  it('shows what a reading step found and how much was new', () => {
+    expect(describeStepCounts({ step: 'collect_email', items_found: 12, items_new: 3 })).toEqual([
+      '12 found',
+      '3 new',
+    ]);
+    expect(describeStepCounts({ step: 'assess', items_found: null, items_new: null })).toEqual([]);
+  });
+
+  it('says the morning e-mail was sent rather than "1 found, 1 new"', () => {
+    expect(describeStepCounts({ step: 'summary_email', items_found: 1, items_new: 1 })).toEqual([
+      copy.runs.emailSent,
+    ]);
+    expect(describeStepCounts({ step: 'summary_email', items_found: 0, items_new: 0 })).toEqual(
+      [],
+    );
   });
 });

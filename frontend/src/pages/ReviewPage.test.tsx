@@ -1,12 +1,13 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fetchPeople } from '../api/people';
 import { answerReviewItem, fetchOpenReviewItems } from '../api/review';
 import { AppLayout } from '../components/AppLayout';
 import * as copy from '../copy/en';
 import { DataUnavailableError } from '../lib/errors';
 import { expectNoAxeViolations } from '../test/axe';
-import { NOW, sampleReviewItems } from '../test/__fixtures__/sampleData';
+import { NOW, samplePeople, sampleReviewItems } from '../test/__fixtures__/sampleData';
 import { renderWithProviders } from '../test/renderWithProviders';
 import { ReviewPage } from './ReviewPage';
 
@@ -16,12 +17,19 @@ vi.mock('../api/review', async (importOriginal) => ({
   answerReviewItem: vi.fn(),
 }));
 
+vi.mock('../api/people', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/people')>()),
+  fetchPeople: vi.fn(),
+}));
+
 const fetchItemsMock = vi.mocked(fetchOpenReviewItems);
+const fetchPeopleMock = vi.mocked(fetchPeople);
 const answerMock = vi.mocked(answerReviewItem);
 
 const [FIRST_ITEM, SECOND_ITEM] = sampleReviewItems;
 
 beforeEach(() => {
+  fetchPeopleMock.mockResolvedValue(samplePeople);
   fetchItemsMock.mockResolvedValue(sampleReviewItems);
   answerMock.mockResolvedValue(undefined);
 });
@@ -68,6 +76,40 @@ describe('ReviewPage — answering', () => {
       expect(screen.queryByText(FIRST_ITEM!.question)).not.toBeInTheDocument();
     });
     expect(screen.getByText(SECOND_ITEM!.question)).toBeInTheDocument();
+    expect(await screen.findByRole('status')).toHaveTextContent(copy.review.answered.relevance.yes);
+  });
+
+  it('says what happens next after each kind of answer', async () => {
+    const { user } = renderWithProviders(<ReviewPage />);
+    const secondCard = (await screen.findAllByRole('listitem'))[1]!;
+    await user.click(within(secondCard).getByRole('button', { name: copy.review.no }));
+
+    expect(await screen.findByText(copy.review.answered.same_person.no)).toBeInTheDocument();
+  });
+
+  it('styles neither answer as the expected one and ties each to its question', async () => {
+    renderWithProviders(<ReviewPage />);
+    const firstCard = (await screen.findAllByRole('listitem'))[0]!;
+    const yes = within(firstCard).getByRole('button', { name: copy.review.yes });
+    const no = within(firstCard).getByRole('button', { name: copy.review.no });
+
+    expect(yes).toHaveAccessibleDescription(FIRST_ITEM!.question);
+    expect(no).toHaveAccessibleDescription(FIRST_ITEM!.question);
+    expect(yes.className).toBe(no.className);
+  });
+
+  it('links each question to the people it names who are on the list', async () => {
+    fetchPeopleMock.mockResolvedValue(samplePeople.filter((p) => p.person_id !== 'p-09'));
+    renderWithProviders(<ReviewPage />);
+    const [first, second] = await screen.findAllByRole('listitem');
+
+    expect(
+      await within(first!).findByRole('link', { name: copy.home.openPerson('Hugo Prieto') }),
+    ).toHaveAttribute('href', '/people/p-08');
+    expect(within(second!).getAllByRole('link')).toHaveLength(1);
+    expect(
+      within(second!).getByRole('link', { name: copy.home.openPerson('Carla Mendes') }),
+    ).toHaveAttribute('href', '/people/p-03');
   });
 
   it('sends "no" when the owner says no', async () => {

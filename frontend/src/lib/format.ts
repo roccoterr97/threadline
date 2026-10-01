@@ -1,4 +1,5 @@
 import * as copy from '../copy/en';
+import type { RunStepLogRow } from '../types/database';
 import type { Clock } from './clock';
 
 const LOCALE = 'en-GB';
@@ -85,6 +86,34 @@ export function formatDuration(startedAt: string, finishedAt: string | null): st
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return minutes === 0 ? `${seconds}s` : `${minutes}m ${seconds}s`;
+}
+
+/**
+ * "Role · Organisation" with whatever is known, or null when neither is.
+ * A missing part is left out rather than shown as "Not known", which the
+ * category chip next to it may already say.
+ */
+export function formatRoleLine(role: string | null, organisation: string | null): string | null {
+  const parts = [role, organisation].filter((part): part is string => part !== null && part !== '');
+  return parts.length === 0 ? null : parts.join(' · ');
+}
+
+/**
+ * The short counts shown after a run step, such as "12 found" and "3 new".
+ * The morning e-mail step stores a count of one for the one e-mail it sent,
+ * which reads as nonsense ("1 found, 1 new"), so it just says "sent".
+ */
+export function describeStepCounts(
+  step: Pick<RunStepLogRow, 'step' | 'items_found' | 'items_new'>,
+): string[] {
+  if (step.step === 'summary_email') {
+    const sent = (step.items_new ?? 0) > 0 || (step.items_found ?? 0) > 0;
+    return sent ? [copy.runs.emailSent] : [];
+  }
+  const counts: string[] = [];
+  if (step.items_found !== null) counts.push(`${step.items_found} ${copy.runs.found}`);
+  if (step.items_new !== null) counts.push(`${step.items_new} ${copy.runs.new}`);
+  return counts;
 }
 
 /** Turns a stored error code into something the owner can act on. */

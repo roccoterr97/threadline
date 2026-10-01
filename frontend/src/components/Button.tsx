@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger';
 
@@ -8,7 +8,7 @@ const VARIANT_CLASSES: Record<ButtonVariant, string> = {
   danger: 'bg-danger-soft text-danger border border-danger hover:opacity-90',
 };
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ComponentProps<'button'> {
   variant?: ButtonVariant;
   children: ReactNode;
 }

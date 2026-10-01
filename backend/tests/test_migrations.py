@@ -14,14 +14,28 @@ from typing import Final
 import pytest
 
 from tests.assessment_world import CATEGORIES
-from tracker.domain.categories import ColourSlot
+from tests.setup_world import FakeAdmin
+from tracker.domain.categories import UNKNOWN_CATEGORY, ColourSlot
 from tracker.domain.enums import ContactStatus, RunTrigger
-from tracker.services.database_structure import KNOWN_MIGRATIONS, EnumValueProbe
+from tracker.services.database_structure import (
+    KNOWN_MIGRATIONS,
+    ColumnsProbe,
+    EnumColumnProbe,
+    MigrationFile,
+    inspect_structure,
+)
 from tracker.shared.config import REPOSITORY_ROOT
 
 MIGRATIONS: Final = REPOSITORY_ROOT / "supabase" / "migrations"
 CATEGORIES_SQL: Final[str] = (MIGRATIONS / "0009_categories.sql").read_text(encoding="utf-8")
 STATUS_SQL: Final[str] = (MIGRATIONS / "0010_status_in_process.sql").read_text(encoding="utf-8")
+NAMES_SQL: Final[str] = (MIGRATIONS / "0015_category_names.sql").read_text(encoding="utf-8")
+CATEGORY_SETTINGS: Final[str] = (
+    REPOSITORY_ROOT / "frontend" / "src" / "domain" / "categorySettings.ts"
+).read_text(encoding="utf-8")
+
+#: The reserved category's group name as 0009 seeded it, before 0015.
+SEEDED_UNKNOWN_GROUP: Final[str] = "Unknown"
 
 
 def _statement(sql: str, start: str) -> str:
@@ -103,7 +117,9 @@ def test_the_seed_is_the_job_search_list_the_code_expects() -> None:
     seed = _statement(CATEGORIES_SQL, "insert into public.categories")
 
     for record in CATEGORIES:
-        assert f"'{record.key}', '{record.label}', '{record.group_label}'" in seed
+        # 0015 renames the reserved row's group; the seed keeps the old word.
+        seeded_group = SEEDED_UNKNOWN_GROUP if record.key == "unknown" else record.group_label
+        assert f"'{record.key}', '{record.label}', '{seeded_group}'" in seed
         assert f"'{record.description}'" in seed
         assert f"'{record.colour.value}', {record.sort_order})" in seed
 
@@ -125,6 +141,101 @@ def test_the_run_trigger_type_lists_every_trigger_python_records() -> None:
 
 
 def test_the_refresh_trigger_can_be_seen_from_outside() -> None:
-    assert KNOWN_MIGRATIONS["0012_refresh_trigger"] == EnumValueProbe(
-        "run_logs", "trigger", RunTrigger.REFRESH.value
+    assert KNOWN_MIGRATIONS["0012_refresh_trigger"] == EnumColumnProbe("run_logs", "trigger")
+
+
+def test_the_refresh_trigger_is_missing_while_the_column_is_still_text() -> None:
+    admin = FakeAdmin(present=set(KNOWN_MIGRATIONS) - {"0012_refresh_trigger"})
+    files = (MigrationFile("0012_refresh_trigger", MIGRATIONS / "0012_refresh_trigger.sql"),)
+
+    report = inspect_structure(files, admin)
+
+    # Filtering a text column by 'refresh' raises nothing, which is why the
+    # probe must ask whether the column refuses an unlisted value instead.
+    assert admin.accepts_value("run_logs", "trigger", RunTrigger.REFRESH.value) is True
+    assert report.missing == ("0012_refresh_trigger",)
+
+
+def test_the_refresh_trigger_is_present_once_the_column_is_an_enum() -> None:
+    files = (MigrationFile("0012_refresh_trigger", MIGRATIONS / "0012_refresh_trigger.sql"),)
+
+    report = inspect_structure(files, FakeAdmin())
+
+    assert report.present == ("0012_refresh_trigger",)
+
+
+COOLDOWN_SQL: Final[str] = (MIGRATIONS / "0014_refresh_cooldown.sql").read_text(encoding="utf-8")
+REFRESH_FUNCTION: Final[str] = (
+    REPOSITORY_ROOT / "supabase" / "functions" / "refresh-now" / "refresh.ts"
+).read_text(encoding="utf-8")
+
+
+def test_the_database_and_the_function_agree_on_the_cool_down() -> None:
+    in_function = re.search(r"REFRESH_COOLDOWN_MINUTES = (\d+);", REFRESH_FUNCTION)
+    in_database = re.search(r"set default \(now\(\) \+ interval '(\d+) minutes'\)", COOLDOWN_SQL)
+
+    assert in_function is not None
+    assert in_database is not None
+    assert in_function.group(1) == in_database.group(1)
+
+
+def test_only_one_request_can_hold_the_cool_down() -> None:
+    constraint = _statement(COOLDOWN_SQL, "add constraint refresh_requests_one_per_cooldown")
+
+    exclusion = "exclude using gist (tstzrange(requested_at, cooldown_until, '[)') with &&)"
+    assert exclusion in constraint
+
+
+def test_the_owner_may_withdraw_a_request_but_never_set_its_cool_down() -> None:
+    assert "for delete to authenticated using (public.is_app_owner());" in COOLDOWN_SQL
+    grants = [line for line in COOLDOWN_SQL.splitlines() if line.startswith("grant ")]
+    assert grants == ["grant delete on public.refresh_requests to authenticated;"]
+
+
+def test_the_function_claims_the_cool_down_before_it_asks_the_runner() -> None:
+    handler = REFRESH_FUNCTION[REFRESH_FUNCTION.index("export async function handleRefresh") :]
+
+    assert handler.index("await claim(") < handler.index("await dispatch(")
+    assert "'23P01'" in REFRESH_FUNCTION
+
+
+def test_the_cool_down_column_shows_whether_0014_is_applied() -> None:
+    assert KNOWN_MIGRATIONS["0014_refresh_cooldown"] == ColumnsProbe(
+        "refresh_requests", "cooldown_until"
     )
+
+
+@pytest.mark.parametrize("column", ["label", "group_label"])
+def test_names_are_unique_ignoring_capitals_and_spaces(column: str) -> None:
+    index = _statement(NAMES_SQL, f"create unique index if not exists categories_{column}_unique")
+
+    assert f"on public.categories (lower(btrim({column})))" in index
+
+
+@pytest.mark.parametrize("column", ["label", "group_label"])
+def test_the_dashboard_knows_which_name_an_index_guards(column: str) -> None:
+    assert f"'categories_{column}_unique'" in CATEGORY_SETTINGS
+
+
+def test_clashing_names_are_told_apart_before_the_indexes_exist() -> None:
+    assert NAMES_SQL.index("array['label', 'group_label']") < NAMES_SQL.index("create unique index")
+
+
+def test_only_the_seeded_group_name_of_the_reserved_row_is_replaced() -> None:
+    update = _statement(NAMES_SQL, "update public.categories\n       set group_label")
+
+    assert f"set group_label = '{UNKNOWN_CATEGORY.group_label}'" in update
+    assert f"and group_label = '{SEEDED_UNKNOWN_GROUP}'" in update
+
+
+def test_the_guard_is_back_on_in_the_same_statement_that_turned_it_off() -> None:
+    block = NAMES_SQL[NAMES_SQL.index("do $$") : NAMES_SQL.index("$$;") + 3]
+
+    assert block.count("disable trigger categories_guard") == 1
+    assert block.index("disable trigger categories_guard") < block.index(
+        "enable trigger categories_guard"
+    )
+
+
+def test_unique_indexes_cannot_be_seen_from_outside() -> None:
+    assert KNOWN_MIGRATIONS["0015_category_names"] is None

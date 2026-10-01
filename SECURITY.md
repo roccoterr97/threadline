@@ -10,10 +10,17 @@ Only the latest release on the `main` branch receives security fixes.
 
 ## Reporting a vulnerability
 
-Please report it privately: open the repository on GitHub, go to the
-**Security** tab and click **Report a vulnerability**. Do not open a public
-issue, and do not include real messages, keys or anybody's personal data in the
-report; a description and the steps to reproduce with made-up data are enough.
+Please report it privately, through GitHub:
+
+1. Open <https://github.com/roccoterr97/threadline>.
+2. Click the **Security** tab, then **Report a vulnerability**.
+3. Describe the problem and the steps to reproduce it. Use made-up data: do
+   not include real messages, keys or anybody's personal data.
+
+If you do not see the **Report a vulnerability** button, open a normal issue
+that only asks for a private way to get in touch, without any details of the
+problem. The maintainer will reply with a private contact. Do not describe the
+vulnerability in a public issue.
 
 The project is maintained by one person, so reports are handled on a
 best-effort basis. Once a fix is released, the advisory is published with

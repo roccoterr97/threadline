@@ -17,9 +17,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import threading
-from collections.abc import Callable
+from collections import defaultdict
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from itertools import batched
 from types import TracebackType
 from typing import Final, Self
 
@@ -34,6 +36,7 @@ from tracker.infrastructure.imap.session import Folder, ImapSession, quote
 from tracker.infrastructure.imap.threads import MESSAGE_KEY, ThreadFacts, thread_keys
 from tracker.shared.constants.mailbox import (
     GMAIL_EXTENSION_CAPABILITY,
+    IMAP_BODY_BATCH_SIZE,
     IMAP_FETCH_BATCH_SIZE,
     IMAP_INBOX,
     IMAP_MAX_FETCH_BYTES,
@@ -42,9 +45,9 @@ from tracker.shared.constants.mailbox import (
     IMAP_MONTHS,
     IMAP_SENT_ATTRIBUTE,
     IMAP_SENT_FOLDER_NAMES,
+    IMAP_SINCE_SLACK_DAYS,
     MAX_BODY_CHARACTERS,
 )
-from tracker.shared.errors import SourceUnavailableError
 from tracker.shared.logging import get_logger
 
 #: Characters of a hash kept in an identifier: 128 bits, far beyond any collision.
@@ -141,10 +144,11 @@ class ImapMailbox:
             since: Start of the window, in UTC.
 
         Returns:
-            One entry per message, without bodies.
+            One entry per message, without bodies; only the newest
+            :data:`IMAP_MAX_MESSAGES_PER_FOLDER` of a folder when it holds more.
 
         Raises:
-            SourceUnavailableError: If a folder holds more messages than a run reads.
+            SourceUnavailableError: If the server could not be reached.
         """
         return await self._alone(lambda: self._list_since(since))
 
@@ -168,7 +172,20 @@ class ImapMailbox:
         Returns:
             The body text, empty when the message cannot be found again.
         """
-        return await self._alone(lambda: self._body(message_id))
+        [body] = await self.fetch_bodies([message_id])
+        return body
+
+    async def fetch_bodies(self, message_ids: Sequence[str]) -> list[str]:
+        """Read several messages' bodies as plain text, with one command per folder.
+
+        Args:
+            message_ids: Identifiers this reader returned earlier in the run.
+
+        Returns:
+            One body per identifier, in the order asked; empty for a message
+            that cannot be found again.
+        """
+        return await self._alone(lambda: self._bodies(message_ids))
 
     async def survey(self, since: datetime) -> MailboxSurvey:
         """Count the inbox's messages in a window and name the Sent folder.
@@ -219,7 +236,7 @@ class ImapMailbox:
         """Read the window's headers from every folder."""
         seen: list[_Seen] = []
         for folder, in_sent in self._folders:
-            for found in self._read_folder(folder, in_sent, ("SINCE", imap_date(since))):
+            for found in self._read_folder(folder, in_sent, _since_search(since)):
                 arrived = found.record.internal_date
                 if arrived is None or arrived >= since:
                     seen.append(found)
@@ -240,33 +257,46 @@ class ImapMailbox:
                     members.setdefault(message.message_id, message)
         return list(members.values())
 
-    def _body(self, message_id: str) -> str:
-        """Fetch and decode one message's body."""
-        location = self._locations.get(message_id)
-        if location is None:
-            return ""
-        self._session.examine(location.folder)
-        records = self._session.fetch([location.uid], _BODY_ITEMS)
-        if not records:
-            return ""
-        return extract_body(records[0].literal, MAX_BODY_CHARACTERS)
+    def _bodies(self, message_ids: Sequence[str]) -> list[str]:
+        """Fetch and decode several messages' bodies, folder by folder."""
+        locations = [self._locations.get(message_id) for message_id in message_ids]
+        uids_by_folder: dict[str, set[int]] = defaultdict(set)
+        for location in locations:
+            if location is not None:
+                uids_by_folder[location.folder].add(location.uid)
+        # The folder that is already open is read first: it costs no EXAMINE.
+        open_folder = self._session.open_folder
+        found: dict[_Location, str] = {}
+        for folder in sorted(uids_by_folder, key=lambda name: name != open_folder):
+            found.update(self._folder_bodies(folder, sorted(uids_by_folder[folder])))
+        return [found.get(location, "") if location is not None else "" for location in locations]
+
+    def _folder_bodies(self, folder: str, uids: Sequence[int]) -> dict[_Location, str]:
+        """Fetch and decode the bodies of some messages of one folder."""
+        self._session.examine(folder)
+        # A server answers in the order it likes and may add a line about a
+        # message's flags; only an answer carrying a message, matched by its
+        # UID, is that message's body.
+        return {
+            _Location(folder, record.uid): extract_body(record.literal, MAX_BODY_CHARACTERS)
+            for record in self._fetch(uids, _BODY_ITEMS, IMAP_BODY_BATCH_SIZE)
+            if record.literal
+        }
 
     def _read_folder(self, folder: str, in_sent: bool, criteria: tuple[str, ...]) -> list[_Seen]:
         """Search one folder and fetch the headers of what matched."""
         self._session.examine(folder)
-        uids = self._session.search(*criteria)
-        if len(uids) > IMAP_MAX_MESSAGES_PER_FOLDER:
-            message = f"a folder holds more than {IMAP_MAX_MESSAGES_PER_FOLDER} messages to read"
-            raise SourceUnavailableError(message)
+        uids = _newest(self._session.search(*criteria), in_sent=in_sent)
         items = _GMAIL_METADATA_ITEMS if self._gmail else _METADATA_ITEMS
-        seen: list[_Seen] = []
-        for start in range(0, len(uids), IMAP_FETCH_BATCH_SIZE):
-            batch = uids[start : start + IMAP_FETCH_BATCH_SIZE]
-            seen.extend(
-                _Seen(folder, in_sent, record, parse_headers(record.literal))
-                for record in self._session.fetch(batch, items)
-            )
-        return seen
+        return [
+            _Seen(folder, in_sent, record, parse_headers(record.literal))
+            for record in self._fetch(uids, items, IMAP_FETCH_BATCH_SIZE)
+        ]
+
+    def _fetch(self, uids: Sequence[int], items: str, per_command: int) -> Iterator[FetchRecord]:
+        """Fetch items for messages of the open folder, a bounded number per command."""
+        for batch in batched(uids, per_command):
+            yield from self._session.fetch(batch, items)
 
     def _place(self, seen: list[_Seen]) -> list[MailMessage]:
         """Give each message its identifiers and thread, and remember where it is."""
@@ -324,6 +354,30 @@ class ImapMailbox:
         return identifier
 
 
+def _newest(uids: list[int], *, in_sent: bool) -> list[int]:
+    """Keep only the newest messages a search found, when it found too many.
+
+    UIDs grow as mail arrives, so the highest ones are the newest. Reading the
+    newest few thousand beats giving up on the whole folder.
+
+    Args:
+        uids: The matching UIDs, in ascending order.
+        in_sent: Whether they are from the Sent folder; only logged.
+
+    Returns:
+        At most :data:`IMAP_MAX_MESSAGES_PER_FOLDER` UIDs, the highest ones.
+    """
+    if len(uids) <= IMAP_MAX_MESSAGES_PER_FOLDER:
+        return uids
+    _log.warning(
+        "imap_folder_capped",
+        in_sent=in_sent,
+        matched=len(uids),
+        read=IMAP_MAX_MESSAGES_PER_FOLDER,
+    )
+    return uids[-IMAP_MAX_MESSAGES_PER_FOLDER:]
+
+
 def find_sent_folder(folders: list[Folder]) -> str | None:
     """Find the folder the owner's sent mail is kept in.
 
@@ -348,6 +402,15 @@ def find_sent_folder(folders: list[Folder]) -> str | None:
         (by_name[name.lower()] for name in IMAP_SENT_FOLDER_NAMES if name.lower() in by_name),
         None,
     )
+
+
+def _since_search(since: datetime) -> tuple[str, str]:
+    """The SEARCH keys for a window, a day wide of its start.
+
+    The server compares dates in its own time zone, so the search starts a day
+    earlier; the caller keeps only what arrived at or after ``since``.
+    """
+    return ("SINCE", imap_date(since - timedelta(days=IMAP_SINCE_SLACK_DAYS)))
 
 
 def imap_date(moment: datetime) -> str:

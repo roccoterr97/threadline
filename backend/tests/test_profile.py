@@ -13,8 +13,15 @@ from typer.testing import CliRunner
 from tests.assessment_world import CATEGORIES, make_override, make_person, seed
 from tests.conftest import FakeSupabaseClient, as_client
 from tracker.cli.main import build_cli
-from tracker.domain.categories import UNKNOWN_CATEGORY_KEY, Category, ColourSlot, key_for
+from tracker.domain.categories import (
+    UNKNOWN_CATEGORY,
+    UNKNOWN_CATEGORY_KEY,
+    Category,
+    ColourSlot,
+    key_for,
+)
 from tracker.domain.enums import ContactStatus
+from tracker.domain.models import CategoryRecord
 from tracker.domain.profile import Profile
 from tracker.repositories import Repositories, build_repositories
 from tracker.services.profile.applier import ProfileApplier
@@ -130,9 +137,7 @@ def test_the_committed_guide_is_the_job_search_rendering() -> None:
     profile = read_profile(preset_path("job_search"))
     seeded = [record.to_category() for record in CATEGORIES]
 
-    rendered = render_guide(
-        _template(), profile, seeded, template_name=GUIDE_TEMPLATE_FILE.name
-    )
+    rendered = render_guide(_template(), profile, seeded, template_name=GUIDE_TEMPLATE_FILE.name)
 
     assert GUIDE_FILE.read_text(encoding="utf-8") == rendered
 
@@ -447,6 +452,20 @@ def test_unknown_is_kept_even_when_the_new_list_leaves_it_out(
     assert UNKNOWN_CATEGORY_KEY in repositories.categories.active_keys()
 
 
+def test_the_reserved_row_is_never_written_because_the_database_refuses_changes(
+    applier: ProfileApplier,
+    repositories: Repositories,
+) -> None:
+    seed(repositories)
+    before_0015 = UNKNOWN_CATEGORY.model_copy(update={"group_label": "Unknown"})
+    repositories.categories.save([CategoryRecord.of(before_0015)])
+
+    applier.replace_categories(_preset("networking").all_categories())
+
+    unknown = next(r for r in repositories.categories.list_all() if r.key == UNKNOWN_CATEGORY_KEY)
+    assert unknown.group_label == "Unknown"
+
+
 def test_replacing_twice_keeps_the_first_archive_date_and_the_row_ids(
     repositories: Repositories,
 ) -> None:
@@ -516,7 +535,7 @@ def test_profile_check_prints_the_categories_without_a_database() -> None:
 
     assert result.exit_code == 0, result.output
     assert "investor: Investor (Investors) · cyan" in result.output
-    assert "unknown: Not known (Unknown) · grey · always there" in result.output
+    assert "unknown: Not known · grey · always there" in result.output
     assert "in_process: In due diligence" in result.output
 
 
@@ -587,9 +606,7 @@ def test_profile_choose_keeps_some_suggestions_adds_one_and_remembers_the_preset
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        "tracker.cli.commands.profile.PROFILE_FILE", tmp_path / "no-profile.toml"
-    )
+    monkeypatch.setattr("tracker.cli.commands.profile.PROFILE_FILE", tmp_path / "no-profile.toml")
     guide = tmp_path / "guide.md"
     answers = "\n".join(
         [
@@ -645,8 +662,24 @@ def test_a_bad_colour_is_asked_again(
     tmp_path: Path,
 ) -> None:
     answers = "\n".join(
-        ["3", "n", "n", "n", "n", "y", "Supplier", "", "Sells to us.", "gold", "Supplier", "",
-         "Sells to us.", "brown", "n", "y"]
+        [
+            "3",
+            "n",
+            "n",
+            "n",
+            "n",
+            "y",
+            "Supplier",
+            "",
+            "Sells to us.",
+            "gold",
+            "Supplier",
+            "",
+            "Sells to us.",
+            "brown",
+            "n",
+            "y",
+        ]
     )
 
     result = CliRunner().invoke(

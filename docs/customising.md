@@ -45,9 +45,9 @@ If you choose nothing, Threadline uses `job_search`.
    categories**, each with its colour, and **Not known** at the end.
 
 3. **Keep only what you use.** Next to a category you do not need, press
-   **Remove**.
+   **Remove**. The dashboard asks you to confirm before it removes anything.
 
-   ✅ Check: it disappears from the list. If some people already had it, it
+   ✅ Check: after you confirm, it disappears from the list. If some people already had it, it
    moves to **Hidden categories** instead, and those people keep it.
 
 4. **Add a suggestion.** Under **Suggestions**, press the one you want, for
@@ -75,8 +75,12 @@ If you choose nothing, Threadline uses `job_search`.
    ✅ Check: the next morning, new conversations are sorted into your new
    categories. People you corrected by hand keep what you set.
 
-You can have up to eight categories besides **Not known**. A category that is
-hidden because people still have it can be brought back with **Show again**.
+You can have up to eight categories besides **Not known**. Two categories
+cannot have the same name or the same name for a group, whatever the capitals
+("customer" and "Customer" count as the same): the page refuses the second one
+and says why. A
+category that is hidden because people still have it can be brought back with
+**Show again**.
 
 ---
 
@@ -150,8 +154,8 @@ for the AI and the suggested categories — can be edited in a text file.
    `uv run tracker profile apply --categories`.
 
 4. **Commit `profile/profile.toml` to your own copy of the project.** The daily
-   run happens in a cloud session that opens your repository; a file that only
-   exists on your computer never reaches it.
+   run happens on GitHub (or in a Claude cloud routine), from your repository;
+   a file that only exists on your computer never reaches it.
 
 When `profile/profile.toml` exists, it wins over a preset chosen with
 `tracker profile choose`.

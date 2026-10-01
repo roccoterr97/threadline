@@ -8,6 +8,7 @@ import { ComingUp } from '../components/ComingUp';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { HeadlineCounters } from '../components/HeadlineCounters';
+import { HiddenPersonNotice } from '../components/HiddenPersonNotice';
 import { LoadingState } from '../components/LoadingState';
 import { PeopleFilters } from '../components/PeopleFilters';
 import { PeopleTable } from '../components/PeopleTable';
@@ -27,11 +28,13 @@ import {
   type TypeFilter,
 } from '../domain/peopleView';
 import { assessRunHealth } from '../domain/runHealth';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
 
 /** The home screen: how things stand, then everyone, filtered and sorted. */
 export function HomePage() {
+  usePageTitle(copy.home.title);
   const clock = useClock();
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -65,6 +68,8 @@ export function HomePage() {
         <h1 className="text-2xl font-semibold text-ink">{copy.home.title}</h1>
         <p className="mt-1 text-ink-muted">{copy.home.subtitle}</p>
       </div>
+
+      <HiddenPersonNotice />
 
       {runs.isSuccess && <RunBanner health={assessRunHealth(runs.data, clock)} clock={clock} />}
 

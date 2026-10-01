@@ -127,7 +127,11 @@ class ProfileApplier:
         ]
         self._repositories.categories.save(archived)
         self._repositories.categories.delete_by_keys(unused)
-        self._repositories.categories.save(wanted)
+        # The database seeds `unknown` and refuses any change to it, so writing
+        # it would only fail once its words and this copy's differ.
+        self._repositories.categories.save(
+            [record for record in wanted if record.key != UNKNOWN_CATEGORY_KEY]
+        )
         changes = CategoryChanges(
             saved=tuple(record.key for record in wanted),
             archived=tuple(row.key for row in archived),

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { fetchRunSince, refreshRunQueryKey, requestRefresh } from '../api/refresh';
+import { REFRESH_DONE_SHOWN_MS } from '../constants/dashboard';
 import {
   nextCheckDelay,
   refreshProgress,
@@ -46,6 +47,9 @@ export function useRefreshNow(): RefreshNow {
   const outcome = mutation.data;
   const watched = useRefreshWatch(outcome?.kind === 'started' ? outcome : null);
   const finishedRunId = watched?.progress.kind === 'finished' ? watched.run?.id : undefined;
+  const finishedWell =
+    watched?.progress.kind === 'finished' && watched.progress.runStatus === 'success';
+  const { reset } = mutation;
 
   useEffect(() => {
     if (finishedRunId === undefined) return;
@@ -54,6 +58,15 @@ export function useRefreshNow(): RefreshNow {
       predicate: (query) => query.queryKey[0] !== refreshRunQueryKey[0],
     });
   }, [finishedRunId, queryClient]);
+
+  useEffect(() => {
+    if (!finishedWell) return;
+    // Nothing more to say once it worked: the line clears itself after a moment.
+    const timer = setTimeout(reset, REFRESH_DONE_SHOWN_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [finishedWell, reset]);
 
   return {
     status: currentStatus(mutation, outcome, watched?.progress ?? null),

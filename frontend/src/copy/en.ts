@@ -7,6 +7,7 @@
  * - Raw error codes are never shown; map them in `runErrors` instead.
  */
 
+import { RUN_HISTORY_LIMIT } from '../constants/dashboard';
 import { DraftProblem } from '../domain/categorySettings';
 import type { RefreshRefusal, RefreshTarget } from '../domain/refresh';
 import type {
@@ -14,6 +15,8 @@ import type {
   Channel,
   ContactStatus,
   Direction,
+  ReviewAnswer,
+  ReviewKind,
   RunStatus,
   RunStep,
   Signal,
@@ -23,6 +26,8 @@ import type {
 export const app = {
   name: 'Threadline',
   skipToContent: 'Skip to the main content',
+  /** The browser tab's name for one page. */
+  pageTitle: (page: string) => `${page} – Threadline`,
 } as const;
 
 export const nav = {
@@ -70,7 +75,7 @@ export const home = {
     untitled: 'Meeting',
     unknownPerson: 'Someone not on your list',
   },
-  filtersLabel: 'Type of contact',
+  filtersLabel: 'Category',
   statusFilterLabel: 'Status',
   waitingFilterLabel: 'Waiting on',
   dueFilterLabel: 'Due',
@@ -79,7 +84,7 @@ export const home = {
   columns: {
     person: 'Person',
     organisation: 'Organisation',
-    type: 'Type',
+    type: 'Category',
     lastContact: 'Last contact',
     status: 'Status',
     waitingOn: 'Waiting on',
@@ -98,7 +103,7 @@ export const home = {
     action: 'Clear all filters',
   },
   grid: {
-    caption: 'How many people of each type are at each stage',
+    caption: 'How many people in each category have each status',
     statusColumn: 'Status',
     total: 'Total',
     cellLabel: (count: number, typeText: string, statusText: string) =>
@@ -123,16 +128,25 @@ export const person = {
   correctedByYou: 'You corrected this',
   notFound: {
     title: 'We could not find that person',
-    body: 'They may have been removed from the list. Go back to see everyone.',
+    body: 'They may have been hidden or removed from the list.',
   },
   markNoise: {
     button: 'Not relevant',
     confirmTitle: 'Hide this person?',
     confirmBody:
-      'They will be taken off your list and the assistant will stop looking at their messages. You can ask for this to be undone later.',
+      'They will be taken off your list and the assistant will stop looking at their messages. You can undo this straight afterwards.',
     confirm: 'Yes, hide them',
     cancel: 'No, keep them',
     failed: 'We could not hide this person. Please try again.',
+  },
+  hidden: {
+    notice: (name: string) =>
+      `${name} is hidden. They are off your list and the assistant will stop looking at their messages.`,
+    undo: 'Undo',
+    undoLabel: (name: string) => `Undo hiding ${name}`,
+    undoing: 'Putting them back…',
+    restored: (name: string) => `${name} is back on your list.`,
+    undoFailed: (name: string) => `We could not put ${name} back on your list. Please try again.`,
   },
 } as const;
 
@@ -143,7 +157,7 @@ export const override = {
   waitingOnLabel: 'Waiting on',
   nextActionLabel: 'Next action',
   dueDateLabel: 'Due date',
-  personTypeLabel: 'Type of contact',
+  personTypeLabel: 'Category',
   noteLabel: 'Note for yourself',
   keepAssistantValue: 'Leave it to the assistant',
   save: 'Save my correction',
@@ -180,6 +194,10 @@ export const categorySettings = {
   addOwn: 'Add your own',
   limitReached:
     'You already use eight categories, the most there can be. Remove or hide one before adding another.',
+  length: {
+    count: (used: number, most: number) => `${used} of ${most} characters`,
+    atLimit: (most: number) => `That is the most it can be: ${most} characters.`,
+  },
   fields: {
     name: 'Name',
     groupName: 'Name for a group',
@@ -196,6 +214,11 @@ export const categorySettings = {
     moveDownLabel: (label: string) => `Move ${label} down`,
     remove: 'Remove',
     removeLabel: (label: string) => `Remove ${label}`,
+    removeConfirmTitle: (label: string) => `Remove ${label}?`,
+    removeConfirmBody:
+      'People in it keep their data. If anyone is in it, it will be hidden instead, so they keep it.',
+    removeConfirm: 'Yes, remove it',
+    removeCancel: 'No, keep it',
     showAgain: 'Show again',
     showAgainLabel: (label: string) => `Show ${label} again`,
     addSuggestion: (label: string) => `Add ${label}`,
@@ -226,8 +249,12 @@ export const categorySettings = {
 export const categoryDraftProblems: Record<DraftProblem, string> = {
   [DraftProblem.MissingName]: 'Please give the category a name.',
   [DraftProblem.NameTooLong]: 'The name can be at most 40 characters long.',
+  [DraftProblem.DuplicateName]:
+    'You already have a category with this name (perhaps a hidden one). Please pick another name.',
   [DraftProblem.MissingGroupName]: 'Please give a name for a group of them.',
   [DraftProblem.GroupNameTooLong]: 'The name for a group can be at most 40 characters long.',
+  [DraftProblem.DuplicateGroupName]:
+    'Another category already uses this name for a group (perhaps a hidden one). Please pick another one.',
   [DraftProblem.MissingDescription]:
     'Please say who belongs here, so the assistant can place people.',
   [DraftProblem.DescriptionTooLong]: 'The description can be at most 1,000 characters long.',
@@ -261,17 +288,29 @@ export const review = {
     relevance: 'Is this relevant to what you are tracking?',
     same_person: 'Is this the same person?',
   },
+  /** What happens after each answer, said once it is saved. */
+  answered: {
+    relevance: {
+      yes: 'Answer saved. The assistant will count this as part of what you track.',
+      no: 'Answer saved. The assistant will leave this out from now on.',
+    },
+    same_person: {
+      yes: 'Answer saved. The two will be joined into one person on the next daily run.',
+      no: 'Answer saved. They will stay two separate people.',
+    },
+  } satisfies Record<ReviewKind, Record<ReviewAnswer, string>>,
 } as const;
 
 export const runs = {
   title: 'Daily runs',
-  subtitle: 'The last two weeks of automatic updates.',
+  subtitle: `The ${RUN_HISTORY_LIMIT} most recent automatic updates, newest first.`,
   startedAt: 'Started',
   duration: 'Took',
   trigger: 'Started by',
   stepsTitle: 'Steps',
   found: 'found',
   new: 'new',
+  emailSent: 'sent',
   stillRunning: 'Still running',
   empty: {
     title: 'No runs yet',
@@ -389,10 +428,18 @@ export const defaultStatusLabels: Record<ContactStatus, string> = {
   closed: 'Closed',
 };
 
+/** Who owes the next message, as the filter and the correction form offer it. */
 export const waitingOnLabels: Record<WaitingOn, string> = {
   me: 'You',
   them: 'Them',
   nobody: 'Nobody',
+};
+
+/** The same, as a chip next to other chips, where it has to make sense on its own. */
+export const waitingOnBadges: Record<WaitingOn, string> = {
+  me: 'Your turn',
+  them: 'Waiting on them',
+  nobody: 'Nobody waiting',
 };
 
 export const signalLabels: Record<Signal, string> = {
@@ -450,8 +497,8 @@ export const runErrorFallback = 'Something went wrong in this step.';
 
 /** What set a run going, as stored in `run_logs.trigger`. */
 export const runTriggerLabels: Record<string, string> = {
-  cloud: 'the daily schedule (Claude)',
-  github: 'the daily schedule (GitHub)',
+  cloud: 'the daily schedule',
+  github: 'the daily schedule',
   mac: 'your Mac',
   manual: 'you, by hand',
   refresh: 'the Refresh now button',
@@ -493,4 +540,11 @@ export const sortLabels = {
 export const demo = {
   notice: 'Demo — made-up data. Nothing is saved.',
   setupLink: 'Set up your own',
+  signedOut: {
+    title: 'You are signed out of the demo',
+    body: 'The demo has no accounts and no e-mail sign-in. One tap takes you back to the made-up data.',
+    signIn: 'Sign back into the demo',
+    signingIn: 'Signing in…',
+    failed: 'That did not work. Reload the page to start the demo again.',
+  },
 } as const;

@@ -71,9 +71,22 @@ describe('the dashboard in demo mode', () => {
   });
 });
 
+describe('the browser tab in demo mode', () => {
+  it.each([
+    ['/', copy.home.title],
+    ['/review', copy.review.title],
+    ['/runs', copy.runs.title],
+    ['/settings', copy.settings.title],
+  ])('names %s after its page', async (route, page) => {
+    renderDemo(route);
+    await screen.findByRole('heading', { level: 1, name: page });
+    expect(document.title).toBe(copy.app.pageTitle(page));
+  });
+});
+
 describe('the demo banner', () => {
   it('says the data is made up and links to the setup guide', async () => {
-    const { container } = render(<>{startDemo(clock)}</>);
+    const { container } = render(startDemo(clock).banner);
     expect(screen.getByText(copy.demo.notice)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: copy.demo.setupLink })).toHaveAttribute(
       'href',

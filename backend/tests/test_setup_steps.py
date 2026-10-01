@@ -828,6 +828,22 @@ async def test_a_typed_time_zone_is_checked_and_the_name_is_saved() -> None:
     assert "time-zone name" in world.io.text()
 
 
+async def test_a_typed_time_zone_is_saved_as_the_database_spells_it() -> None:
+    world = make_world(["europe/rome", ""], configured_env())
+
+    await TimeZoneStep().run(world.context())
+
+    assert world.env.values["OWNER_TIME_ZONE"] == "Europe/Rome"
+
+
+async def test_a_saved_time_zone_in_the_wrong_case_is_put_right() -> None:
+    world = make_world(["", ""], configured_env() | {"OWNER_TIME_ZONE": "asia/tokyo"})
+
+    await TimeZoneStep().run(world.context())
+
+    assert world.env.values["OWNER_TIME_ZONE"] == "Asia/Tokyo"
+
+
 async def test_a_saved_time_zone_is_offered_before_the_computers() -> None:
     world = make_world(["", ""], configured_env() | {"OWNER_TIME_ZONE": "Asia/Tokyo"})
 
