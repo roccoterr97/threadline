@@ -22,7 +22,7 @@ networking — or define your own categories. See
 
 ## Try the demo
 
-Live demo: <https://threadline-demo.vercel.app>
+Live demo: <https://threadline-seven-delta.vercel.app>
 
 See the dashboard with made-up data before setting anything up. You need
 [Node.js](https://nodejs.org) 22 or newer; no accounts and no settings.
