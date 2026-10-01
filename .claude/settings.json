@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "Bash(uv run tracker:*)",
+      "Bash(mkdir:*)",
+      "Read",
+      "Write",
+      "Task",
+      "Agent"
+    ],
+    "deny": [
+      "Bash(sudo:*)",
+      "Bash(docker:*)",
+      "Bash(rm -rf:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git rebase:*)",
+      "Bash(git reset:*)",
+      "Bash(git branch -d:*)",
+      "Bash(git branch -D:*)",
+      "Read(./.env)",
+      "Read(~/.ssh/**)",
+      "Read(**/.env)",
+      "Bash(*.env*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(nc:*)",
+      "Bash(env:*)",
+      "Bash(printenv:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "WebFetch"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ],
+    "defaultMode": "acceptEdits"
+  }
+}

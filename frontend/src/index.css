@@ -1,0 +1,88 @@
+@import 'tailwindcss';
+@import './theme/tokens.css';
+
+/*
+ * Maps the design tokens onto Tailwind's colour scale. `inline` keeps the
+ * var() reference in the generated utility, so a theme change re-resolves
+ * without regenerating any CSS.
+ */
+@theme inline {
+  --color-bg: var(--tracker-bg);
+  --color-surface: var(--tracker-surface);
+  --color-surface-raised: var(--tracker-surface-raised);
+  --color-line: var(--tracker-border);
+  --color-line-strong: var(--tracker-border-strong);
+  --color-ink: var(--tracker-text);
+  --color-ink-muted: var(--tracker-text-muted);
+
+  --color-accent: var(--tracker-accent);
+  --color-accent-hover: var(--tracker-accent-hover);
+  --color-accent-fg: var(--tracker-accent-fg);
+  --color-focus: var(--tracker-focus);
+
+  --color-positive: var(--tracker-positive-text);
+  --color-positive-soft: var(--tracker-positive-soft);
+  --color-warn: var(--tracker-warn-text);
+  --color-warn-soft: var(--tracker-warn-soft);
+  --color-danger: var(--tracker-danger-text);
+  --color-danger-soft: var(--tracker-danger-soft);
+  --color-neutral: var(--tracker-neutral-text);
+  --color-neutral-soft: var(--tracker-neutral-soft);
+
+  --color-category-violet: var(--tracker-category-violet-text);
+  --color-category-violet-soft: var(--tracker-category-violet-soft);
+  --color-category-cyan: var(--tracker-category-cyan-text);
+  --color-category-cyan-soft: var(--tracker-category-cyan-soft);
+  --color-category-orange: var(--tracker-category-orange-text);
+  --color-category-orange-soft: var(--tracker-category-orange-soft);
+  --color-category-pink: var(--tracker-category-pink-text);
+  --color-category-pink-soft: var(--tracker-category-pink-soft);
+  --color-category-indigo: var(--tracker-category-indigo-text);
+  --color-category-indigo-soft: var(--tracker-category-indigo-soft);
+  --color-category-teal: var(--tracker-category-teal-text);
+  --color-category-teal-soft: var(--tracker-category-teal-soft);
+  --color-category-olive: var(--tracker-category-olive-text);
+  --color-category-olive-soft: var(--tracker-category-olive-soft);
+  --color-category-brown: var(--tracker-category-brown-text);
+  --color-category-brown-soft: var(--tracker-category-brown-soft);
+
+  --radius-token-sm: var(--tracker-radius-sm);
+  --radius-token-md: var(--tracker-radius-md);
+  --radius-token-lg: var(--tracker-radius-lg);
+
+  --shadow-card: var(--tracker-shadow-card);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--tracker-bg);
+    color: var(--tracker-text);
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 1rem;
+    line-height: 1.5;
+    /* Nothing may scroll sideways at 375px. */
+    overflow-x: hidden;
+  }
+
+  /* A visible focus ring on every keyboard-focused control. */
+  :focus-visible {
+    outline: 3px solid var(--tracker-focus);
+    outline-offset: 2px;
+    border-radius: var(--tracker-radius-sm);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}

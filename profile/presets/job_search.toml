@@ -1,0 +1,210 @@
+# Job search — the people you talk to while looking for a role: founders,
+# recruiters, investors' talent teams, friends who can introduce you.
+#
+# To use it, copy this file to profile/profile.toml, edit what you like, then run
+#   cd backend && uv run tracker profile apply
+# docs/customising.md explains every part.
+
+name = "job_search"
+title = "Job search"
+
+[wording]
+subject = "your job search"
+relevance_question = "Is {name} part of your job search?"
+relevant_means = "A real person, talking to you about work, roles, introductions or your search."
+
+# ---------------------------------------------------------------------------
+# Categories: who someone is to you. Order here is the order on screen.
+# Colours: violet, cyan, orange, pink, indigo, teal, olive, brown, grey.
+# "unknown" is added for you and cannot be listed here.
+# ---------------------------------------------------------------------------
+
+[[categories]]
+key = "startup"
+label = "Startup"
+group_label = "Startups"
+colour = "violet"
+description = "Someone who works at a startup: founder, executive, employee, in-house recruiter."
+
+[[categories]]
+key = "vc"
+label = "Investor"
+group_label = "Investors"
+colour = "cyan"
+description = "Someone at a fund: talent or people partner, investor, platform team."
+
+[[categories]]
+key = "network"
+label = "Network"
+group_label = "Network"
+colour = "orange"
+description = "A friend, a former colleague, anyone who can introduce you rather than hire you."
+
+# ---------------------------------------------------------------------------
+# The six stages. Their meaning is fixed; their words are yours.
+# ---------------------------------------------------------------------------
+
+[stages.contacted_no_reply]
+label = "Contacted, no reply yet"
+description = "You wrote to them and they have not answered at all yet."
+
+[stages.in_conversation]
+label = "In conversation"
+description = "You are going back and forth about work, a role, an introduction or an idea."
+
+[stages.meeting_planned]
+label = "Meeting planned"
+description = "A specific call or meeting has been agreed, or you are settling the time for one."
+
+[stages.in_process]
+label = "In a hiring process"
+description = "There is a named role and a process running: interviews, an exercise, references, an offer."
+
+[stages.gone_quiet]
+label = "Gone quiet"
+description = "A conversation that was running stopped: they had replied to you before, then you wrote last and nothing came back for ten days or more."
+
+[stages.closed]
+label = "Closed"
+description = "It is finished: they said no, you said no, the role is filled, or the conversation clearly ended."
+
+# ---------------------------------------------------------------------------
+# Guidance the AI helper reads, in Markdown.
+# ---------------------------------------------------------------------------
+
+[guidance]
+status_examples = """
+- You sent a connection message three days ago and heard nothing →
+  **{{stage:contacted_no_reply}}**.
+- "Nice to meet you, what are you looking for?" and you replied →
+  **{{stage:in_conversation}}**.
+- "Does Thursday at 3pm work?" → **{{stage:meeting_planned}}**.
+- A calendar invitation, or a booking confirmation naming a day and a time —
+  including one sent by a scheduling tool such as Calendly, Ashby or Greenhouse
+  → **{{stage:meeting_planned}}**. A time that has been fixed counts even when nobody
+  wrote a sentence about it.
+- "Here is a short exercise, send it back by Friday" → **{{stage:in_process}}**.
+- You had the interview and are waiting to hear the outcome →
+  **{{stage:in_process}}**. Silence while a decision is being made is not the
+  conversation dying.
+- They had replied to you before, you sent your availability two weeks ago and
+  nothing came back → **{{stage:gone_quiet}}** (set automatically).
+- You sent one message and were never answered at all →
+  **{{stage:contacted_no_reply}}** — however long ago it was.
+- "We went with someone else" → **{{stage:closed}}**.
+- "Not right now, but let's speak again in a few months" → **{{stage:closed}}**, with the
+  next action saying when to come back. It is a clear answer, not silence.
+- A hiring process that also has an interview booked is **{{stage:in_process}}**.
+"""
+
+summary_example = """
+`Head of Talent at Northwind. First interview done on the 14th; she is
+preparing a take-home exercise and will send it this week.`
+"""
+
+relevance = """
+Things that are **noise**: LinkedIn notification mail, newsletters, job alerts,
+"someone viewed your profile", cold sales mail, invoices, delivery notices,
+automatic replies, sponsored InMail you never answered.
+
+Things that are **relevant**: a recruiter writing about a role, a founder
+answering your message, a friend offering an introduction, a fund's talent
+partner, a sponsored message **you replied to positively** — your reply makes it
+real.
+
+**Mail from a hiring system about your own application is relevant**, even
+though a machine sent it. Threadline files it under the company ("Northwind AI
+Hiring Team") because that company is who you are dealing with. Applications
+are what this tool tracks:
+
+- "We received your application" → **{{stage:contacted_no_reply}}**, waiting on
+  **them**: you applied and the company has not answered yet.
+- An interview invitation, confirmation, calendar invite, exercise or "next
+  steps" → **{{stage:meeting_planned}}** or **{{stage:in_process}}**.
+- "Unfortunately we will not move forward" → **{{stage:closed}}**, waiting on
+  **nobody**.
+
+A hiring system's job alerts, "new jobs matching your profile" and marketing
+("show recruiters you're interested") are still **noise**: they are not about
+an application you made.
+"""
+
+# ---------------------------------------------------------------------------
+# Collection rules for this kind of work. Leave them out and Threadline uses
+# only the general rules (newsletters, no-reply senders, LinkedIn adverts).
+# ---------------------------------------------------------------------------
+
+[rules]
+# Hiring systems and scheduling tools: their machine mail carries the interview
+# invitations, the times and the decisions, so it is never thrown away as noise.
+system_sender_domains = [
+  "ashbyhq.com",
+  "greenhouse-jobs.com",
+  "greenhouse-mail.io",
+  "greenhouse.io",
+  "hire.lever.co",
+  "lever.co",
+  "calendly.com",
+  "cal.com",
+  "goodtime.io",
+  "workable.com",
+  "workablemail.com",
+  "smartrecruiters.com",
+  "teamtailor-mail.com",
+  "recruitee.com",
+  "personio.de",
+  "join.com",
+  "welcometothejungle.com",
+]
+# Display names that name the hiring system rather than the company.
+platform_names = [
+  "ashby",
+  "greenhouse",
+  "lever",
+  "mygreenhouse",
+  "recruitee",
+  "smartrecruiters",
+  "teamtailor",
+  "workable",
+]
+# Endings a hiring system adds to the company's name. Longest first.
+team_suffixes = [
+  "recruiting team",
+  "recruitment team",
+  "talent acquisition",
+  "talent team",
+  "hiring team",
+  "people team",
+  "careers",
+  "recruiting",
+  "recruitment",
+  "hiring",
+  "talent",
+  "team",
+]
+# Shown after a company known only through a hiring system.
+team_label = "Hiring Team"
+# Subjects that name the company ("Thank you for applying to Tasko").
+company_subject_patterns = [
+  '\bappl(?:ying|ication)\s+(?:to|at|with)\s+(?P<company>[^!?.,:;|()]+)',
+  '\binterest\s+in\s+(?P<company>[^!?.,:;|()]+)',
+  '''\bwelcome\s+to\s+(?P<company>[^!?.,:;|()]+?)(?:'s|’s)\b''',
+  '\binterview\b[^!?.:;|()]*\s(?:and|with|at|from)\s+(?P<company>[^!?.,:;|()]+?)(?:\s+[-–—]\s|$)',
+]
+# Subjects that plainly concern your own application or an interview. A
+# company's machine mail with one of these is never thrown away as noise.
+work_subject_patterns = [
+  '\bthank(?:s|\s+you)\s+for\s+(?:applying|your\s+application)\b',
+  '\byour\s+application\s+(?:to|with|for|at)\b',
+  '\bapplication\s+(?:received|update|status)\b',
+  '\bupdate\s+on\s+your\s+application\b',
+  '\binterview\b',
+  '\bentretien\b',
+  '\bcolloquio\b',
+  '\bcandidatura\b',
+  '\bcandidature\b',
+  '\bbewerbung\b',
+]
+# Words that make an entry you typed in your own calendar, with nobody invited,
+# a meeting to track ("Video interview - Acme").
+own_meeting_words = ["colloquio", "entretien", "interview", "intervista", "screening"]

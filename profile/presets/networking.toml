@@ -1,0 +1,102 @@
+# Networking — keeping in touch with the people in your professional life:
+# contacts, mentors, peers.
+#
+# To use it, copy this file to profile/profile.toml, edit what you like, then run
+#   cd backend && uv run tracker profile apply
+# docs/customising.md explains every part.
+
+name = "networking"
+title = "Networking"
+
+[wording]
+subject = "your professional network"
+relevance_question = "Is {name} part of your professional network?"
+relevant_means = "A real person you are in touch with about work, ideas, advice or an introduction."
+
+# Colours: violet, cyan, orange, pink, indigo, teal, olive, brown, grey.
+# "unknown" is added for you and cannot be listed here.
+
+[[categories]]
+key = "contact"
+label = "Contact"
+group_label = "Contacts"
+colour = "cyan"
+description = "Someone you know through work and keep in touch with."
+
+[[categories]]
+key = "mentor"
+label = "Mentor"
+group_label = "Mentors"
+colour = "violet"
+description = "Someone who advises you or whom you advise."
+
+[[categories]]
+key = "peer"
+label = "Peer"
+group_label = "Peers"
+colour = "orange"
+description = "Someone doing similar work to yours: a fellow founder, a colleague at another company."
+
+[stages.contacted_no_reply]
+label = "Contacted, no reply yet"
+description = "You wrote to them and they have not answered at all yet."
+
+[stages.in_conversation]
+label = "In conversation"
+description = "You are going back and forth about work, an idea, advice or an introduction."
+
+[stages.meeting_planned]
+label = "Meeting planned"
+description = "A specific call, coffee or meeting has been agreed, or you are settling the time for one."
+
+[stages.in_process]
+label = "In progress"
+description = "Something concrete is under way together: a project, an introduction being made, a collaboration."
+
+[stages.gone_quiet]
+label = "Gone quiet"
+description = "A conversation that was running stopped: they had replied to you before, then you wrote last and nothing came back for ten days or more."
+
+[stages.closed]
+label = "Closed"
+description = "It is finished for now: the question was answered, the introduction was made, or the conversation clearly ended."
+
+[guidance]
+status_examples = """
+- You sent a note to catch up three days ago and heard nothing →
+  **{{stage:contacted_no_reply}}**.
+- "Great to hear from you — how is the new role?" and you replied →
+  **{{stage:in_conversation}}**.
+- "Coffee on Thursday at 9?" → **{{stage:meeting_planned}}**.
+- "I've written to Maya, she'll get in touch about the project" →
+  **{{stage:in_process}}**.
+- You sent one message and were never answered at all →
+  **{{stage:contacted_no_reply}}** — however long ago it was.
+- "Thanks, that answers it" with nothing left to do → **{{stage:closed}}**.
+"""
+
+summary_example = """
+`Former colleague, now product lead at Northwind. Met for coffee on the 14th;
+she is introducing you to their design team this week.`
+"""
+
+relevance = """
+Things that are **noise**: newsletters, notifications, event mail sent to a
+list, marketing, receipts, automatic replies.
+
+Things that are **relevant**: someone you know writing about work or an idea,
+advice asked or given, an introduction offered or made.
+"""
+
+# ---------------------------------------------------------------------------
+# Collection rules for this kind of work, on top of the general ones.
+# ---------------------------------------------------------------------------
+
+[rules]
+# Booking tools: their mail carries the meeting times, so it is never thrown
+# away as noise.
+system_sender_domains = ["calendly.com", "cal.com"]
+platform_names = ["calendly"]
+# Words that make an entry you typed in your own calendar, with nobody invited,
+# a meeting to track.
+own_meeting_words = []

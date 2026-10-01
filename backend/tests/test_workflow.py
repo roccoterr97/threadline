@@ -1,0 +1,130 @@
+"""The GitHub Actions workflow: its shape, and that it reads every setting from one agreed place."""
+
+from __future__ import annotations
+
+import re
+from typing import Any, Final
+
+import pytest
+import yaml
+
+from tracker.domain.enums import RunTrigger
+from tracker.shared.config import Settings
+from tracker.shared.constants.github import (
+    CLAUDE_TOKEN_SECRET,
+    REQUIRED_SECRETS,
+    VARIABLE_SETTINGS,
+    WORKFLOW_FILE,
+    WORKFLOW_FILE_NAME,
+    WORKFLOW_FIXED_SETTINGS,
+)
+
+TEXT: Final[str] = WORKFLOW_FILE.read_text(encoding="utf-8")
+WORKFLOW: Final[dict[Any, Any]] = yaml.safe_load(TEXT)
+#: PyYAML reads the bare key ``on`` as the boolean true (YAML 1.1).
+TRIGGERS: Final[dict[str, Any]] = WORKFLOW.get("on") or WORKFLOW[True]
+STEPS: Final[list[dict[str, Any]]] = WORKFLOW["jobs"]["run"]["steps"]
+SETTINGS: Final[frozenset[str]] = frozenset(name.upper() for name in Settings.model_fields)
+
+
+def _step(name: str) -> dict[str, Any]:
+    return next(step for step in STEPS if step.get("name") == name)
+
+
+CLAUDE_STEP: Final[dict[str, Any]] = _step("Run the recipe with Claude")
+GATE_STEP: Final[dict[str, Any]] = _step("Check the set-up")
+
+
+def test_the_file_name_is_the_one_the_refresh_button_calls() -> None:
+    assert WORKFLOW_FILE.name == WORKFLOW_FILE_NAME == "threadline-run.yml"
+
+
+def test_it_runs_on_a_schedule_with_a_time_zone_and_by_hand_in_two_modes() -> None:
+    [schedule] = TRIGGERS["schedule"]
+    assert re.fullmatch(r"\d{1,2} \d{1,2} \* \* \*", schedule["cron"])
+    assert schedule["timezone"]
+    mode = TRIGGERS["workflow_dispatch"]["inputs"]["mode"]
+    assert mode["type"] == "choice"
+    assert mode["options"] == ["daily", "refresh"]
+    assert mode["default"] == "daily"
+
+
+def test_it_can_only_read_the_repository_and_never_overlaps() -> None:
+    assert WORKFLOW["permissions"] == {"contents": "read"}
+    assert WORKFLOW["concurrency"]["cancel-in-progress"] is False
+    assert WORKFLOW["jobs"]["run"]["timeout-minutes"] > 0
+
+
+def test_every_action_is_pinned_to_a_major_version() -> None:
+    used = [step["uses"] for step in STEPS if "uses" in step]
+
+    assert used
+    for action in used:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@v\d+", action), action
+
+
+def test_every_setting_is_read_from_the_place_the_setup_puts_it() -> None:
+    env: dict[str, str] = CLAUDE_STEP["env"]
+
+    assert set(env) == SETTINGS
+    for name, value in env.items():
+        if name in WORKFLOW_FIXED_SETTINGS:
+            assert "${{" not in value
+        elif name in VARIABLE_SETTINGS:
+            assert value == f"${{{{ vars.{name} }}}}"
+        else:
+            assert value == f"${{{{ secrets.{name} }}}}"
+
+
+def test_the_workflow_reads_no_secret_outside_the_agreed_list() -> None:
+    referenced = set(re.findall(r"secrets\.([A-Z0-9_]+)", TEXT))
+    allowed = (SETTINGS - VARIABLE_SETTINGS - WORKFLOW_FIXED_SETTINGS) | {CLAUDE_TOKEN_SECRET}
+
+    assert referenced <= allowed
+    assert set(re.findall(r"vars\.([A-Z0-9_]+)", TEXT)) <= VARIABLE_SETTINGS
+
+
+def test_the_gate_checks_exactly_the_required_secrets() -> None:
+    env = GATE_STEP["env"]
+    loop = re.search(r"for name in ([A-Z_ ]+); do", GATE_STEP["run"])
+
+    assert loop is not None
+    assert tuple(loop.group(1).split()) == REQUIRED_SECRETS
+    assert set(REQUIRED_SECRETS) <= set(env)
+
+
+def test_a_missing_secret_ends_the_run_green_and_every_later_step_is_skipped() -> None:
+    assert "exit 0" in GATE_STEP["run"]
+    for step in STEPS:
+        if step is not GATE_STEP:
+            assert step["if"] == "steps.gate.outputs.ready == 'true'"
+
+
+@pytest.mark.parametrize("step", STEPS, ids=lambda step: step.get("name", "?"))
+def test_no_script_ever_touches_a_secret_directly(step: dict[str, Any]) -> None:
+    assert "secrets." not in step.get("run", "")
+
+
+def test_the_recipe_is_told_its_mode_and_uses_the_projects_permissions() -> None:
+    options = CLAUDE_STEP["with"]
+
+    assert options["prompt"].startswith("/daily-run --trigger ")
+    assert "--mode ${{ steps.gate.outputs.mode }}" in options["prompt"]
+    assert options["settings"] == ".claude/settings.json"
+    assert options["claude_code_oauth_token"] == f"${{{{ secrets.{CLAUDE_TOKEN_SECRET} }}}}"
+    assert CLAUDE_TOKEN_SECRET not in CLAUDE_STEP["env"]
+
+
+def test_the_recipe_knows_every_trigger_the_workflow_passes() -> None:
+    recipe = (WORKFLOW_FILE.parents[2] / ".claude" / "commands" / "daily-run.md").read_text(
+        encoding="utf-8"
+    )
+    hint = re.search(r"argument-hint: \[--trigger ([a-z|]+)\] \[--mode ([a-z|]+)\]", recipe)
+
+    assert hint is not None
+    assert set(hint.group(1).split("|")) == {trigger.value for trigger in RunTrigger}
+    assert hint.group(2).split("|") == TRIGGERS["workflow_dispatch"]["inputs"]["mode"]["options"]
+    assert "uv run tracker collect all --record --refresh" in recipe
+    assert "uv run tracker summary send" in recipe
+    for trigger in ("trigger=github", "trigger=refresh"):
+        assert trigger in GATE_STEP["run"]

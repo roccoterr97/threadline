@@ -1,0 +1,1140 @@
+{
+  "organisations": [
+    {
+      "id": "a0000000-0000-4000-8000-000000000001",
+      "name": "Northwind Robotics",
+      "kind": "startup",
+      "email_domain": "northwind-robotics.example"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000002",
+      "name": "Kestrel Capital",
+      "kind": "vc_fund",
+      "email_domain": "kestrelcapital.example"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000003",
+      "name": "Lumen Health",
+      "kind": "startup",
+      "email_domain": "lumenhealth.example"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000004",
+      "name": "Bergen Ventures",
+      "kind": "vc_fund",
+      "email_domain": "bergenventures.example"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000005",
+      "name": "Tidal Logistics",
+      "kind": "startup",
+      "email_domain": "tidallogistics.example"
+    },
+    {
+      "id": "a0000000-0000-4000-8000-000000000006",
+      "name": "Independent",
+      "kind": "other",
+      "email_domain": null
+    }
+  ],
+  "people": [
+    {
+      "id": "b0000000-0000-4000-8000-000000000001",
+      "full_name": "Anna Vermeer",
+      "person_type": "startup",
+      "role_title": "Head of Talent",
+      "organisation_id": "a0000000-0000-4000-8000-000000000001",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000002",
+      "full_name": "Bruno Sala",
+      "person_type": "vc",
+      "role_title": "Talent Partner",
+      "organisation_id": "a0000000-0000-4000-8000-000000000002",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000003",
+      "full_name": "Clara Nyman",
+      "person_type": "startup",
+      "role_title": "Chief Technology Officer",
+      "organisation_id": "a0000000-0000-4000-8000-000000000003",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000004",
+      "full_name": "Diego Ferrari",
+      "person_type": "network",
+      "role_title": "Friend",
+      "organisation_id": "a0000000-0000-4000-8000-000000000006",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000005",
+      "full_name": "Elena Rossi",
+      "person_type": "vc",
+      "role_title": "People Operations",
+      "organisation_id": "a0000000-0000-4000-8000-000000000004",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000006",
+      "full_name": "Felix Brandt",
+      "person_type": "startup",
+      "role_title": "Founder",
+      "organisation_id": "a0000000-0000-4000-8000-000000000005",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000007",
+      "full_name": "Greta Lindqvist",
+      "person_type": "startup",
+      "role_title": "Engineering Manager",
+      "organisation_id": "a0000000-0000-4000-8000-000000000001",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000008",
+      "full_name": "Hugo Martins",
+      "person_type": "network",
+      "role_title": "Former colleague",
+      "organisation_id": "a0000000-0000-4000-8000-000000000006",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000009",
+      "full_name": "Ines Duarte",
+      "person_type": "vc",
+      "role_title": "Investment Team",
+      "organisation_id": "a0000000-0000-4000-8000-000000000002",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000010",
+      "full_name": "Jonas Keller",
+      "person_type": "startup",
+      "role_title": "Head of Product",
+      "organisation_id": "a0000000-0000-4000-8000-000000000003",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000011",
+      "full_name": "Karin Hoffmann",
+      "person_type": "network",
+      "role_title": "Career coach",
+      "organisation_id": "a0000000-0000-4000-8000-000000000006",
+      "relevance": "relevant"
+    },
+    {
+      "id": "b0000000-0000-4000-8000-000000000012",
+      "full_name": "Luca Moretti",
+      "person_type": "startup",
+      "role_title": "Recruiter",
+      "organisation_id": "a0000000-0000-4000-8000-000000000005",
+      "relevance": "relevant"
+    }
+  ],
+  "person_identities": [
+    {
+      "id": "c0000000-0000-4000-8000-000000000001",
+      "person_id": "b0000000-0000-4000-8000-000000000001",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/anna-vermeer",
+      "display_name": "Anna Vermeer"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000002",
+      "person_id": "b0000000-0000-4000-8000-000000000001",
+      "channel": "email",
+      "identifier": "anna.vermeer@northwind-robotics.example",
+      "display_name": "Anna Vermeer"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000003",
+      "person_id": "b0000000-0000-4000-8000-000000000002",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/bruno-sala",
+      "display_name": "Bruno Sala"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000004",
+      "person_id": "b0000000-0000-4000-8000-000000000002",
+      "channel": "email",
+      "identifier": "bruno.sala@kestrelcapital.example",
+      "display_name": "Bruno Sala"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000005",
+      "person_id": "b0000000-0000-4000-8000-000000000003",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/clara-nyman",
+      "display_name": "Clara Nyman"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000006",
+      "person_id": "b0000000-0000-4000-8000-000000000003",
+      "channel": "email",
+      "identifier": "clara.nyman@lumenhealth.example",
+      "display_name": "Clara Nyman"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000007",
+      "person_id": "b0000000-0000-4000-8000-000000000004",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/diego-ferrari",
+      "display_name": "Diego Ferrari"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000008",
+      "person_id": "b0000000-0000-4000-8000-000000000005",
+      "channel": "email",
+      "identifier": "elena.rossi@bergenventures.example",
+      "display_name": "Elena Rossi"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000009",
+      "person_id": "b0000000-0000-4000-8000-000000000006",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/felix-brandt",
+      "display_name": "Felix Brandt"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000010",
+      "person_id": "b0000000-0000-4000-8000-000000000006",
+      "channel": "email",
+      "identifier": "felix.brandt@tidallogistics.example",
+      "display_name": "Felix Brandt"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000011",
+      "person_id": "b0000000-0000-4000-8000-000000000007",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/greta-lindqvist",
+      "display_name": "Greta Lindqvist"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000012",
+      "person_id": "b0000000-0000-4000-8000-000000000008",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/hugo-martins",
+      "display_name": "Hugo Martins"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000013",
+      "person_id": "b0000000-0000-4000-8000-000000000008",
+      "channel": "email",
+      "identifier": "hugo.martins@mailbox.example",
+      "display_name": "Hugo Martins"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000014",
+      "person_id": "b0000000-0000-4000-8000-000000000009",
+      "channel": "email",
+      "identifier": "ines.duarte@kestrelcapital.example",
+      "display_name": "Ines Duarte"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000015",
+      "person_id": "b0000000-0000-4000-8000-000000000010",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/jonas-keller",
+      "display_name": "Jonas Keller"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000016",
+      "person_id": "b0000000-0000-4000-8000-000000000010",
+      "channel": "email",
+      "identifier": "jonas.keller@lumenhealth.example",
+      "display_name": "Jonas Keller"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000017",
+      "person_id": "b0000000-0000-4000-8000-000000000011",
+      "channel": "linkedin",
+      "identifier": "https://www.linkedin.com/in/karin-hoffmann",
+      "display_name": "Karin Hoffmann"
+    },
+    {
+      "id": "c0000000-0000-4000-8000-000000000018",
+      "person_id": "b0000000-0000-4000-8000-000000000012",
+      "channel": "email",
+      "identifier": "luca.moretti@tidallogistics.example",
+      "display_name": "Luca Moretti"
+    }
+  ],
+  "conversations": [
+    {
+      "id": "d0000000-0000-4000-8000-000000000001",
+      "person_id": "b0000000-0000-4000-8000-000000000001",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-001",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-24T09:15:00Z",
+      "last_message_at": "2026-09-15T16:40:00Z",
+      "last_inbound_at": "2026-09-15T16:40:00Z",
+      "last_outbound_at": "2026-08-24T09:15:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000002",
+      "person_id": "b0000000-0000-4000-8000-000000000001",
+      "channel": "email",
+      "source_conversation_id": "sample-email-002",
+      "subject": "Anna Vermeer — Northwind Robotics",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-24T09:15:00Z",
+      "last_message_at": "2026-09-15T16:40:00Z",
+      "last_inbound_at": "2026-09-15T16:40:00Z",
+      "last_outbound_at": "2026-08-24T09:15:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000003",
+      "person_id": "b0000000-0000-4000-8000-000000000002",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-003",
+      "subject": null,
+      "relevance": "unsure",
+      "relevance_decided_by": null,
+      "first_message_at": "2026-08-27T11:05:00Z",
+      "last_message_at": "2026-09-16T08:20:00Z",
+      "last_inbound_at": "2026-08-27T11:05:00Z",
+      "last_outbound_at": "2026-09-16T08:20:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000004",
+      "person_id": "b0000000-0000-4000-8000-000000000002",
+      "channel": "email",
+      "source_conversation_id": "sample-email-004",
+      "subject": "Bruno Sala — Kestrel Capital",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-27T11:05:00Z",
+      "last_message_at": "2026-09-16T08:20:00Z",
+      "last_inbound_at": "2026-08-27T11:05:00Z",
+      "last_outbound_at": "2026-09-16T08:20:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000005",
+      "person_id": "b0000000-0000-4000-8000-000000000003",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-005",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-29T14:30:00Z",
+      "last_message_at": "2026-09-14T10:05:00Z",
+      "last_inbound_at": "2026-09-14T10:05:00Z",
+      "last_outbound_at": "2026-08-29T14:30:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000006",
+      "person_id": "b0000000-0000-4000-8000-000000000003",
+      "channel": "email",
+      "source_conversation_id": "sample-email-006",
+      "subject": "Clara Nyman — Lumen Health",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-29T14:30:00Z",
+      "last_message_at": "2026-09-14T10:05:00Z",
+      "last_inbound_at": "2026-09-14T10:05:00Z",
+      "last_outbound_at": "2026-08-29T14:30:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000007",
+      "person_id": "b0000000-0000-4000-8000-000000000004",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-007",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-09-01T08:45:00Z",
+      "last_message_at": "2026-09-05T09:00:00Z",
+      "last_inbound_at": "2026-09-01T08:45:00Z",
+      "last_outbound_at": "2026-09-05T09:00:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000008",
+      "person_id": "b0000000-0000-4000-8000-000000000005",
+      "channel": "email",
+      "source_conversation_id": "sample-email-008",
+      "subject": "Elena Rossi — Bergen Ventures",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-19T13:20:00Z",
+      "last_message_at": "2026-08-28T15:10:00Z",
+      "last_inbound_at": "2026-08-28T15:10:00Z",
+      "last_outbound_at": "2026-08-19T13:20:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000009",
+      "person_id": "b0000000-0000-4000-8000-000000000006",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-009",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-21T10:00:00Z",
+      "last_message_at": "2026-09-02T12:35:00Z",
+      "last_inbound_at": "2026-08-21T10:00:00Z",
+      "last_outbound_at": "2026-09-02T12:35:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000010",
+      "person_id": "b0000000-0000-4000-8000-000000000006",
+      "channel": "email",
+      "source_conversation_id": "sample-email-010",
+      "subject": "Felix Brandt — Tidal Logistics",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-21T10:00:00Z",
+      "last_message_at": "2026-09-02T12:35:00Z",
+      "last_inbound_at": "2026-08-21T10:00:00Z",
+      "last_outbound_at": "2026-09-02T12:35:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000011",
+      "person_id": "b0000000-0000-4000-8000-000000000007",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-011",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-09-02T09:30:00Z",
+      "last_message_at": "2026-09-17T07:55:00Z",
+      "last_inbound_at": "2026-09-17T07:55:00Z",
+      "last_outbound_at": "2026-09-02T09:30:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000012",
+      "person_id": "b0000000-0000-4000-8000-000000000008",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-012",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-30T18:05:00Z",
+      "last_message_at": "2026-09-16T19:25:00Z",
+      "last_inbound_at": "2026-08-30T18:05:00Z",
+      "last_outbound_at": "2026-09-16T19:25:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000013",
+      "person_id": "b0000000-0000-4000-8000-000000000008",
+      "channel": "email",
+      "source_conversation_id": "sample-email-013",
+      "subject": "Hugo Martins — Independent",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-30T18:05:00Z",
+      "last_message_at": "2026-09-16T19:25:00Z",
+      "last_inbound_at": "2026-08-30T18:05:00Z",
+      "last_outbound_at": "2026-09-16T19:25:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000014",
+      "person_id": "b0000000-0000-4000-8000-000000000009",
+      "channel": "email",
+      "source_conversation_id": "sample-email-014",
+      "subject": "Ines Duarte — Kestrel Capital",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-09-08T07:40:00Z",
+      "last_message_at": "2026-09-08T07:40:00Z",
+      "last_inbound_at": "2026-09-08T07:40:00Z",
+      "last_outbound_at": "2026-09-08T07:40:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000015",
+      "person_id": "b0000000-0000-4000-8000-000000000010",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-015",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-09-03T12:10:00Z",
+      "last_message_at": "2026-09-17T13:45:00Z",
+      "last_inbound_at": "2026-09-03T12:10:00Z",
+      "last_outbound_at": "2026-09-17T13:45:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000016",
+      "person_id": "b0000000-0000-4000-8000-000000000010",
+      "channel": "email",
+      "source_conversation_id": "sample-email-016",
+      "subject": "Jonas Keller — Lumen Health",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-09-03T12:10:00Z",
+      "last_message_at": "2026-09-17T13:45:00Z",
+      "last_inbound_at": "2026-09-03T12:10:00Z",
+      "last_outbound_at": "2026-09-17T13:45:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000017",
+      "person_id": "b0000000-0000-4000-8000-000000000011",
+      "channel": "linkedin",
+      "source_conversation_id": "sample-linkedin-017",
+      "subject": null,
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-08-18T16:00:00Z",
+      "last_message_at": "2026-08-26T09:35:00Z",
+      "last_inbound_at": "2026-08-26T09:35:00Z",
+      "last_outbound_at": "2026-08-18T16:00:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000018",
+      "person_id": "b0000000-0000-4000-8000-000000000012",
+      "channel": "email",
+      "source_conversation_id": "sample-email-018",
+      "subject": "Luca Moretti — Tidal Logistics",
+      "relevance": "relevant",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-09-04T10:25:00Z",
+      "last_message_at": "2026-09-16T11:15:00Z",
+      "last_inbound_at": "2026-09-04T10:25:00Z",
+      "last_outbound_at": "2026-09-16T11:15:00Z"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-000000000019",
+      "person_id": null,
+      "channel": "email",
+      "source_conversation_id": "sample-email-019",
+      "subject": null,
+      "relevance": "noise",
+      "relevance_decided_by": "rule",
+      "first_message_at": "2026-09-11T06:00:00Z",
+      "last_message_at": "2026-09-11T06:00:00Z",
+      "last_inbound_at": "2026-09-11T06:00:00Z",
+      "last_outbound_at": null
+    }
+  ],
+  "messages": [
+    {
+      "id": "e0000000-0000-4000-8000-000000000001",
+      "conversation_id": "d0000000-0000-4000-8000-000000000001",
+      "source_message_id": "sample-msg-001",
+      "direction": "outbound",
+      "sent_at": "2026-08-24T09:15:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Anna Vermeer on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000002",
+      "conversation_id": "d0000000-0000-4000-8000-000000000001",
+      "source_message_id": "sample-msg-002",
+      "direction": "inbound",
+      "sent_at": "2026-09-15T16:40:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/anna-vermeer",
+      "body": "Latest message with Anna Vermeer on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000003",
+      "conversation_id": "d0000000-0000-4000-8000-000000000002",
+      "source_message_id": "sample-msg-003",
+      "direction": "outbound",
+      "sent_at": "2026-08-24T09:15:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Anna Vermeer on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000004",
+      "conversation_id": "d0000000-0000-4000-8000-000000000002",
+      "source_message_id": "sample-msg-004",
+      "direction": "inbound",
+      "sent_at": "2026-09-15T16:40:00Z",
+      "sender_identifier": "anna.vermeer@northwind-robotics.example",
+      "body": "Latest message with Anna Vermeer on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000005",
+      "conversation_id": "d0000000-0000-4000-8000-000000000003",
+      "source_message_id": "sample-msg-005",
+      "direction": "inbound",
+      "sent_at": "2026-08-27T11:05:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/bruno-sala",
+      "body": "Opening message with Bruno Sala on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000006",
+      "conversation_id": "d0000000-0000-4000-8000-000000000003",
+      "source_message_id": "sample-msg-006",
+      "direction": "outbound",
+      "sent_at": "2026-09-16T08:20:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Bruno Sala on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000007",
+      "conversation_id": "d0000000-0000-4000-8000-000000000004",
+      "source_message_id": "sample-msg-007",
+      "direction": "inbound",
+      "sent_at": "2026-08-27T11:05:00Z",
+      "sender_identifier": "bruno.sala@kestrelcapital.example",
+      "body": "Opening message with Bruno Sala on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000008",
+      "conversation_id": "d0000000-0000-4000-8000-000000000004",
+      "source_message_id": "sample-msg-008",
+      "direction": "outbound",
+      "sent_at": "2026-09-16T08:20:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Bruno Sala on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000009",
+      "conversation_id": "d0000000-0000-4000-8000-000000000005",
+      "source_message_id": "sample-msg-009",
+      "direction": "outbound",
+      "sent_at": "2026-08-29T14:30:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Clara Nyman on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000010",
+      "conversation_id": "d0000000-0000-4000-8000-000000000005",
+      "source_message_id": "sample-msg-010",
+      "direction": "inbound",
+      "sent_at": "2026-09-14T10:05:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/clara-nyman",
+      "body": "Latest message with Clara Nyman on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000011",
+      "conversation_id": "d0000000-0000-4000-8000-000000000006",
+      "source_message_id": "sample-msg-011",
+      "direction": "outbound",
+      "sent_at": "2026-08-29T14:30:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Clara Nyman on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000012",
+      "conversation_id": "d0000000-0000-4000-8000-000000000006",
+      "source_message_id": "sample-msg-012",
+      "direction": "inbound",
+      "sent_at": "2026-09-14T10:05:00Z",
+      "sender_identifier": "clara.nyman@lumenhealth.example",
+      "body": "Latest message with Clara Nyman on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000013",
+      "conversation_id": "d0000000-0000-4000-8000-000000000007",
+      "source_message_id": "sample-msg-013",
+      "direction": "inbound",
+      "sent_at": "2026-09-01T08:45:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/diego-ferrari",
+      "body": "Opening message with Diego Ferrari on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000014",
+      "conversation_id": "d0000000-0000-4000-8000-000000000007",
+      "source_message_id": "sample-msg-014",
+      "direction": "outbound",
+      "sent_at": "2026-09-05T09:00:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Diego Ferrari on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000015",
+      "conversation_id": "d0000000-0000-4000-8000-000000000008",
+      "source_message_id": "sample-msg-015",
+      "direction": "outbound",
+      "sent_at": "2026-08-19T13:20:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Elena Rossi on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000016",
+      "conversation_id": "d0000000-0000-4000-8000-000000000008",
+      "source_message_id": "sample-msg-016",
+      "direction": "inbound",
+      "sent_at": "2026-08-28T15:10:00Z",
+      "sender_identifier": "elena.rossi@bergenventures.example",
+      "body": "Latest message with Elena Rossi on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000017",
+      "conversation_id": "d0000000-0000-4000-8000-000000000009",
+      "source_message_id": "sample-msg-017",
+      "direction": "inbound",
+      "sent_at": "2026-08-21T10:00:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/felix-brandt",
+      "body": "Opening message with Felix Brandt on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000018",
+      "conversation_id": "d0000000-0000-4000-8000-000000000009",
+      "source_message_id": "sample-msg-018",
+      "direction": "outbound",
+      "sent_at": "2026-09-02T12:35:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Felix Brandt on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000019",
+      "conversation_id": "d0000000-0000-4000-8000-000000000010",
+      "source_message_id": "sample-msg-019",
+      "direction": "inbound",
+      "sent_at": "2026-08-21T10:00:00Z",
+      "sender_identifier": "felix.brandt@tidallogistics.example",
+      "body": "Opening message with Felix Brandt on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000020",
+      "conversation_id": "d0000000-0000-4000-8000-000000000010",
+      "source_message_id": "sample-msg-020",
+      "direction": "outbound",
+      "sent_at": "2026-09-02T12:35:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Felix Brandt on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000021",
+      "conversation_id": "d0000000-0000-4000-8000-000000000011",
+      "source_message_id": "sample-msg-021",
+      "direction": "outbound",
+      "sent_at": "2026-09-02T09:30:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Greta Lindqvist on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000022",
+      "conversation_id": "d0000000-0000-4000-8000-000000000011",
+      "source_message_id": "sample-msg-022",
+      "direction": "inbound",
+      "sent_at": "2026-09-17T07:55:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/greta-lindqvist",
+      "body": "Latest message with Greta Lindqvist on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000023",
+      "conversation_id": "d0000000-0000-4000-8000-000000000012",
+      "source_message_id": "sample-msg-023",
+      "direction": "inbound",
+      "sent_at": "2026-08-30T18:05:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/hugo-martins",
+      "body": "Opening message with Hugo Martins on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000024",
+      "conversation_id": "d0000000-0000-4000-8000-000000000012",
+      "source_message_id": "sample-msg-024",
+      "direction": "outbound",
+      "sent_at": "2026-09-16T19:25:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Hugo Martins on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000025",
+      "conversation_id": "d0000000-0000-4000-8000-000000000013",
+      "source_message_id": "sample-msg-025",
+      "direction": "inbound",
+      "sent_at": "2026-08-30T18:05:00Z",
+      "sender_identifier": "hugo.martins@mailbox.example",
+      "body": "Opening message with Hugo Martins on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000026",
+      "conversation_id": "d0000000-0000-4000-8000-000000000013",
+      "source_message_id": "sample-msg-026",
+      "direction": "outbound",
+      "sent_at": "2026-09-16T19:25:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Hugo Martins on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000027",
+      "conversation_id": "d0000000-0000-4000-8000-000000000014",
+      "source_message_id": "sample-msg-027",
+      "direction": "outbound",
+      "sent_at": "2026-09-08T07:40:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Ines Duarte on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000028",
+      "conversation_id": "d0000000-0000-4000-8000-000000000014",
+      "source_message_id": "sample-msg-028",
+      "direction": "inbound",
+      "sent_at": "2026-09-08T07:40:00Z",
+      "sender_identifier": "ines.duarte@kestrelcapital.example",
+      "body": "Latest message with Ines Duarte on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000029",
+      "conversation_id": "d0000000-0000-4000-8000-000000000015",
+      "source_message_id": "sample-msg-029",
+      "direction": "inbound",
+      "sent_at": "2026-09-03T12:10:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/jonas-keller",
+      "body": "Opening message with Jonas Keller on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000030",
+      "conversation_id": "d0000000-0000-4000-8000-000000000015",
+      "source_message_id": "sample-msg-030",
+      "direction": "outbound",
+      "sent_at": "2026-09-17T13:45:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Jonas Keller on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000031",
+      "conversation_id": "d0000000-0000-4000-8000-000000000016",
+      "source_message_id": "sample-msg-031",
+      "direction": "inbound",
+      "sent_at": "2026-09-03T12:10:00Z",
+      "sender_identifier": "jonas.keller@lumenhealth.example",
+      "body": "Opening message with Jonas Keller on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000032",
+      "conversation_id": "d0000000-0000-4000-8000-000000000016",
+      "source_message_id": "sample-msg-032",
+      "direction": "outbound",
+      "sent_at": "2026-09-17T13:45:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Jonas Keller on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000033",
+      "conversation_id": "d0000000-0000-4000-8000-000000000017",
+      "source_message_id": "sample-msg-033",
+      "direction": "outbound",
+      "sent_at": "2026-08-18T16:00:00Z",
+      "sender_identifier": "sam",
+      "body": "Opening message with Karin Hoffmann on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000034",
+      "conversation_id": "d0000000-0000-4000-8000-000000000017",
+      "source_message_id": "sample-msg-034",
+      "direction": "inbound",
+      "sent_at": "2026-08-26T09:35:00Z",
+      "sender_identifier": "https://www.linkedin.com/in/karin-hoffmann",
+      "body": "Latest message with Karin Hoffmann on linkedin."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000035",
+      "conversation_id": "d0000000-0000-4000-8000-000000000018",
+      "source_message_id": "sample-msg-035",
+      "direction": "inbound",
+      "sent_at": "2026-09-04T10:25:00Z",
+      "sender_identifier": "luca.moretti@tidallogistics.example",
+      "body": "Opening message with Luca Moretti on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000036",
+      "conversation_id": "d0000000-0000-4000-8000-000000000018",
+      "source_message_id": "sample-msg-036",
+      "direction": "outbound",
+      "sent_at": "2026-09-16T11:15:00Z",
+      "sender_identifier": "sam",
+      "body": "Latest message with Luca Moretti on email."
+    },
+    {
+      "id": "e0000000-0000-4000-8000-000000000037",
+      "conversation_id": "d0000000-0000-4000-8000-000000000019",
+      "source_message_id": "sample-msg-037",
+      "direction": "inbound",
+      "sent_at": "2026-09-11T06:00:00Z",
+      "sender_identifier": "newsletter@news.example",
+      "body": null
+    }
+  ],
+  "person_states": [
+    {
+      "id": "f0000000-0000-4000-8000-000000000001",
+      "person_id": "b0000000-0000-4000-8000-000000000001",
+      "status": "in_process",
+      "waiting_on": "them",
+      "next_action": "Wait for the take-home brief",
+      "due_date": "2026-09-24",
+      "summary": "First interview done; she is preparing a take-home exercise.",
+      "signal": "positive",
+      "confidence": "0.92",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-15T16:40:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000002",
+      "person_id": "b0000000-0000-4000-8000-000000000002",
+      "status": "meeting_planned",
+      "waiting_on": "nobody",
+      "next_action": "Call on 26 September",
+      "due_date": "2026-09-26",
+      "summary": "Intro call booked to go through his portfolio companies.",
+      "signal": "positive",
+      "confidence": "0.88",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-16T08:20:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000003",
+      "person_id": "b0000000-0000-4000-8000-000000000003",
+      "status": "in_conversation",
+      "waiting_on": "me",
+      "next_action": "Send the short architecture note she asked for",
+      "due_date": "2026-09-10",
+      "summary": "She asked for a one-page note on how I would approach their data platform.",
+      "signal": "positive",
+      "confidence": "0.81",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-14T10:05:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000004",
+      "person_id": "b0000000-0000-4000-8000-000000000004",
+      "status": "contacted_no_reply",
+      "waiting_on": "them",
+      "next_action": "Nudge once more, then let it rest",
+      "due_date": "2026-09-12",
+      "summary": "Asked for an introduction to his former colleague; no answer yet.",
+      "signal": "neutral",
+      "confidence": "0.64",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-05T09:00:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000005",
+      "person_id": "b0000000-0000-4000-8000-000000000005",
+      "status": "gone_quiet",
+      "waiting_on": "me",
+      "next_action": "Send a short check-in",
+      "due_date": "2026-10-06",
+      "summary": "Two exchanges in August, nothing since.",
+      "signal": "cold",
+      "confidence": "0.70",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-08-28T15:10:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000006",
+      "person_id": "b0000000-0000-4000-8000-000000000006",
+      "status": "closed",
+      "waiting_on": "nobody",
+      "next_action": null,
+      "due_date": null,
+      "summary": "He closed the role; keeping the contact for later.",
+      "signal": "cold",
+      "confidence": "0.95",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-02T12:35:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000007",
+      "person_id": "b0000000-0000-4000-8000-000000000007",
+      "status": "in_conversation",
+      "waiting_on": "them",
+      "next_action": "Wait for her reply about the team setup",
+      "due_date": "2026-09-29",
+      "summary": "She is checking whether her team has budget this quarter.",
+      "signal": "neutral",
+      "confidence": "0.76",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-17T07:55:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000008",
+      "person_id": "b0000000-0000-4000-8000-000000000008",
+      "status": "in_conversation",
+      "waiting_on": "me",
+      "next_action": "Send him the two company names he asked for",
+      "due_date": "2026-09-23",
+      "summary": "Happy to introduce me; wants a shortlist first.",
+      "signal": "positive",
+      "confidence": "0.83",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-16T19:25:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000009",
+      "person_id": "b0000000-0000-4000-8000-000000000009",
+      "status": "contacted_no_reply",
+      "waiting_on": "them",
+      "next_action": "Follow up in a week",
+      "due_date": "2026-10-01",
+      "summary": "Cold outreach about portfolio roles; no answer yet.",
+      "signal": "neutral",
+      "confidence": "0.60",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-08T07:40:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000010",
+      "person_id": "b0000000-0000-4000-8000-000000000010",
+      "status": "meeting_planned",
+      "waiting_on": "nobody",
+      "next_action": "Video call on 30 September",
+      "due_date": "2026-09-30",
+      "summary": "Product conversation booked after a warm introduction.",
+      "signal": "positive",
+      "confidence": "0.90",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-17T13:45:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000011",
+      "person_id": "b0000000-0000-4000-8000-000000000011",
+      "status": "gone_quiet",
+      "waiting_on": "nobody",
+      "next_action": null,
+      "due_date": null,
+      "summary": "Gave advice in August; nothing pending on either side.",
+      "signal": "neutral",
+      "confidence": "0.66",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-08-26T09:35:00Z"
+    },
+    {
+      "id": "f0000000-0000-4000-8000-000000000012",
+      "person_id": "b0000000-0000-4000-8000-000000000012",
+      "status": "in_process",
+      "waiting_on": "me",
+      "next_action": "Send the availability slots for the panel",
+      "due_date": "2026-09-22",
+      "summary": "Screening passed; panel interview to be scheduled.",
+      "signal": "positive",
+      "confidence": "0.87",
+      "assessed_at": "2026-09-18T07:00:00Z",
+      "assessed_through": "2026-09-16T11:15:00Z"
+    }
+  ],
+  "person_overrides": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "person_id": "b0000000-0000-4000-8000-000000000012",
+      "status": "in_process",
+      "waiting_on": "me",
+      "next_action": "Send the availability slots today",
+      "due_date": "2026-09-19",
+      "person_type": null,
+      "note": "Panel confirmed by phone, the AI had not seen that."
+    },
+    {
+      "id": "10000000-0000-4000-8000-000000000002",
+      "person_id": "b0000000-0000-4000-8000-000000000004",
+      "status": null,
+      "waiting_on": null,
+      "next_action": null,
+      "due_date": null,
+      "person_type": "network",
+      "note": "Friend, not a recruiter."
+    }
+  ],
+  "review_items": [
+    {
+      "id": "20000000-0000-4000-8000-000000000001",
+      "kind": "relevance",
+      "person_id": "b0000000-0000-4000-8000-000000000002",
+      "conversation_id": "d0000000-0000-4000-8000-000000000003",
+      "other_person_id": null,
+      "question": "Is this conversation with Bruno Sala part of the job search?",
+      "answer": null,
+      "answered_at": null
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000002",
+      "kind": "same_person",
+      "person_id": "b0000000-0000-4000-8000-000000000008",
+      "conversation_id": null,
+      "other_person_id": "b0000000-0000-4000-8000-000000000011",
+      "question": "Are Hugo Martins and Karin Hoffmann the same person?",
+      "answer": null,
+      "answered_at": null
+    },
+    {
+      "id": "20000000-0000-4000-8000-000000000003",
+      "kind": "relevance",
+      "person_id": "b0000000-0000-4000-8000-000000000009",
+      "conversation_id": "d0000000-0000-4000-8000-000000000014",
+      "other_person_id": null,
+      "question": "Is this conversation with Ines Duarte part of the job search?",
+      "answer": "yes",
+      "answered_at": "2026-09-17T18:30:00Z"
+    }
+  ],
+  "run_logs": [
+    {
+      "id": "30000000-0000-4000-8000-000000000001",
+      "started_at": "2026-09-17T05:00:00Z",
+      "finished_at": "2026-09-17T05:06:41Z",
+      "status": "success",
+      "trigger": "cloud"
+    },
+    {
+      "id": "30000000-0000-4000-8000-000000000002",
+      "started_at": "2026-09-18T05:00:00Z",
+      "finished_at": "2026-09-18T05:02:12Z",
+      "status": "failed",
+      "trigger": "cloud"
+    }
+  ],
+  "run_step_logs": [
+    {
+      "id": "40000000-0000-4000-8000-000000000001",
+      "run_id": "30000000-0000-4000-8000-000000000001",
+      "step": "collect_linkedin",
+      "status": "success",
+      "items_found": 163,
+      "items_new": 7,
+      "error_code": null,
+      "error_detail": null
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000002",
+      "run_id": "30000000-0000-4000-8000-000000000001",
+      "step": "collect_email",
+      "status": "success",
+      "items_found": 1873,
+      "items_new": 21,
+      "error_code": null,
+      "error_detail": null
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000003",
+      "run_id": "30000000-0000-4000-8000-000000000001",
+      "step": "assess",
+      "status": "success",
+      "items_found": 12,
+      "items_new": 3,
+      "error_code": null,
+      "error_detail": null
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000004",
+      "run_id": "30000000-0000-4000-8000-000000000001",
+      "step": "summary_email",
+      "status": "success",
+      "items_found": 1,
+      "items_new": 1,
+      "error_code": null,
+      "error_detail": null
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000005",
+      "run_id": "30000000-0000-4000-8000-000000000002",
+      "step": "collect_linkedin",
+      "status": "success",
+      "items_found": 165,
+      "items_new": 2,
+      "error_code": null,
+      "error_detail": null
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000006",
+      "run_id": "30000000-0000-4000-8000-000000000002",
+      "step": "collect_email",
+      "status": "failed",
+      "items_found": null,
+      "items_new": null,
+      "error_code": "source_auth_failed",
+      "error_detail": "mailbox sign-in was refused"
+    }
+  ]
+}

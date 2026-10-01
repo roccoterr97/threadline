@@ -1,0 +1,86 @@
+[project]
+name = "tracker"
+version = "0.1.0"
+description = "Threadline: every conversation, one clear line. Collection, assessment and reporting jobs."
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+dependencies = [
+    "cryptography>=43.0.0",
+    "httpx>=0.27.0",
+    "pydantic>=2.8.0",
+    "pydantic-settings>=2.4.0",
+    "structlog>=24.4.0",
+    "supabase>=2.7.0",
+    "typer>=0.12.0",
+]
+
+[project.scripts]
+tracker = "tracker.cli.main:main"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.380",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "pyyaml>=6.0.3",
+    "respx>=0.21.1",
+    "ruff>=0.6.0",
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tracker"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "ANN", # flake8-annotations
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "D",   # pydocstyle
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "PTH", # flake8-use-pathlib
+    "RET", # flake8-return
+    "SIM", # flake8-simplify
+    "T20", # flake8-print
+    "UP",  # pyupgrade
+    "W",   # pycodestyle warnings
+]
+ignore = [
+    "D203", # incompatible with D211 (no blank line before class docstring)
+    "D213", # incompatible with D212 (summary on the first line)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# The fake Supabase client mirrors an untyped third-party query builder.
+"tests/**" = ["ANN401", "D"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+reportUnusedImport = "error"
+reportUnusedVariable = "error"
+reportUnusedClass = "error"
+reportUnusedFunction = "error"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+asyncio_mode = "strict"

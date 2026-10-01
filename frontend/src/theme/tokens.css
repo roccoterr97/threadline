@@ -1,0 +1,123 @@
+/*
+ * Design tokens — the only place raw colour values live.
+ *
+ * Every token is defined for both themes in this one file, so no colour is ever
+ * defined only inside a media query. Components use the Tailwind utilities that
+ * map to these tokens (see index.css), never a hex value.
+ *
+ * Contrast: every "-text" token reaches at least 4.5:1 against its matching
+ * "-soft" background and against the surface it sits on.
+ *
+ * One colour, one meaning:
+ *   danger (red)      — overdue, and only that
+ *   warn (amber)      — the ball is with the owner, or something needs attention
+ *   positive (green)  — a meeting planned, a process under way, a good sign
+ *   accent (blue)     — links and controls only, never a state
+ *   neutral (grey)    — inactive: closed, not looked at, time to chase, nobody
+ *   Anything still running with no alarm (in conversation, waiting on them)
+ *   uses a plain outlined chip in the text colours, not a hue.
+ *
+ * Categories are the owner's own, so they get a fixed palette of nine slots
+ * instead of fixed meanings: violet, cyan, orange, pink, indigo, teal, olive,
+ * brown and grey. Each category names its slot in the database. The eight hues
+ * stay apart from every meaning above; grey reuses the neutral tokens.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  /* Surfaces and text */
+  --tracker-bg: #f7f8fa;
+  --tracker-surface: #ffffff;
+  --tracker-surface-raised: #ffffff;
+  --tracker-border: #d3d8e0;
+  --tracker-border-strong: #aab2be;
+  --tracker-text: #14181f;
+  --tracker-text-muted: #545e6c;
+
+  /* Interactive */
+  --tracker-accent: #1f4fd8;
+  --tracker-accent-hover: #17409e;
+  --tracker-accent-fg: #ffffff;
+  --tracker-focus: #1f4fd8;
+
+  /* Meaning — always paired with a text label, never used as the only signal */
+  --tracker-positive-text: #14603a;
+  --tracker-positive-soft: #e1f4e9;
+  --tracker-warn-text: #7a4300;
+  --tracker-warn-soft: #fbeeda;
+  --tracker-danger-text: #97202a;
+  --tracker-danger-soft: #fbe6e8;
+  --tracker-neutral-text: #414c5b;
+  --tracker-neutral-soft: #eaeef3;
+
+  /* Category slots — worst pair is 6.2:1 (orange text on its soft background) */
+  --tracker-category-violet-text: #5b21b6;
+  --tracker-category-violet-soft: #f0eafe;
+  --tracker-category-cyan-text: #0b5c73;
+  --tracker-category-cyan-soft: #dcf2f8;
+  --tracker-category-orange-text: #9a3412;
+  --tracker-category-orange-soft: #ffe8d6;
+  --tracker-category-pink-text: #9d1c6a;
+  --tracker-category-pink-soft: #fde4f1;
+  --tracker-category-indigo-text: #3730a3;
+  --tracker-category-indigo-soft: #e5e6fb;
+  --tracker-category-teal-text: #0f5f57;
+  --tracker-category-teal-soft: #d6f2ed;
+  --tracker-category-olive-text: #4b5714;
+  --tracker-category-olive-soft: #eef1d3;
+  --tracker-category-brown-text: #6e4633;
+  --tracker-category-brown-soft: #f2e7df;
+
+  /* Shape */
+  --tracker-radius-sm: 0.375rem;
+  --tracker-radius-md: 0.625rem;
+  --tracker-radius-lg: 1rem;
+  --tracker-shadow-card: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 10%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tracker-bg: #0e1117;
+    --tracker-surface: #171c24;
+    --tracker-surface-raised: #1f2630;
+    --tracker-border: #2e3746;
+    --tracker-border-strong: #475263;
+    --tracker-text: #eef1f6;
+    --tracker-text-muted: #a7b1bf;
+
+    --tracker-accent: #7aa2ff;
+    --tracker-accent-hover: #9cbaff;
+    --tracker-accent-fg: #0b0f16;
+    --tracker-focus: #9cbaff;
+
+    --tracker-positive-text: #7fe4ad;
+    --tracker-positive-soft: #123023;
+    --tracker-warn-text: #f5c37a;
+    --tracker-warn-soft: #332507;
+    --tracker-danger-text: #ff9ba0;
+    --tracker-danger-soft: #3a1a1e;
+    --tracker-neutral-text: #c0c9d6;
+    --tracker-neutral-soft: #222a35;
+
+    /* Worst pair is 7.9:1 (indigo text on its soft background) */
+    --tracker-category-violet-text: #c4b5fd;
+    --tracker-category-violet-soft: #2a2146;
+    --tracker-category-cyan-text: #7dd3e0;
+    --tracker-category-cyan-soft: #0f2d33;
+    --tracker-category-orange-text: #fdba8c;
+    --tracker-category-orange-soft: #3a2213;
+    --tracker-category-pink-text: #f5a9d3;
+    --tracker-category-pink-soft: #3a1630;
+    --tracker-category-indigo-text: #b0b8fc;
+    --tracker-category-indigo-soft: #22234a;
+    --tracker-category-teal-text: #6fe0cc;
+    --tracker-category-teal-soft: #0e2e2a;
+    --tracker-category-olive-text: #d2dc8c;
+    --tracker-category-olive-soft: #272b0e;
+    --tracker-category-brown-text: #dcbba6;
+    --tracker-category-brown-soft: #31241d;
+
+    --tracker-shadow-card: 0 1px 2px rgb(0 0 0 / 40%), 0 1px 3px rgb(0 0 0 / 30%);
+  }
+}

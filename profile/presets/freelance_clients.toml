@@ -1,0 +1,111 @@
+# Freelance clients — the people who hire you for work: new leads, current and
+# past clients, agencies that pass work on.
+#
+# To use it, copy this file to profile/profile.toml, edit what you like, then run
+#   cd backend && uv run tracker profile apply
+# docs/customising.md explains every part.
+
+name = "freelance_clients"
+title = "Freelance clients"
+
+[wording]
+subject = "your freelance work"
+relevance_question = "Is {name} part of your freelance work?"
+relevant_means = "A real person talking to you about a project, a brief, a quote, ongoing work or an introduction to a client."
+
+# Colours: violet, cyan, orange, pink, indigo, teal, olive, brown, grey.
+# "unknown" is added for you and cannot be listed here.
+
+[[categories]]
+key = "lead"
+label = "Lead"
+group_label = "Leads"
+colour = "violet"
+description = "Someone who might hire you but has not yet."
+
+[[categories]]
+key = "client"
+label = "Client"
+group_label = "Clients"
+colour = "teal"
+description = "Someone you are working for now, or who has work agreed with you."
+
+[[categories]]
+key = "past_client"
+label = "Past client"
+group_label = "Past clients"
+colour = "brown"
+description = "Someone you worked for before, with nothing running now."
+
+[[categories]]
+key = "agency"
+label = "Agency"
+group_label = "Agencies"
+colour = "indigo"
+description = "Someone at an agency or platform that passes work on to you."
+
+[stages.contacted_no_reply]
+label = "Contacted, no reply yet"
+description = "You wrote to them and they have not answered at all yet."
+
+[stages.in_conversation]
+label = "In conversation"
+description = "You are going back and forth about a possible project, its scope or an introduction."
+
+[stages.meeting_planned]
+label = "Meeting planned"
+description = "A specific call or meeting has been agreed, or you are settling the time for one."
+
+[stages.in_process]
+label = "Proposal sent"
+description = "There is a concrete piece of work on the table: a quote or proposal sent, being negotiated, or the work under way."
+
+[stages.gone_quiet]
+label = "Gone quiet"
+description = "A conversation that was running stopped: they had replied to you before, then you wrote last and nothing came back for ten days or more."
+
+[stages.closed]
+label = "Closed"
+description = "It is finished: the work was delivered and paid, they said no, you said no, or the conversation clearly ended."
+
+[guidance]
+status_examples = """
+- You answered a post three days ago and heard nothing →
+  **{{stage:contacted_no_reply}}**.
+- "We need a new website — are you available in March?" and you replied →
+  **{{stage:in_conversation}}**.
+- "Can we talk it through on Friday at 11?" → **{{stage:meeting_planned}}**.
+- You sent a quote and they are reviewing it, or the work is under way →
+  **{{stage:in_process}}**.
+- You sent one message and were never answered at all →
+  **{{stage:contacted_no_reply}}** — however long ago it was.
+- "Invoice paid, thanks for everything" or "we found someone else" →
+  **{{stage:closed}}**.
+"""
+
+summary_example = """
+`Marketing lead at Northwind. Quote for the new website sent on the 14th;
+she is checking the budget and will confirm by the end of the month.`
+"""
+
+relevance = """
+Things that are **noise**: newsletters, platform notifications, job-board
+alerts, marketing, invoices from your own suppliers, automatic replies.
+
+Things that are **relevant**: a lead asking about your availability, a client
+talking about the work, an agency offering a project, someone introducing you
+to a possible client.
+"""
+
+# ---------------------------------------------------------------------------
+# Collection rules for this kind of work, on top of the general ones.
+# ---------------------------------------------------------------------------
+
+[rules]
+# Booking tools: their mail carries the meeting times, so it is never thrown
+# away as noise.
+system_sender_domains = ["calendly.com", "cal.com"]
+platform_names = ["calendly"]
+# Words that make an entry you typed in your own calendar, with nobody invited,
+# a meeting to track.
+own_meeting_words = []

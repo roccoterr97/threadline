@@ -1,0 +1,111 @@
+# Fundraising — the people you raise money from, and the people who help you
+# reach them: funds, angels, advisers, introducers.
+#
+# To use it, copy this file to profile/profile.toml, edit what you like, then run
+#   cd backend && uv run tracker profile apply
+# docs/customising.md explains every part.
+
+name = "fundraising"
+title = "Fundraising"
+
+[wording]
+subject = "your fundraising"
+relevance_question = "Is {name} part of your fundraising?"
+relevant_means = "A real person talking to you about investing, your round, advice on it or an introduction to an investor."
+
+# Colours: violet, cyan, orange, pink, indigo, teal, olive, brown, grey.
+# "unknown" is added for you and cannot be listed here.
+
+[[categories]]
+key = "investor"
+label = "Investor"
+group_label = "Investors"
+colour = "cyan"
+description = "Someone at a fund: partner, principal, associate, platform team."
+
+[[categories]]
+key = "angel"
+label = "Angel"
+group_label = "Angels"
+colour = "violet"
+description = "Someone who invests their own money."
+
+[[categories]]
+key = "advisor"
+label = "Adviser"
+group_label = "Advisers"
+colour = "teal"
+description = "Someone who advises you on the round but does not invest or introduce."
+
+[[categories]]
+key = "introducer"
+label = "Introducer"
+group_label = "Introducers"
+colour = "orange"
+description = "Someone who can introduce you to investors: a founder, a friend, a former colleague."
+
+[stages.contacted_no_reply]
+label = "Contacted, no reply yet"
+description = "You wrote to them and they have not answered at all yet."
+
+[stages.in_conversation]
+label = "In conversation"
+description = "You are going back and forth about the company, the round, or an introduction."
+
+[stages.meeting_planned]
+label = "Meeting planned"
+description = "A specific call or pitch has been agreed, or you are settling the time for one."
+
+[stages.in_process]
+label = "In due diligence"
+description = "They are seriously looking: data room access, follow-up meetings, a partner meeting, a term sheet."
+
+[stages.gone_quiet]
+label = "Gone quiet"
+description = "A conversation that was running stopped: they had replied to you before, then you wrote last and nothing came back for ten days or more."
+
+[stages.closed]
+label = "Closed"
+description = "It is finished: they invested, they passed, you stopped, or the conversation clearly ended."
+
+[guidance]
+status_examples = """
+- You sent your deck three days ago and heard nothing →
+  **{{stage:contacted_no_reply}}**.
+- "Thanks for the deck — how much are you raising?" and you replied →
+  **{{stage:in_conversation}}**.
+- "Could you pitch to us on Thursday at 3pm?" → **{{stage:meeting_planned}}**.
+- "We'd like access to the data room" or "you're on the partner meeting agenda"
+  → **{{stage:in_process}}**.
+- You sent one message and were never answered at all →
+  **{{stage:contacted_no_reply}}** — however long ago it was.
+- "We'll pass for now" or "we're in for 250k" → **{{stage:closed}}**.
+- "Too early for us — come back when you have revenue" → **{{stage:closed}}**,
+  with the next action saying when to come back.
+"""
+
+summary_example = """
+`Principal at Northwind Ventures. Pitched on the 14th; she asked for the data
+room and is taking it to Monday's partner meeting.`
+"""
+
+relevance = """
+Things that are **noise**: newsletters, event invitations sent to a list,
+platform notifications, service providers selling to you, automatic replies.
+
+Things that are **relevant**: an investor or angel answering you, an adviser
+talking about the round, someone offering an introduction to an investor.
+"""
+
+# ---------------------------------------------------------------------------
+# Collection rules for this kind of work, on top of the general ones.
+# ---------------------------------------------------------------------------
+
+[rules]
+# Booking tools: their mail carries the meeting times, so it is never thrown
+# away as noise.
+system_sender_domains = ["calendly.com", "cal.com"]
+platform_names = ["calendly"]
+# Words that make an entry you typed in your own calendar, with nobody invited,
+# a meeting to track.
+own_meeting_words = ["pitch"]

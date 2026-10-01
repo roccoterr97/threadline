@@ -1,0 +1,53 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+venv/
+.venv/
+backend/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.vite/
+coverage/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.swp
+
+# Agent local state
+.claude/settings.local.json
+
+# AI batch files exchanged between Python and Claude
+work/
+
+# Deployment and local tool state
+.vercel/
+.claude/worktrees/
+
+# Data exports and saved keys
+exports/
+*.token

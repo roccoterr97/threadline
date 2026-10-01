@@ -1,0 +1,121 @@
+# Sales outreach — the people you sell to, and the people who help you sell:
+# prospects, customers, partners, people who refer you.
+#
+# To use it, copy this file to profile/profile.toml, edit what you like, then run
+#   cd backend && uv run tracker profile apply
+# docs/customising.md explains every part.
+
+name = "sales_outreach"
+title = "Sales outreach"
+
+[wording]
+subject = "your sales outreach"
+relevance_question = "Is {name} part of your sales outreach?"
+relevant_means = "A real person talking to you about buying, selling, a partnership or an introduction."
+
+# Colours: violet, cyan, orange, pink, indigo, teal, olive, brown, grey.
+# "unknown" is added for you and cannot be listed here.
+
+[[categories]]
+key = "prospect"
+label = "Prospect"
+group_label = "Prospects"
+colour = "violet"
+description = "Someone who might buy but has not yet: a lead you contacted, or who contacted you."
+
+[[categories]]
+key = "customer"
+label = "Customer"
+group_label = "Customers"
+colour = "teal"
+description = "Someone at an organisation that already pays you."
+
+[[categories]]
+key = "partner"
+label = "Partner"
+group_label = "Partners"
+colour = "indigo"
+description = "Someone you sell with rather than to: a reseller, an integration partner, an agency."
+
+[[categories]]
+key = "referrer"
+label = "Referrer"
+group_label = "Referrers"
+colour = "orange"
+description = "Someone who introduces you to buyers but does not buy themselves."
+
+[stages.contacted_no_reply]
+label = "Contacted, no reply yet"
+description = "You wrote to them and they have not answered at all yet."
+
+[stages.in_conversation]
+label = "In conversation"
+description = "You are going back and forth about their needs, your offer, or an introduction."
+
+[stages.meeting_planned]
+label = "Meeting planned"
+description = "A specific call, demo or meeting has been agreed, or you are settling the time for one."
+
+[stages.in_process]
+label = "In a deal"
+description = "There is a concrete opportunity moving: a proposal, a trial, a quote, a negotiation, a contract under review."
+
+[stages.gone_quiet]
+label = "Gone quiet"
+description = "A conversation that was running stopped: they had replied to you before, then you wrote last and nothing came back for ten days or more."
+
+[stages.closed]
+label = "Closed"
+description = "It is finished: they signed, they said no, you walked away, or the conversation clearly ended."
+
+[guidance]
+status_examples = """
+- You sent a first e-mail three days ago and heard nothing →
+  **{{stage:contacted_no_reply}}**.
+- "Interesting — what does it cost for a team of twenty?" and you replied →
+  **{{stage:in_conversation}}**.
+- "Can we do a demo on Tuesday at 10?" → **{{stage:meeting_planned}}**.
+- A calendar invitation, or a booking confirmation from a scheduling tool such
+  as Calendly, naming a day and a time → **{{stage:meeting_planned}}**.
+- "Please send the proposal, we'll review it with finance" →
+  **{{stage:in_process}}**.
+- A trial is running, or a contract is with their legal team →
+  **{{stage:in_process}}**. Silence while they decide is not the deal dying.
+- You sent one message and were never answered at all →
+  **{{stage:contacted_no_reply}}** — however long ago it was.
+- "Signed — welcome aboard" or "We have chosen another supplier" →
+  **{{stage:closed}}**.
+- "Not this quarter, try us again in January" → **{{stage:closed}}**, with the
+  next action saying when to come back.
+"""
+
+summary_example = """
+`Operations lead at Northwind. Demo done on the 14th; she is taking the
+proposal to her finance team and expects an answer next week.`
+"""
+
+relevance = """
+Things that are **noise**: newsletters, notifications, marketing, invoices and
+receipts, automatic replies, and vendors cold-pitching *you* when you never
+answered.
+
+Things that are **relevant**: a prospect replying to you, a customer asking a
+question, a partner or referrer talking about an opportunity, an introduction
+to a possible buyer.
+
+A booking confirmation from a scheduling tool (Calendly, Cal.com) for a call
+with a real person is **relevant**: a meeting was booked.
+"""
+
+# ---------------------------------------------------------------------------
+# Collection rules for this kind of work, on top of the general ones.
+# ---------------------------------------------------------------------------
+
+[rules]
+# Booking tools: their mail carries the meeting times, so it is never thrown
+# away as noise.
+system_sender_domains = ["calendly.com", "cal.com"]
+platform_names = ["calendly"]
+# Words that make an entry you typed in your own calendar, with nobody invited,
+# a meeting to track.
+own_meeting_words = ["demo"]

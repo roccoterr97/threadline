@@ -1,0 +1,142 @@
+# Runs Threadline on GitHub Actions: the daily run, and the dashboard's
+# "Refresh now". It runs on YOUR Claude subscription, through the key that
+# `claude setup-token` makes, stored as the CLAUDE_CODE_OAUTH_TOKEN secret.
+#
+# Without the required secrets (the public template, a copy not set up yet)
+# every run finishes green and does nothing.
+#
+# The dashboard's "Refresh now" starts this workflow through GitHub's API by
+# its file name, threadline-run.yml, with the input mode=refresh. Keep both.
+#
+# Set-up: `uv run tracker setup schedule` writes the daily time below;
+# `uv run tracker setup github` fills in the secrets and variables.
+# Guide: docs/setup-your-accounts.md, "Run it every day on GitHub".
+
+name: Threadline run
+
+on:
+  schedule:
+    # The daily time. 'uv run tracker setup schedule' rewrites these two lines.
+    - cron: "0 7 * * *"
+      timezone: "UTC"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "daily: the whole run with the summary e-mail. refresh: new messages only, no e-mail."
+        type: choice
+        options:
+          - daily
+          - refresh
+        default: daily
+
+permissions:
+  contents: read
+
+# Two runs never overlap: a refresh that starts during the daily run waits.
+concurrency:
+  group: threadline-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Threadline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      # Decides whether to run at all, and in which mode. Prints names only,
+      # never a value.
+      - name: Check the set-up
+        id: gate
+        env:
+          MODE: ${{ inputs.mode }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          OWNER_EMAIL_ADDRESSES: ${{ secrets.OWNER_EMAIL_ADDRESSES }}
+        run: |
+          missing=""
+          for name in CLAUDE_CODE_OAUTH_TOKEN SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY SUPABASE_ANON_KEY TOKEN_ENCRYPTION_KEY OWNER_EMAIL_ADDRESSES; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::Threadline is not set up in this repository, so there is nothing to do. Missing secrets:$missing"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "${MODE:-daily}" in
+            daily) trigger=github ;;
+            refresh) trigger=refresh ;;
+            *) echo "::error::mode must be daily or refresh"; exit 1 ;;
+          esac
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "mode=${MODE:-daily}" >> "$GITHUB_OUTPUT"
+          echo "trigger=$trigger" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the project
+        if: steps.gate.outputs.ready == 'true'
+        uses: actions/checkout@v5
+
+      # uv installs the Python version named in backend/.python-version.
+      - name: Install uv
+        if: steps.gate.outputs.ready == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Install Threadline
+        if: steps.gate.outputs.ready == 'true'
+        working-directory: backend
+        run: uv sync --locked
+
+      # The recipe in .claude/commands/daily-run.md, with the permissions in
+      # .claude/settings.json. GitHub's own short-lived token is passed, so no
+      # Claude GitHub App is needed. The settings reach this step only.
+      - name: Run the recipe with Claude
+        if: steps.gate.outputs.ready == 'true'
+        uses: anthropics/claude-code-action@v1
+        # Every setting Threadline reads, in one place. Secrets are hidden in
+        # the log by GitHub; variables are the settings that are neither secret
+        # nor personal. backend/src/tracker/shared/constants/github.py says
+        # which is which, and a test keeps this list and that file in step.
+        env:
+          APP_ENV: production
+          LOG_LEVEL: ${{ vars.LOG_LEVEL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          TOKEN_ENCRYPTION_KEY: ${{ secrets.TOKEN_ENCRYPTION_KEY }}
+          OWNER_LINKEDIN_PROFILE_URL: ${{ secrets.OWNER_LINKEDIN_PROFILE_URL }}
+          OWNER_EMAIL_ADDRESSES: ${{ secrets.OWNER_EMAIL_ADDRESSES }}
+          LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
+          LINKEDIN_TOKEN_EXPIRES_ON: ${{ vars.LINKEDIN_TOKEN_EXPIRES_ON }}
+          DASHBOARD_BASE_URL: ${{ secrets.DASHBOARD_BASE_URL }}
+          SUMMARY_RECIPIENT: ${{ secrets.SUMMARY_RECIPIENT }}
+          OWNER_DISPLAY_NAME: ${{ secrets.OWNER_DISPLAY_NAME }}
+          OWNER_TIME_ZONE: ${{ vars.OWNER_TIME_ZONE }}
+          OWNER_WEEKEND_DAYS: ${{ vars.OWNER_WEEKEND_DAYS }}
+          PRODUCT_NAME: ${{ vars.PRODUCT_NAME }}
+          SUMMARY_SUBJECT_PREFIX: ${{ vars.SUMMARY_SUBJECT_PREFIX }}
+          MICROSOFT_CLIENT_ID: ${{ vars.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_TENANT: ${{ vars.MICROSOFT_TENANT }}
+          MAIL_SOURCES: ${{ vars.MAIL_SOURCES }}
+          IMAP_PROVIDER: ${{ vars.IMAP_PROVIDER }}
+          IMAP_HOST: ${{ vars.IMAP_HOST }}
+          IMAP_PORT: ${{ vars.IMAP_PORT }}
+          IMAP_USERNAME: ${{ secrets.IMAP_USERNAME }}
+          SUMMARY_DELIVERY: ${{ vars.SUMMARY_DELIVERY }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ github.token }}
+          settings: .claude/settings.json
+          prompt: /daily-run --trigger ${{ steps.gate.outputs.trigger }} --mode ${{ steps.gate.outputs.mode }}
+          # The same permissions as .claude/settings.json, passed explicitly:
+          # the action does not always apply the project's allow list, and the
+          # assessment needs the Skill and Agent tools to start its helpers.
+          claude_args: >-
+            --max-turns 200
+            --allowedTools "Bash(cd:*),Bash(uv run tracker:*),Bash(mkdir:*),Read,Write,Skill,Task,Agent"
