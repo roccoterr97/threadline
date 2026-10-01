@@ -36,7 +36,9 @@ the same one your real dashboard uses. This makes a second, separate project.
 
 - **Project Name:** `threadline-demo` (this becomes the web address, for
   example `threadline-demo.vercel.app`, if nobody else has taken it).
-- **Root Directory:** click **Edit** and choose `frontend`.
+- **Root Directory:** click **Edit** and choose `frontend`. If Vercel says
+  *"Multiple applications detected"*, click **Import single project** next to
+  **frontend** (marked *Vite*) instead: that sets the folder for you.
 - Leave **Build and Output Settings** as they are. The file
   `frontend/vercel.json` already sets them, together with the same security
   rules the real dashboard has.

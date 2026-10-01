@@ -660,11 +660,17 @@ phone.
    slightly different).
 3. On the page before **Deploy**:
    - **Root Directory:** click **Edit** and choose **`frontend`**. This is easy
-     to miss, and nothing works without it.
+     to miss, and nothing works without it. If Vercel instead says
+     *"Multiple applications detected"* and lists **backend** and **frontend**,
+     click **Import single project** next to **frontend** (marked *Vite*): that
+     sets the folder for you.
    - **Environment Variables:** add two:
      - `VITE_SUPABASE_URL` = your project address (`https://<project-id>.supabase.co`)
      - `VITE_SUPABASE_ANON_KEY` = your **publishable** key. Never the secret one.
-4. Click **Deploy** and wait for it to finish.
+4. Click **Deploy** (or **Create Project**, then **Deploy**) and wait for it to
+   finish. If Vercel only says *"Project created … then deploy"* and nothing
+   starts, open the project and choose **Deployments → Redeploy**, or push any
+   change to your copy: every push publishes the dashboard again.
 5. Open the project's **Settings → Domains** and copy the **production
    address**, which looks like `https://<name>.vercel.app`.
 
