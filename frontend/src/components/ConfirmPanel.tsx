@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 import { Button } from './Button';
+import { SaveFeedback } from './SaveFeedback';
 
 interface ConfirmPanelProps {
   title: string;
@@ -17,7 +18,8 @@ interface ConfirmPanelProps {
  * An "are you sure?" step shown in the page itself rather than in a pop-up, so
  * it stays keyboard-friendly and readable at phone width. It takes focus when
  * it opens, since the button that opened it is gone, and is named after its
- * question so a screen reader says what is being asked.
+ * question so a screen reader says what is being asked. A failed attempt
+ * takes the focus and comes on screen, as every failed save does.
  */
 export function ConfirmPanel({
   title,
@@ -49,9 +51,9 @@ export function ConfirmPanel({
       </h3>
       <p className="mt-1 text-ink">{body}</p>
       {errorText !== null && (
-        <p role="alert" className="mt-2 text-danger">
-          {errorText}
-        </p>
+        <div className="mt-2">
+          <SaveFeedback outcome={{ tone: 'error', text: errorText }} />
+        </div>
       )}
       <div className="mt-4 flex flex-wrap gap-3">
         <Button variant="danger" onClick={onConfirm} disabled={isBusy}>

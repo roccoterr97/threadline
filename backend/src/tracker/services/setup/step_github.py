@@ -97,11 +97,11 @@ def _ask_token(ctx: SetupContext) -> SecretStr | None:
     """Ask for the Claude subscription key; it is kept in memory only."""
     io = ctx.io
     io.say("GitHub also needs a key to use your Claude subscription. To make it:")
-    io.say("  Open a second Terminal window (⌘ + N), run claude setup-token, sign in in the")
-    io.say("  browser, then copy the long key it prints back in that window (it starts with")
-    io.say("  sk-ant-). It lasts one year.")
+    io.say("  Open the Terminal app (a new window: ⌘ + N), run claude setup-token, sign in")
+    io.say("  in the browser, then copy the long key it prints back in that window (it starts")
+    io.say("  with sk-ant-). It lasts one year.")
     raw = io.ask_secret(
-        f"Paste that key for {CLAUDE_TOKEN_SECRET} (it is not shown), or press Enter to skip"
+        f"Paste that key for {CLAUDE_TOKEN_SECRET} (it is not shown), or leave it empty to skip"
     )
     cleaned = "".join(raw.split())
     if not cleaned:

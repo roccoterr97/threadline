@@ -209,3 +209,22 @@ def test_by_hand_a_failing_merge_or_link_still_ends_as_a_failure(
 
     assert exit_code != 0
     assert lines == []
+
+
+def test_the_day_after_a_merge_the_command_prints_what_it_always_printed(wire: Wire) -> None:
+    """The old answer is counted as already done, without looking its people up."""
+    client = world()
+    wire(client)
+    run("merge")
+    before = left_behind(client)
+    client.executed.clear()
+
+    exit_code, lines = run("merge")
+
+    assert exit_code == 0
+    assert lines == [
+        "people merged: 0 (0 addresses and profiles, 0 conversations moved)",
+        "already done: 1",
+    ]
+    assert client.executed == [("review_items", "select")]
+    assert left_behind(client) == before

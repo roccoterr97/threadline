@@ -103,6 +103,20 @@ describe('the lists on the settings page', () => {
     expect(offered.map((s) => s.key)).toEqual(['mentor']);
   });
 
+  it('leaves out a suggestion whose name or group name another category has, whatever its case', () => {
+    const categories = [
+      ...sampleCategories,
+      category('advisor', ' MENTOR ', 'Advisors', 'pink', 40),
+      category('coach', 'Coach', 'mentors', 'indigo', 50),
+    ];
+    const peer: CategorySuggestion = { ...MENTOR, key: 'peer', label: 'Peer', group_label: 'Peers' };
+
+    expect(suggestionsToOffer([MENTOR, { ...MENTOR, label: 'Guide' }, peer], categories)).toEqual([
+      peer,
+    ]);
+    expect(suggestionsToOffer([MENTOR], withArchived(categories, 'advisor'))).toEqual([]);
+  });
+
   it('picks the first colour nobody uses yet', () => {
     expect(firstFreeColour(sampleCategories)).toBe('pink');
     expect(firstFreeColour(FULL)).toBe('grey');

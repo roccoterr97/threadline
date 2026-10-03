@@ -71,12 +71,11 @@ class MessageRepository(SupabaseRepository[Message]):
         counts: dict[UUID, int] = {}
         for batch in batched(conversation_ids, DATABASE_BATCH_SIZE):
             rows = self._select_every(
-                lambda values=[str(item) for item in batch]: (
-                    self._table()
-                    .select(f"id,{CONVERSATION_ID_COLUMN}")
-                    .in_(CONVERSATION_ID_COLUMN, values)
+                lambda query, values=[str(item) for item in batch]: query.in_(
+                    CONVERSATION_ID_COLUMN, values
                 ),
                 "count_by_conversation",
+                columns=f"id,{CONVERSATION_ID_COLUMN}",
             )
             for row in rows:
                 key = UUID(str(row[CONVERSATION_ID_COLUMN]))
@@ -98,12 +97,11 @@ class MessageRepository(SupabaseRepository[Message]):
         senders: list[tuple[UUID, str]] = []
         for batch in batched(conversation_ids, DATABASE_BATCH_SIZE):
             rows = self._select_every(
-                lambda values=[str(item) for item in batch]: (
-                    self._table()
-                    .select(f"id,{CONVERSATION_ID_COLUMN},{SENDER_COLUMN}")
-                    .in_(CONVERSATION_ID_COLUMN, values)
+                lambda query, values=[str(item) for item in batch]: query.in_(
+                    CONVERSATION_ID_COLUMN, values
                 ),
                 "list_senders",
+                columns=f"id,{CONVERSATION_ID_COLUMN},{SENDER_COLUMN}",
             )
             senders.extend(
                 (UUID(str(row[CONVERSATION_ID_COLUMN])), str(row[SENDER_COLUMN]))
@@ -124,12 +122,9 @@ class MessageRepository(SupabaseRepository[Message]):
         found: list[tuple[UUID, str]] = []
         for batch in batched(senders, DATABASE_BATCH_SIZE):
             rows = self._select_every(
-                lambda values=list(batch): (
-                    self._table()
-                    .select(f"id,{CONVERSATION_ID_COLUMN},{SENDER_COLUMN}")
-                    .in_(SENDER_COLUMN, values)
-                ),
+                lambda query, values=list(batch): query.in_(SENDER_COLUMN, values),
                 "list_threads_from",
+                columns=f"id,{CONVERSATION_ID_COLUMN},{SENDER_COLUMN}",
             )
             found.extend(
                 (UUID(str(row[CONVERSATION_ID_COLUMN])), str(row[SENDER_COLUMN])) for row in rows

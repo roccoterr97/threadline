@@ -32,7 +32,7 @@ class RunStepLogRepository(SupabaseRepository[RunStepLog]):
             The steps, oldest first.
         """
         rows = self._select_every(
-            lambda: self._table().select(ALL_COLUMNS).eq("run_id", str(run_id)),
+            lambda query: query.eq("run_id", str(run_id)),
             "list_for_run",
         )
         found = self._to_models(rows)
@@ -73,5 +73,28 @@ class RunStepLogRepository(SupabaseRepository[RunStepLog]):
             .limit(1)
             .execute(),
             "find_latest_successful",
+        )
+        return self._first(rows)
+
+    def find_latest_failed_with(self, step: RunStep, error_code: str) -> RunStepLog | None:
+        """Fetch the most recent time one step failed with one particular code.
+
+        Args:
+            step: The step to look for, such as ``collect_email``.
+            error_code: The code it failed with.
+
+        Returns:
+            The newest such record of that step, or ``None``.
+        """
+        rows = self._run(
+            lambda: self._table()
+            .select(ALL_COLUMNS)
+            .eq("step", step.value)
+            .eq("status", RunStatus.FAILED.value)
+            .eq("error_code", error_code)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute(),
+            "find_latest_failed_with",
         )
         return self._first(rows)

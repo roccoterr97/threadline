@@ -69,4 +69,4 @@ def _point_supabase_at(ctx: SetupContext, address: str) -> None:
     io.say(f"  Site URL: {address}")
     io.say(f"  Redirect URLs: add {address}/**")
     io.open_page(SUPABASE_URL_CONFIGURATION_PAGE.format(ref=ref))
-    io.pause("Press Enter once both are saved")
+    io.pause("Once both are saved")

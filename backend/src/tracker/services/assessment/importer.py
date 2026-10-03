@@ -45,7 +45,7 @@ from tracker.domain.models import (
     ReviewItem,
 )
 from tracker.domain.profile import Wording
-from tracker.repositories import Repositories
+from tracker.repositories import CategoryRepository, OrganisationRepository, Repositories
 from tracker.schemas.assessment import PersonVerdict, parse_batch, parse_verdict_file
 from tracker.services.assessment.validation import validate_against_batch
 from tracker.services.assessment.work_files import remove_work_file
@@ -106,6 +106,47 @@ class _Writes:
     review_items: list[ReviewItem] = field(default_factory=list)
 
 
+class _AllowedCategories:
+    """The category keys a verdict may use, read when the first file needs them.
+
+    One import checks every file against the same categories, so they are read
+    once for all of them. A run whose files all fail before that check never
+    reads them at all.
+    """
+
+    def __init__(self, repository: CategoryRepository) -> None:
+        """Bind to the categories table; nothing is read yet."""
+        self._repository = repository
+        self._keys: frozenset[str] | None = None
+
+    def keys(self) -> frozenset[str]:
+        """Return the active category keys, plus the one for "not known"."""
+        if self._keys is None:
+            self._keys = self._repository.active_keys() | {UNKNOWN_CATEGORY_KEY}
+        return self._keys
+
+
+class _StoredOrganisations:
+    """The organisations already stored under the names one file mentions.
+
+    Every name in the file is looked up together, the first time one of them
+    is needed: a file whose verdicts are all noise names organisations nobody
+    will be linked to, and asks nothing.
+    """
+
+    def __init__(self, repository: OrganisationRepository, names: Sequence[str]) -> None:
+        """Bind to the organisations table and to one file's names; nothing is read yet."""
+        self._repository = repository
+        self._names = names
+        self._by_name: dict[str, Organisation] | None = None
+
+    def named(self, name: str) -> Organisation | None:
+        """Return the organisation stored under a name, or ``None`` when there is none."""
+        if self._by_name is None:
+            self._by_name = self._repository.find_by_names(self._names)
+        return self._by_name.get(name)
+
+
 @dataclass(frozen=True, slots=True)
 class _Known:
     """What the database already holds about the people in one file."""
@@ -115,6 +156,7 @@ class _Known:
     states: dict[UUID, PersonState]
     overrides: dict[UUID, PersonOverride]
     review_items: dict[UUID, list[ReviewItem]]
+    organisations: _StoredOrganisations
 
 
 class AssessmentImporter:
@@ -167,8 +209,9 @@ class AssessmentImporter:
             The combined outcome, with one entry per rejected file.
         """
         outcome = ImportResult()
+        categories = self._allowed_categories()
         for path in self.result_files():
-            outcome = outcome.merged_with(self._import_one(path))
+            outcome = outcome.merged_with(self._import_one(path, categories))
         _log.info(
             "assessment_imported",
             assessed=outcome.assessed,
@@ -191,13 +234,17 @@ class AssessmentImporter:
             ValidationFailedError: If the file does not pass every check. The
                 database is left untouched.
         """
-        verdicts, _ = self._validated(path)
+        verdicts, _ = self._validated(path, self._allowed_categories())
         return self._apply(verdicts)
 
-    def _import_one(self, path: Path) -> ImportResult:
+    def _allowed_categories(self) -> _AllowedCategories:
+        """The categories every file of one import is checked against."""
+        return _AllowedCategories(self._repositories.categories)
+
+    def _import_one(self, path: Path, categories: _AllowedCategories) -> ImportResult:
         """Import one file, turning a refusal into a counted rejection."""
         try:
-            verdicts, batch_path = self._validated(path)
+            verdicts, batch_path = self._validated(path, categories)
             outcome = self._apply(verdicts)
         except ValidationFailedError as error:
             _log.warning("verdict_file_rejected", file=path.name, reason=error.message)
@@ -205,8 +252,14 @@ class AssessmentImporter:
         _discard(path, batch_path)
         return outcome
 
-    def _validated(self, path: Path) -> tuple[tuple[PersonVerdict, ...], Path]:
+    def _validated(
+        self, path: Path, categories: _AllowedCategories
+    ) -> tuple[tuple[PersonVerdict, ...], Path]:
         """Parse a result file and check it against the batch it answers.
+
+        Args:
+            path: The result file.
+            categories: The categories a verdict may use.
 
         Returns:
             The verdicts that passed, and the batch file they answer.
@@ -221,15 +274,16 @@ class AssessmentImporter:
             message = f"no batch named '{verdict_file.batch_id}' was exported"
             raise ValidationFailedError(message)
         batch = parse_batch(_read(batch_path))
-        category_keys = self._repositories.categories.active_keys() | {UNKNOWN_CATEGORY_KEY}
-        verdicts = validate_against_batch(verdict_file, batch, self._clock.today(), category_keys)
+        verdicts = validate_against_batch(
+            verdict_file, batch, self._clock.today(), categories.keys()
+        )
         return verdicts, batch_path
 
     def _apply(self, verdicts: Sequence[PersonVerdict]) -> ImportResult:
         """Write one validated file's verdicts, all tables at once."""
         if not verdicts:
             return ImportResult()
-        known = self._read_known([verdict.person_id for verdict in verdicts])
+        known = self._read_known(verdicts)
         writes = _Writes()
         outcome = ImportResult()
         for verdict in verdicts:
@@ -255,14 +309,15 @@ class AssessmentImporter:
             if message.body is not None
         )
 
-    def _read_known(self, person_ids: Sequence[UUID]) -> _Known:
-        """Read everything the database already holds about these people.
+    def _read_known(self, verdicts: Sequence[PersonVerdict]) -> _Known:
+        """Read everything the database already holds about one file's people.
 
         Raises:
             ValidationFailedError: If a person named by the batch no longer
                 exists; the whole file is then refused.
         """
         repositories = self._repositories
+        person_ids = [verdict.person_id for verdict in verdicts]
         people = {person.id: person for person in repositories.people.list_by_ids(person_ids)}
         missing = [str(person_id) for person_id in person_ids if person_id not in people]
         if missing:
@@ -288,6 +343,10 @@ class AssessmentImporter:
                 for override in repositories.person_overrides.list_for_people(person_ids)
             },
             review_items=review_items,
+            organisations=_StoredOrganisations(
+                repositories.organisations,
+                [verdict.organisation_name or "" for verdict in verdicts],
+            ),
         )
 
     def _plan_person(
@@ -334,30 +393,10 @@ class AssessmentImporter:
             update={
                 "person_type": state.person_type,
                 "role_title": verdict.role_title or person.role_title,
-                "organisation_id": self._organisation_id(person, verdict, writes),
+                "organisation_id": _organisation_id(person, verdict, known, writes),
                 "relevance": relevance,
             }
         )
-
-    def _organisation_id(
-        self,
-        person: Person,
-        verdict: PersonVerdict,
-        writes: _Writes,
-    ) -> UUID | None:
-        """Find or create the organisation the verdict named."""
-        name = (verdict.organisation_name or "").strip()
-        if not name:
-            return person.organisation_id
-        planned = next((row for row in writes.organisations if row.name == name), None)
-        if planned is not None:
-            return planned.id
-        existing = self._repositories.organisations.find_by_name(name)
-        if existing is not None:
-            return existing.id
-        created = Organisation(name=name)
-        writes.organisations.append(created)
-        return created.id
 
     def _state_row(
         self,
@@ -413,6 +452,27 @@ def _discard(verdict_path: Path, batch_path: Path) -> None:
     """
     remove_work_file(verdict_path)
     remove_work_file(batch_path)
+
+
+def _organisation_id(
+    person: Person,
+    verdict: PersonVerdict,
+    known: _Known,
+    writes: _Writes,
+) -> UUID | None:
+    """Find or create the organisation the verdict named."""
+    name = (verdict.organisation_name or "").strip()
+    if not name:
+        return person.organisation_id
+    planned = next((row for row in writes.organisations if row.name == name), None)
+    if planned is not None:
+        return planned.id
+    existing = known.organisations.named(name)
+    if existing is not None:
+        return existing.id
+    created = Organisation(name=name)
+    writes.organisations.append(created)
+    return created.id
 
 
 def _owner_confirmed_relevant(person_id: UUID, known: _Known) -> bool:

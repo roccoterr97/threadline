@@ -120,7 +120,7 @@ def _prepare_first_connection(ctx: SetupContext) -> bool:
         return False
     _say(ctx, _CREATE_APPLICATION)
     io.open_page(LINKEDIN_DEVELOPER_APPS_PAGE)
-    io.pause("Press Enter once your application's own page is open")
+    io.pause("Once your application's own page is open")
     # No page is opened here: the Products tab has no address of its own, and
     # the application's page is already open from the stage before.
     _say(ctx, _ADD_PRODUCT)

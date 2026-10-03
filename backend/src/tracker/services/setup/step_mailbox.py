@@ -9,6 +9,9 @@ the database. The password never goes into ``.env``.
 The morning summary is sent from the same mailbox by SMTP. The known providers'
 sending servers are built in; for another provider the step asks for it and
 signs in to it once, so a wrong server shows up now rather than every morning.
+That comes last, once the checked password and the mailbox are saved: a
+sending server that will not work, or that the owner does not know yet, never
+costs them the mailbox, and they can carry on without it and add it later.
 """
 
 from __future__ import annotations
@@ -156,13 +159,41 @@ async def _connect_imap(ctx: SetupContext, provider: ImapProvider) -> None:
         accept,
     )
     _report(ctx, survey)
-    sending = await _sending_server(ctx, provider, account, password)
+    same_mailbox = _is_saved_mailbox(ctx, account)
     await ctx.gateways.mailbox.save_password(store_access(ctx), account.username, password)
     ctx.io.say("Saved the app password, encrypted, in your database - it is not in .env.")
-    _save_account(ctx, provider, account, sending)
+    _save_account(ctx, provider, account)
     await _save_sources(ctx)
     if "@" in account.username:
         remember_address(ctx, account.username.lower())
+    if provider is ImapProvider.CUSTOM and _summary_goes_by_smtp(ctx):
+        await _connect_sending(ctx, account, password, keep_saved=same_mailbox)
+
+
+def _is_saved_mailbox(ctx: SetupContext, account: ImapAccount) -> bool:
+    """Whether ``.env`` already names this mailbox: same server, same sign-in name."""
+    return (ctx.env.get(IMAP_HOST), ctx.env.get(IMAP_USERNAME)) == (account.host, account.username)
+
+
+async def _connect_sending(
+    ctx: SetupContext, account: ImapAccount, password: SecretStr, *, keep_saved: bool
+) -> None:
+    """Save the sending server that signs in, or leave it for later.
+
+    Args:
+        ctx: The set-up's context.
+        account: The mailbox that was just connected.
+        password: Its checked app password.
+        keep_saved: Whether a sending server already in ``.env`` belongs to
+            this same mailbox and may stay when none signs in now.
+    """
+    sending = await _sending_server(ctx, account, password)
+    if sending is not None:
+        _save_sending_server(ctx, sending)
+        return
+    if not keep_saved:
+        _forget_sending_server(ctx)
+    _say_sending_left_for_later(ctx)
 
 
 def _account(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> ImapAccount:
@@ -195,34 +226,64 @@ def _account(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> I
 
 
 async def _sending_server(
-    ctx: SetupContext, provider: ImapProvider, account: ImapAccount, password: SecretStr
+    ctx: SetupContext, account: ImapAccount, password: SecretStr
 ) -> SmtpAccount | None:
-    """For another provider, ask the summary's sending server and sign in to it once.
+    """Ask another provider's sending server and sign in to it once.
+
+    After a failed sign-in the owner may try another server or carry on
+    without one; after the last attempt the step carries on by itself.
 
     Returns:
-        The checked server, or ``None`` when the provider's is built in or the
-        summary does not go by SMTP.
-
-    Raises:
-        SourceAuthError: If the server refused the password every time.
-        SourceUnavailableError: If the server could not be reached every time.
+        The checked server, or ``None`` when none could be signed in to.
     """
-    if provider is not ImapProvider.CUSTOM or not _summary_goes_by_smtp(ctx):
-        return None
     ctx.io.say("The morning summary is sent from this mailbox, through its sending (SMTP) server.")
     for attempt in range(1, MAX_ATTEMPTS + 1):
-        sending = _ask_sending_server(ctx, account)
-        try:
-            await ctx.gateways.mailbox.check_sending(sending, password)
-        except (SourceAuthError, SourceUnavailableError) as error:
-            if attempt == MAX_ATTEMPTS:
-                raise
-            ctx.io.say(f"  {error.message}. Please check the server and port.")
-            continue
-        ctx.io.say("Signed in to the sending server. Nothing was sent.")
-        return sending
-    message = "no attempt was made"  # pragma: no cover - MAX_ATTEMPTS >= 1
-    raise ValidationFailedError(message)  # pragma: no cover
+        sending = _asked_sending_server(ctx, account)
+        if sending is None:
+            return None
+        if await _signs_in(ctx, sending, password):
+            return sending
+        if attempt < MAX_ATTEMPTS and not ctx.io.confirm(
+            "Try another server or port? Answer n to carry on without it for now", default=True
+        ):
+            break
+    return None
+
+
+def _asked_sending_server(ctx: SetupContext, account: ImapAccount) -> SmtpAccount | None:
+    """Ask the sending server; ``None`` when no answer was a server name or a port.
+
+    The mailbox is already saved by now, so answers that never pass their
+    check end the asking, not the step.
+    """
+    try:
+        return _ask_sending_server(ctx, account)
+    except ValidationFailedError as error:
+        ctx.io.say(f"  {error.message}.")
+        return None
+
+
+async def _signs_in(ctx: SetupContext, sending: SmtpAccount, password: SecretStr) -> bool:
+    """Sign in to the sending server once, saying why when it does not work."""
+    try:
+        await ctx.gateways.mailbox.check_sending(sending, password)
+    except (SourceAuthError, SourceUnavailableError) as error:
+        ctx.io.say(f"  {error.message}. Please check the server and port.")
+        return False
+    ctx.io.say("Signed in to the sending server. Nothing was sent.")
+    return True
+
+
+def _say_sending_left_for_later(ctx: SetupContext) -> None:
+    """Say what works without the sending server, and how to add it later."""
+    io = ctx.io
+    io.say("Carrying on without the sending server. Your mailbox is connected and read every")
+    io.say("morning, but the morning summary cannot be e-mailed until the sending server works.")
+    io.say("Your provider's help pages list it: search them for 'SMTP server'. To add it later,")
+    io.say(f"run 'uv run tracker setup {StepName.MAILBOX}' again: it asks for the app password")
+    io.say("once more (make a new one if you no longer have it), then for the sending server.")
+    io.say(f"If your daily run is on GitHub, run 'uv run tracker setup {StepName.GITHUB}' after")
+    io.say("that, so the run there is told the sending server too.")
 
 
 def _ask_sending_server(ctx: SetupContext, account: ImapAccount) -> SmtpAccount:
@@ -289,10 +350,8 @@ def _report(ctx: SetupContext, survey: MailboxSurvey) -> None:
     ctx.io.say(f"Your own replies are read from the folder '{survey.sent_folder}'.")
 
 
-def _save_account(
-    ctx: SetupContext, provider: ImapProvider, account: ImapAccount, sending: SmtpAccount | None
-) -> None:
-    """Write the provider, the sign-in name and, for another provider, the servers."""
+def _save_account(ctx: SetupContext, provider: ImapProvider, account: ImapAccount) -> None:
+    """Write the provider, the sign-in name and, for another provider, the server."""
     ctx.env.set(IMAP_PROVIDER, provider.value)
     ctx.env.set(IMAP_USERNAME, account.username)
     if provider is ImapProvider.CUSTOM:
@@ -304,10 +363,24 @@ def _save_account(
             if ctx.env.get(name) is not None:
                 ctx.env.set(name, "")
     ctx.io.say(f"Saved {IMAP_PROVIDER} and {IMAP_USERNAME} in .env.")
-    if sending is not None:
-        ctx.env.set(SMTP_HOST, sending.host)
-        ctx.env.set(SMTP_PORT, str(sending.port))
-        ctx.io.say(f"Saved {SMTP_HOST} and {SMTP_PORT} in .env.")
+
+
+def _forget_sending_server(ctx: SetupContext) -> None:
+    """Blank a sending server saved for an earlier mailbox.
+
+    Left in place, every morning's summary would sign in to the old
+    mailbox's server with this mailbox's name and app password.
+    """
+    for name in (SMTP_HOST, SMTP_PORT):
+        if ctx.env.get(name) is not None:
+            ctx.env.set(name, "")
+
+
+def _save_sending_server(ctx: SetupContext, sending: SmtpAccount) -> None:
+    """Write the sending server that was signed in to."""
+    ctx.env.set(SMTP_HOST, sending.host)
+    ctx.env.set(SMTP_PORT, str(sending.port))
+    ctx.io.say(f"Saved {SMTP_HOST} and {SMTP_PORT} in .env.")
 
 
 async def _save_sources(ctx: SetupContext) -> None:

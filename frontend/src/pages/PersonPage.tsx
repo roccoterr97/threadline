@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   fetchPerson,
   fetchPersonConversations,
@@ -19,6 +19,7 @@ import { buildTimeline } from '../domain/timeline';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
+import { peopleListAddress } from '../lib/peopleListAddress';
 
 /**
  * One person: who they are, every message, and — folded away — how to correct
@@ -27,10 +28,12 @@ import { useClock } from '../lib/ClockContext';
  * On a phone everything is one column: summary, then the history, then the
  * correction. On a laptop the history takes the wide left column and the
  * summary and correction sit beside it, so the messages start at the top.
+ * Every way back to People keeps the filters and order it was opened with.
  */
 export function PersonPage() {
   const clock = useClock();
   const { personId = '' } = useParams<{ personId: string }>();
+  const peopleAddress = peopleListAddress(useLocation().state);
 
   const person = useQuery({
     queryKey: personQueryKey(personId),
@@ -68,7 +71,7 @@ export function PersonPage() {
         title={copy.person.notFound.title}
         body={copy.person.notFound.body}
         action={
-          <Link to="/" className="font-medium text-accent underline underline-offset-2">
+          <Link to={peopleAddress} className="font-medium text-accent underline underline-offset-2">
             {copy.person.backToPeople}
           </Link>
         }
@@ -80,7 +83,7 @@ export function PersonPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link to="/" className="self-start text-accent underline underline-offset-2">
+      <Link to={peopleAddress} className="self-start text-accent underline underline-offset-2">
         {copy.person.backToPeople}
       </Link>
 

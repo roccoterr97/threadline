@@ -1,5 +1,10 @@
 # Setting it up: from nothing to your first morning summary
 
+> **Would you rather not do this yourself?** Claude can run every command in
+> this guide for you while you create the accounts and click where it says:
+> see [`setup-with-claude.md`](setup-with-claude.md). It is one sentence to
+> paste into the Claude app.
+
 This guide takes you from nothing to the first summary e-mail, one small step at
 a time. You do not need to know how to program. Where something can be done for
 you, the tool does it (`uv run tracker setup`). Where only you can do it, such
@@ -187,6 +192,20 @@ you can stop it at any time with Ctrl + C. Everything it has saved stays saved.
 uv run tracker setup
 ```
 
+**Prefer a page to the terminal?** Add `--browser`:
+
+```bash
+uv run tracker setup --browser
+```
+
+A page called *Threadline set-up* opens in your browser and asks the same
+questions, one at a time, with keys in hidden fields and a **Continue** button
+where this guide says "press Return". The page is served to your computer
+only (its address starts with `http://127.0.0.1:`). The terminal still shows
+what is asked, never what you answer. A **Stop for now** link at the bottom
+ends the set-up cleanly; everything saved stays saved. `--browser` works with a
+single step too, for example `uv run tracker setup database --browser`.
+
 The full set-up goes through these steps in this order: `supabase`,
 `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`,
 `microsoft`, `linkedin`, `dashboard`, `schedule`, `github`, `refresh` (and
@@ -249,7 +268,9 @@ you know the old one is wrong. A new key means signing in to Microsoft again.
 ### 3c. The database structure (`tracker setup database`)
 
 **What the set-up does for you:** it looks at your database, lists the structure
-files that are missing, and applies them for you through Supabase's official
+files that are missing (and any whose effect it cannot see and that may not have
+run yet: running one of those a second time is harmless), and applies them for
+you through Supabase's official
 Management API. For that it needs a **personal access token**, which you paste
 once. The token is used for this step only and **never saved**.
 
@@ -542,7 +563,8 @@ IMAP needs a paid Fastmail plan above Basic.
 2. Type `other`, then the server, the port (press Return for 993), the name
    you sign in with (usually your address), and paste the password.
 
-3. The set-up then asks for the **sending server** (SMTP), which it needs to
+3. Once your mailbox is saved, the set-up asks for the **sending server**
+   (SMTP), which it needs to
    e-mail you the morning summary from this mailbox (the usual way; it skips
    this when you chose another way to send the summary). Your provider's help
    pages list it next to the IMAP server. It suggests a name (for
@@ -552,14 +574,23 @@ IMAP needs a paid Fastmail plan above Basic.
    app password, to catch a wrong server now rather than every morning. It
    sends nothing.
 
-   **✅ Check:** you see `Signed in to the sending server. Nothing was sent.`
-   and then the general check above.
+   **✅ Check:** after the general check above, you see
+   `Signed in to the sending server. Nothing was sent.`
 
    **If not:** "did not answer" means the server name or port is wrong, or the
-   provider does not offer it over TLS on that port. You get three tries; check
-   the name and port in your provider's help pages and run
-   `uv run tracker setup mailbox` again. Later, `uv run tracker doctor` shows a
-   **Summary e-mail** line for the sending server.
+   provider does not offer it over TLS on that port. The set-up asks
+   `Try another server or port?`: press Return to try again, or type `n` to
+   carry on without it for now. After three tries it carries on by itself.
+   Either way your mailbox stays connected and is read every morning; only the
+   morning summary cannot be e-mailed yet. Check the name and port in your
+   provider's help pages, then run `uv run tracker setup mailbox` again: it
+   asks for the app password once more (make a new one if you no longer have
+   it) and then for the sending server. If your daily run is on GitHub, run
+   `uv run tracker setup github` after that, so the run there is told the
+   sending server too. A sending server saved for a different mailbox is
+   removed at this point, so the summary is never sent through the wrong one.
+   Later, `uv run tracker doctor` shows a **Summary e-mail** line for the
+   sending server.
 
 ### 5c. Outlook mailbox and calendar (`tracker setup microsoft`)
 
@@ -980,6 +1011,11 @@ shows while you paste) and never saved on your computer.
 
 **Before you start:** the dashboard is published (part 7a) and your private
 copy is on GitHub (part 8c). If not, the set-up says which part to do first.
+As in 8c, only a private repository you administer counts as your copy: if
+this folder still points at the public template, the set-up says
+`This folder is not linked to your own private copy on GitHub yet` and stops
+before anything is made. Without the GitHub command-line tool it cannot check
+this, so it names the repository it will use and asks you to confirm it.
 
 **1. The GitHub key.** A GitHub page opens with the name
 (`Threadline refresh now`), a one-year expiry date and the permission

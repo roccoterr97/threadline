@@ -9,6 +9,7 @@ import { DataUnavailableError } from '../lib/errors';
 import { expectNoAxeViolations } from '../test/axe';
 import { NOW, samplePeople, sampleReviewItems } from '../test/__fixtures__/sampleData';
 import { renderWithProviders } from '../test/renderWithProviders';
+import { scrollIntoViewCalls } from '../test/scrollIntoView';
 import { ReviewPage } from './ReviewPage';
 
 vi.mock('../api/review', async (importOriginal) => ({
@@ -76,7 +77,49 @@ describe('ReviewPage — answering', () => {
       expect(screen.queryByText(FIRST_ITEM!.question)).not.toBeInTheDocument();
     });
     expect(screen.getByText(SECOND_ITEM!.question)).toBeInTheDocument();
-    expect(await screen.findByRole('status')).toHaveTextContent(copy.review.answered.relevance.yes);
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(copy.review.answered.relevance.yes);
+    });
+  });
+
+  it('gives the keyboard to the next question and only reads the saved answer out', async () => {
+    fetchItemsMock.mockResolvedValueOnce(sampleReviewItems);
+    fetchItemsMock.mockResolvedValue([SECOND_ITEM!]);
+    const { user } = renderWithProviders(<ReviewPage />);
+    const firstCard = (await screen.findAllByRole('listitem'))[0]!;
+
+    await user.click(within(firstCard).getByRole('button', { name: copy.review.yes }));
+
+    const status = screen.getByRole('status');
+    await waitFor(() => {
+      expect(status).toHaveTextContent(copy.review.answered.relevance.yes);
+    });
+    expect(screen.getByText(SECOND_ITEM!.question)).toHaveFocus();
+    expect(scrollIntoViewCalls(status)).toEqual([]);
+  });
+
+  it('gives the keyboard to the question before when the last one is answered', async () => {
+    const { user } = renderWithProviders(<ReviewPage />);
+    const secondCard = (await screen.findAllByRole('listitem'))[1]!;
+
+    await user.click(within(secondCard).getByRole('button', { name: copy.review.no }));
+
+    await waitFor(() => {
+      expect(screen.getByText(FIRST_ITEM!.question)).toHaveFocus();
+    });
+  });
+
+  it('gives the keyboard to the note that nothing is left after the last question', async () => {
+    fetchItemsMock.mockResolvedValueOnce([FIRST_ITEM!]);
+    fetchItemsMock.mockResolvedValue([]);
+    const { user } = renderWithProviders(<ReviewPage />);
+    const card = await screen.findByRole('listitem');
+
+    await user.click(within(card).getByRole('button', { name: copy.review.yes }));
+
+    await waitFor(() => {
+      expect(document.activeElement).toHaveTextContent(copy.review.empty.title);
+    });
   });
 
   it('says what happens next after each kind of answer', async () => {
@@ -132,6 +175,20 @@ describe('ReviewPage — answering', () => {
 
     expect(await screen.findByText(copy.review.failed)).toBeInTheDocument();
     expect(screen.getByText(FIRST_ITEM!.question)).toBeInTheDocument();
+  });
+
+  it('gives the keyboard to a failed answer\'s message on its card', async () => {
+    answerMock.mockRejectedValue(new DataUnavailableError('review.answer'));
+    const { user } = renderWithProviders(<ReviewPage />);
+    const firstCard = (await screen.findAllByRole('listitem'))[0]!;
+
+    await user.click(within(firstCard).getByRole('button', { name: copy.review.yes }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(copy.review.failed);
+    expect(alert.closest('li')).toHaveTextContent(FIRST_ITEM!.question);
+    expect(alert).toHaveFocus();
+    expect(scrollIntoViewCalls(alert)).toHaveLength(1);
   });
 });
 

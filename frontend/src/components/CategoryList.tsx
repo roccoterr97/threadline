@@ -38,6 +38,7 @@ export function CategoryList({ categories, editor }: CategoryListProps) {
   const own = activeOwnCategories(categories);
   const reserved = categories.find(isReserved);
   // The row just moved, set once the new order is in so it can take the keyboard back.
+  // Only a move that worked: after a failure the keyboard belongs to the message.
   const [lastMove, setLastMove] = useState<{ key: string; direction: MoveDirection } | null>(
     null,
   );
@@ -48,7 +49,7 @@ export function CategoryList({ categories, editor }: CategoryListProps) {
     editor.run(
       { kind: 'move', label: category.label, changes },
       {
-        onSettled: () => {
+        onSaved: () => {
           setLastMove({ key: category.key, direction });
         },
       },

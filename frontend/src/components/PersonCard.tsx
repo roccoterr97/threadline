@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import * as copy from '../copy/en';
 import { categoryFor } from '../domain/categories';
 import type { Vocabulary } from '../domain/vocabulary';
@@ -6,6 +5,7 @@ import type { Clock } from '../lib/clock';
 import { formatDate, formatRelative, formatRoleLine } from '../lib/format';
 import type { PeopleOverviewRow } from '../types/database';
 import { FollowUpBadge } from './FollowUpBadge';
+import { PersonLink } from './PersonLink';
 import { PersonTypeBadge } from './PersonTypeBadge';
 import { SignalBadge } from './SignalBadge';
 import { StatusBadge } from './StatusBadge';
@@ -22,12 +22,12 @@ export function PersonCard({ person, clock, vocabulary }: PersonCardProps) {
   const roleLine = formatRoleLine(person.role_title, person.organisation_name);
   return (
     <li className="rounded-token-lg border border-line bg-surface p-4 shadow-card">
-      <Link
-        to={`/people/${person.person_id}`}
+      <PersonLink
+        personId={person.person_id}
         className="text-lg font-semibold text-accent underline underline-offset-2"
       >
         {person.full_name}
-      </Link>
+      </PersonLink>
       {roleLine !== null && <p className="mt-1 text-sm text-ink-muted">{roleLine}</p>}
 
       <div className="mt-3 flex flex-wrap gap-2">

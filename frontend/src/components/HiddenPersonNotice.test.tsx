@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { markPersonAsRelevant } from '../api/overrides';
 import * as copy from '../copy/en';
@@ -6,6 +6,7 @@ import { DataUnavailableError } from '../lib/errors';
 import { hiddenPersonState } from '../lib/hiddenPerson';
 import { expectNoAxeViolations } from '../test/axe';
 import { renderWithProviders } from '../test/renderWithProviders';
+import { scrollIntoViewCalls } from '../test/scrollIntoView';
 import { HiddenPersonNotice } from './HiddenPersonNotice';
 
 vi.mock('../api/overrides', async (importOriginal) => ({
@@ -53,6 +54,25 @@ describe('HiddenPersonNotice', () => {
     expect(screen.queryByRole('button', { name: text.undoLabel(ADA.name) })).not.toBeInTheDocument();
   });
 
+  it('keeps the keyboard on the note once "Undo" has gone', async () => {
+    let finishUndo = () => undefined;
+    restoreMock.mockReturnValue(
+      new Promise((resolve) => {
+        finishUndo = () => {
+          resolve(undefined);
+        };
+      }),
+    );
+    const { user } = renderNotice();
+    const undo = screen.getByRole('button', { name: text.undoLabel(ADA.name) });
+    await user.click(undo);
+    expect(undo).toHaveFocus();
+
+    finishUndo();
+    expect(await screen.findByText(text.restored(ADA.name))).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveFocus();
+  });
+
   it('says so when undoing fails, and lets the owner try again', async () => {
     restoreMock.mockRejectedValue(new DataUnavailableError('person.mark_relevant'));
     const { user } = renderNotice();
@@ -60,5 +80,32 @@ describe('HiddenPersonNotice', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(text.undoFailed(ADA.name));
     expect(screen.getByRole('button', { name: text.undoLabel(ADA.name) })).toBeEnabled();
+  });
+
+  it('gives the keyboard to the message when undoing fails, and brings it on screen', async () => {
+    restoreMock.mockRejectedValue(new DataUnavailableError('person.mark_relevant'));
+    const { container, user } = renderNotice();
+    await user.click(screen.getByRole('button', { name: text.undoLabel(ADA.name) }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveFocus();
+    expect(scrollIntoViewCalls(alert)).toHaveLength(1);
+    await expectNoAxeViolations(container);
+  });
+
+  it('says so again when another try fails too', async () => {
+    restoreMock.mockRejectedValue(new DataUnavailableError('person.mark_relevant'));
+    const { user } = renderNotice();
+    const undo = screen.getByRole('button', { name: text.undoLabel(ADA.name) });
+    await user.click(undo);
+    await screen.findByRole('alert');
+
+    await user.click(undo);
+
+    expect(restoreMock).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveFocus();
+    });
+    expect(scrollIntoViewCalls(screen.getByRole('alert'))).toHaveLength(1);
   });
 });

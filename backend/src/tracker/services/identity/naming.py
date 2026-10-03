@@ -14,7 +14,6 @@ from tracker.domain.models import Person
 from tracker.domain.relay import is_relay_identity
 from tracker.domain.rules import RulePack
 from tracker.repositories import Repositories
-from tracker.services.identity.matcher import read_every
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
@@ -42,7 +41,7 @@ class AddressNamer:
         """
         renamed = [
             named
-            for person in read_every(self._repositories.people.list)
+            for person in self._repositories.people.list_every()
             if (named := _named(person, self._rules)) is not None
         ]
         if renamed:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Final
 
 import typer
@@ -28,13 +29,16 @@ def doctor() -> None:
         raise typer.Exit(1)
 
 
-def print_doctor_report() -> bool:
-    """Run every check, print one line per check, and say whether all passed.
+def print_doctor_report(say: Callable[[str], None] = typer.echo) -> bool:
+    """Run every check, show one line per check, and say whether all passed.
+
+    Args:
+        say: Shows one line; the terminal unless the set-up page is open.
 
     Returns:
         ``True`` when no check found a problem.
     """
     report = asyncio.run(run_doctor())
     for line in render(report):
-        typer.echo(line)
+        say(line)
     return report.healthy

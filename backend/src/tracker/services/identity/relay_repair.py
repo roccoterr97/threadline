@@ -31,7 +31,6 @@ from tracker.domain.prefilter import is_relay_sender, is_work_system_sender
 from tracker.domain.relay import clean_via_name
 from tracker.domain.rules import RulePack
 from tracker.repositories import Repositories
-from tracker.services.identity.matcher import read_every
 from tracker.shared.constants.collection import RELAY_VIA_MARKER
 from tracker.shared.logging import get_logger
 
@@ -81,7 +80,7 @@ class RelayUntangler:
 
     def _split_shared_identities(self) -> UntangleReport:
         """Remove every shared address from the people holding it."""
-        identities = read_every(self._repositories.person_identities.list)
+        identities = self._repositories.person_identities.list_every()
         shared = [
             identity
             for identity in identities
@@ -110,7 +109,7 @@ class RelayUntangler:
         """Give back "unsure" to work-system threads the AI threw away unfiled."""
         orphans = [
             conversation
-            for conversation in read_every(self._repositories.conversations.list)
+            for conversation in self._repositories.conversations.list_every()
             if conversation.person_id is None
             and conversation.channel is Channel.EMAIL
             and conversation.relevance is Relevance.NOISE

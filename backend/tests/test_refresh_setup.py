@@ -150,6 +150,47 @@ async def test_without_a_copy_on_github_the_step_is_skipped() -> None:
     assert world.io.opened == []
 
 
+@pytest.mark.parametrize(("private", "admin"), [(False, True), (True, False), (False, False)])
+async def test_a_repository_that_is_not_your_private_copy_is_never_used(
+    *, private: bool, admin: bool
+) -> None:
+    """Origin still pointing at the public template must not get the helper's settings."""
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world.git.origin = "https://github.com/public-template/threadline.git"
+    world.github.name = "public-template/threadline"
+    world.github.private = private
+    world.github.admin = admin
+
+    await RefreshStep().run(world.context())
+
+    assert "not linked to your own private copy on GitHub" in world.io.text()
+    assert "tracker setup github" in world.io.text()
+    assert world.io.opened == []
+    assert world.github_api.reads == []
+    assert world.platform.secrets == {}
+
+
+async def test_without_the_github_cli_the_link_is_used_and_the_owner_told_to_check_it() -> None:
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world.github.signed_in = False
+
+    await RefreshStep().run(world.context())
+
+    assert "cannot check that you/threadline is your own" in world.io.text()
+    assert world.platform.secrets["GITHUB_REPOSITORY"] == "you/threadline"
+
+
+async def test_without_the_github_cli_a_bare_return_switches_nothing_on() -> None:
+    world = refresh_world([""])
+    world.github.signed_in = False
+
+    await RefreshStep().run(world.context())
+
+    assert "To switch it on later: uv run tracker setup refresh" in world.io.text()
+    assert world.platform.secrets == {}
+    assert world.github_api.reads == []
+
+
 async def test_saying_no_changes_nothing() -> None:
     world = refresh_world([False])
 

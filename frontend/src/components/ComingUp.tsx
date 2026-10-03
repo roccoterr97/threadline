@@ -1,8 +1,8 @@
 import { useId } from 'react';
-import { Link } from 'react-router-dom';
 import * as copy from '../copy/en';
 import { formatClockTime, formatWeekday } from '../lib/format';
 import type { UpcomingMeetingRow } from '../types/database';
+import { PersonLink } from './PersonLink';
 
 interface ComingUpProps {
   /** This week's meetings, soonest first, as the query returns them. */
@@ -40,12 +40,12 @@ function MeetingItem({ meeting }: { meeting: UpcomingMeetingRow }) {
     );
   }
   return (
-    <Link
-      to={`/people/${meeting.person_id}`}
+    <PersonLink
+      personId={meeting.person_id}
       className={`${CARD} border-line transition-colors hover:border-accent`}
     >
       <MeetingDetails meeting={meeting} />
-    </Link>
+    </PersonLink>
   );
 }
 

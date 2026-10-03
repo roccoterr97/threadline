@@ -109,7 +109,12 @@ shows the same categories.
 The preset you chose is remembered in your database, so the morning run uses
 its wording too. You can run `tracker profile choose` again at any time; it
 replaces your categories with the new answers (people keep a category that is
-removed — it is hidden, not deleted).
+removed — it is hidden, not deleted). If a new category has the name of one
+that is hidden, the hidden one gets " (2)" after its name, so the two never
+look alike: switching from the job-search list to the fundraising list, for
+example, keeps the people you filed as "Investor" under "Investor (2)" next to
+the new, empty "Investor". It then says
+`renamed so no two categories share a name: vc is now Investor (2)`.
 
 The guided set-up asks the same questions in its categories step, and
 `uv run tracker setup categories` runs that step on its own. It saves your

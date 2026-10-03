@@ -112,7 +112,7 @@ export const home = {
 } as const;
 
 export const person = {
-  backToPeople: 'Back to all people',
+  backToPeople: 'Back to people',
   summaryTitle: 'What is going on',
   noSummary: 'The assistant has not written a summary for this person yet.',
   detailsTitle: 'Where this stands',
@@ -490,6 +490,8 @@ export const runErrors: Record<string, string> = {
   command_failed: 'This step stopped before it finished.',
   run_interrupted:
     'The run stopped here and never finished (for example, GitHub stopped it). It was closed when the next run started.',
+  mailbox_window_capped:
+    'Your mailbox had more new mail than is read in one go. The newest was read; older mail in that folder from this stretch was skipped. Nothing to do: a skipped conversation is read in full as soon as somebody writes in it again.',
   tracker_error: 'Something went wrong in this step.',
 };
 

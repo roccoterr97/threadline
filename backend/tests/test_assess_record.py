@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -188,6 +189,29 @@ def test_import_with_record_records_what_the_recipe_recorded_by_hand(
     assert assess_steps(fake_client)[0]["run_id"] == str(run.id)
 
 
+def test_recording_the_import_lists_the_steps_of_the_run_once(
+    desk: Desk, run: RunLog, repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    """The step is found once, to add to its counts, and written over what was found."""
+    assert run.status is RunStatus.RUNNING
+    anna, bram = two_people(repositories)
+    desk.export("--record")
+    desk.answer(verdict_payload(anna.id))
+    desk.bring_in("--record")
+    desk.export("--record")
+    desk.answer(verdict_payload(bram.id))
+    fake_client.executed.clear()
+
+    result = desk.bring_in("--record")
+
+    assert printed_lines(result) == [
+        "1 people assessed, 0 sent to review, 0 marked noise, 0 rejected files",
+        STEP_RECORDED,
+    ]
+    assert fake_client.executed.count(("run_step_logs", "select")) == 1
+    assert counts(fake_client) == (RunStatus.SUCCESS.value, 2, 0, None)
+
+
 def test_a_second_import_adds_to_what_the_first_one_recorded(
     desk: Desk, run: RunLog, repositories: Repositories, fake_client: FakeSupabaseClient
 ) -> None:
@@ -257,6 +281,26 @@ def test_the_step_goes_into_the_run_that_was_named(
     assert [step["run_id"] for step in assess_steps(fake_client)] == [str(run.id)]
 
 
+def test_a_refresh_records_its_assessment_into_its_own_run(
+    desk: Desk,
+    run: RunLog,
+    recorder: RunRecorder,
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """The daily run stays open beside the refresh and keeps its own steps."""
+    refresh = recorder.start(RunTrigger.REFRESH)
+    anna = talkative_person(repositories)
+    desk.export("--record", "--refresh")
+    desk.answer(verdict_payload(anna.id))
+
+    result = desk.bring_in("--record", "--refresh")
+
+    assert printed_lines(result)[-1] == STEP_RECORDED
+    assert [step["run_id"] for step in assess_steps(fake_client)] == [str(refresh.id)]
+    assert run.id != refresh.id
+
+
 # --- without --record, and with no run to record into ------------------------------
 
 
@@ -289,8 +333,8 @@ def test_with_record_and_no_run_open_nothing_is_exported(
     assert not desk.batches.exists()
 
 
-def test_with_record_and_no_run_open_nothing_is_imported(
-    desk: Desk, repositories: Repositories
+def test_with_record_and_no_run_open_the_verdicts_are_still_saved(
+    desk: Desk, repositories: Repositories, fake_client: FakeSupabaseClient
 ) -> None:
     anna = talkative_person(repositories)
     desk.export()
@@ -298,10 +342,38 @@ def test_with_record_and_no_run_open_nothing_is_imported(
 
     result = desk.bring_in("--record")
 
-    assert result.exit_code != 0
-    assert printed_lines(result) == []
-    assert repositories.person_states.find_for_person(anna.id) is None
-    assert len(list(desk.results.glob("*.json"))) == 1
+    assert result.exit_code == 0
+    assert printed_lines(result) == [
+        "1 people assessed, 0 sent to review, 0 marked noise, 0 rejected files",
+        "verdicts saved, step not recorded · there is no daily run to work with — "
+        "start one with 'tracker run start' · code=validation_failed",
+    ]
+    assert repositories.person_states.find_for_person(anna.id) is not None
+    assert list(desk.results.glob("*.json")) == []
+    assert assess_steps(fake_client) == []
+
+
+def test_a_run_too_old_to_record_into_still_gets_its_verdicts_saved(
+    desk: Desk,
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    clock: FixedClock,
+) -> None:
+    """A Mac that slept part-way through: the run counts as abandoned, the verdicts do not."""
+    old = RunRecorder(repositories, FixedClock(clock.now() - timedelta(hours=4)))
+    old.start(RunTrigger.MAC)
+    anna = talkative_person(repositories)
+    desk.export()
+    desk.answer(verdict_payload(anna.id))
+
+    result = desk.bring_in("--record")
+
+    assert result.exit_code == 0
+    last = printed_lines(result)[-1]
+    assert last.startswith("verdicts saved, step not recorded · no run is open")
+    assert last.endswith("code=validation_failed")
+    assert repositories.person_states.find_for_person(anna.id) is not None
+    assert assess_steps(fake_client) == []
 
 
 @pytest.mark.parametrize("command", ["export", "import"])

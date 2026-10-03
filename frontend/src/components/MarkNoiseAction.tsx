@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { markPersonAsNoise } from '../api/overrides';
 import { peopleQueryKey } from '../api/people';
 import { personQueryKey } from '../api/person';
 import * as copy from '../copy/en';
 import { hiddenPersonState } from '../lib/hiddenPerson';
+import { peopleListAddress } from '../lib/peopleListAddress';
+import type { PeopleOverviewRow } from '../types/database';
 import { Button } from './Button';
 import { ConfirmPanel } from './ConfirmPanel';
 
@@ -17,18 +19,27 @@ interface MarkNoiseActionProps {
 /**
  * "Not relevant": hides a person from the list, but only after an
  * "are you sure?" step, because it also stops the assistant reading them.
- * Once hidden, the page goes back to the list, which says so and offers to undo.
+ * Once hidden, the page goes back to the list as the owner left it, without
+ * the person, and the list says so and offers to undo.
  */
 export function MarkNoiseAction({ personId, personName }: MarkNoiseActionProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const peopleAddress = peopleListAddress(useLocation().state);
   const [confirming, setConfirming] = useState(false);
 
   const markNoise = useMutation({
     mutationFn: () => markPersonAsNoise(personId),
     onSuccess: async () => {
+      // Off the kept list now: the list page would otherwise show them until its refetch ends.
+      await queryClient.cancelQueries({ queryKey: peopleQueryKey });
+      queryClient.setQueryData<PeopleOverviewRow[]>(peopleQueryKey, (people) =>
+        people?.filter((person) => person.person_id !== personId),
+      );
       // Leave first: refetching this person now would flash "not found".
-      void navigate('/', { state: hiddenPersonState({ id: personId, name: personName }) });
+      void navigate(peopleAddress, {
+        state: hiddenPersonState({ id: personId, name: personName }),
+      });
       queryClient.removeQueries({ queryKey: personQueryKey(personId) });
       await queryClient.invalidateQueries({ queryKey: peopleQueryKey });
     },

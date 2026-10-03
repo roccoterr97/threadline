@@ -148,13 +148,21 @@ export function colourForSuggestion(
   return taken ? firstFreeColour(categories) : suggestion.colour;
 }
 
-/** Suggestions whose key is not already a category, in use or hidden. */
+/**
+ * Suggestions the owner can add with one tap: not already a category (in use
+ * or hidden), and passing the same check as a category typed by hand. One
+ * whose name or group name another category already has is left out rather
+ * than offered and turned down, because a one-tap button has no field to fix
+ * the name in.
+ */
 export function suggestionsToOffer(
   suggestions: readonly CategorySuggestion[],
   categories: readonly Category[],
 ): CategorySuggestion[] {
   const taken = new Set(categories.map((category) => category.key));
-  return suggestions.filter((suggestion) => !taken.has(suggestion.key));
+  return suggestions.filter(
+    (suggestion) => !taken.has(suggestion.key) && findDraftProblem(suggestion, categories) === null,
+  );
 }
 
 /**

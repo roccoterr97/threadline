@@ -1,12 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchPeople, peopleQueryKey } from '../api/people';
 import { answerReviewItem, fetchOpenReviewItems, reviewQueryKey } from '../api/review';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { ReviewCard, type ReviewPerson } from '../components/ReviewCard';
-import { SaveFeedback, type SaveOutcome } from '../components/SaveFeedback';
 import * as copy from '../copy/en';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { useClock } from '../lib/ClockContext';
@@ -30,13 +29,37 @@ function listedPeople(item: ReviewItemRow, people: readonly PeopleOverviewRow[])
   });
 }
 
-/** The open questions, answered one card at a time. */
+/**
+ * The question that takes the keyboard once `answeredId` leaves the list:
+ * the one after it, or the one before when it was the last, or null when
+ * none is left.
+ */
+function questionAfter(items: readonly ReviewItemRow[], answeredId: string): string | null {
+  const index = items.findIndex((item) => item.id === answeredId);
+  const rest = items.filter((item) => item.id !== answeredId);
+  return rest[Math.min(Math.max(index, 0), rest.length - 1)]?.id ?? null;
+}
+
+/** Where the keyboard goes next; `itemId` null means the list is now empty. */
+interface FocusAfterAnswer {
+  itemId: string | null;
+}
+
+/**
+ * The open questions, answered one card at a time.
+ *
+ * Answering keeps the owner in the list: the next question takes the
+ * keyboard and the saved answer is read out politely, so several questions
+ * can be answered in a row without being thrown back to the top.
+ */
 export function ReviewPage() {
   usePageTitle(copy.review.title);
   const clock = useClock();
   const queryClient = useQueryClient();
   const [failedItemId, setFailedItemId] = useState<string | null>(null);
-  const [answered, setAnswered] = useState<SaveOutcome | null>(null);
+  const [answered, setAnswered] = useState<string | null>(null);
+  const [focusAfterAnswer, setFocusAfterAnswer] = useState<FocusAfterAnswer | null>(null);
+  const listDone = useRef<HTMLDivElement>(null);
 
   const items = useQuery({ queryKey: reviewQueryKey, queryFn: fetchOpenReviewItems });
   // Only for the links to each person; the questions show fine without it.
@@ -62,7 +85,7 @@ export function ReviewPage() {
       setFailedItemId(itemId);
     },
     onSuccess: async (_result, { kind, answer: value }) => {
-      setAnswered({ tone: 'success', text: copy.review.answered[kind][value] });
+      setAnswered(copy.review.answered[kind][value]);
       // An answer can change who counts as relevant, so both lists are refreshed.
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: reviewQueryKey }),
@@ -71,14 +94,28 @@ export function ReviewPage() {
     },
   });
 
+  const isEmpty = items.isSuccess && items.data.length === 0;
+  // The last question answered: the keyboard goes to the note that none are left.
+  useEffect(() => {
+    if (focusAfterAnswer?.itemId !== null || !isEmpty) return;
+    listDone.current?.focus();
+    setFocusAfterAnswer(null);
+  }, [focusAfterAnswer, isEmpty]);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold text-ink">{copy.review.title}</h1>
         <p className="mt-1 text-ink-muted">{copy.review.subtitle}</p>
+        {/* Always in the page, so each saved answer is read out without moving the keyboard. */}
+        <div role="status">
+          {answered !== null && (
+            <p className="mt-4 rounded-token-lg border border-positive bg-positive-soft p-4 font-medium text-positive">
+              {answered}
+            </p>
+          )}
+        </div>
       </div>
-
-      {answered !== null && <SaveFeedback outcome={answered} />}
 
       {items.isPending && <LoadingState label={copy.states.loadingReview} />}
 
@@ -91,8 +128,10 @@ export function ReviewPage() {
         />
       )}
 
-      {items.isSuccess && items.data.length === 0 && (
-        <EmptyState title={copy.review.empty.title} body={copy.review.empty.body} />
+      {isEmpty && (
+        <div ref={listDone} tabIndex={-1}>
+          <EmptyState title={copy.review.empty.title} body={copy.review.empty.body} />
+        </div>
       )}
 
       {items.isSuccess && items.data.length > 0 && (
@@ -104,7 +143,12 @@ export function ReviewPage() {
               people={listedPeople(item, people.data ?? [])}
               isAnswering={answer.isPending && answer.variables?.itemId === item.id}
               errorText={failedItemId === item.id ? copy.review.failed : null}
+              takesFocus={focusAfterAnswer?.itemId === item.id}
+              onFocused={() => {
+                setFocusAfterAnswer(null);
+              }}
               onAnswer={(value) => {
+                setFocusAfterAnswer({ itemId: questionAfter(items.data, item.id) });
                 answer.mutate({ itemId: item.id, kind: item.kind, answer: value });
               }}
             />

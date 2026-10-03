@@ -8,6 +8,7 @@ from tests.setup_world import (
     GOOD_APP_PASSWORD,
     OWNER_EMAIL,
     PROJECT_REF,
+    World,
     configured_env,
     make_world,
 )
@@ -99,7 +100,7 @@ async def test_another_provider_asks_for_its_server_and_port() -> None:
     assert world.io.opened == []
 
 
-def _custom_answers(*smtp: str) -> list[str | bool]:
+def _custom_answers(*smtp: str | bool) -> list[str | bool]:
     """Another provider whose IMAP server is imap.mail.example, then the SMTP answers."""
     return ["other", "imap.mail.example", "", "sam", GOOD_APP_PASSWORD, *smtp]
 
@@ -118,7 +119,7 @@ async def test_another_provider_is_asked_its_sending_server_and_it_is_tried_live
 
 async def test_a_sending_server_that_cannot_be_reached_is_asked_again() -> None:
     world = make_world(
-        _custom_answers("smtp.wrong.example", "", "smtp.mail.example", ""), configured_env()
+        _custom_answers("smtp.wrong.example", "", True, "smtp.mail.example", ""), configured_env()
     )
 
     await MailboxStep().run(world.context())
@@ -130,6 +131,98 @@ async def test_a_sending_server_that_cannot_be_reached_is_asked_again() -> None:
     assert "Please check the server and port" in world.io.text()
     assert world.env.values["SMTP_HOST"] == "smtp.mail.example"
     assert world.env.values["SMTP_PORT"] == "465"
+
+
+def _assert_mailbox_kept_without_sending(world: World) -> None:
+    """The checked app password and the mailbox are saved; no sending server is."""
+    assert world.mailbox.saved == {"sam": GOOD_APP_PASSWORD}
+    assert world.env.values["IMAP_PROVIDER"] == "custom"
+    assert world.env.values["IMAP_HOST"] == "imap.mail.example"
+    assert world.env.values["MAIL_SOURCES"] == "imap"
+    assert "SMTP_HOST" not in world.env.values
+    text = world.io.text()
+    assert "the morning summary cannot be e-mailed until the sending server works" in text
+    assert "uv run tracker setup mailbox" in text
+
+
+async def test_three_failed_sending_sign_ins_keep_the_checked_mailbox() -> None:
+    wrong = ("smtp.wrong.example", "")
+    world = make_world(_custom_answers(*wrong, True, *wrong, True, *wrong), configured_env())
+
+    await MailboxStep().run(world.context())
+
+    assert len(world.mailbox.sending_checked) == 3
+    _assert_mailbox_kept_without_sending(world)
+
+
+async def test_the_sending_server_can_be_left_for_later() -> None:
+    world = make_world(_custom_answers("smtp.wrong.example", "", False), configured_env())
+
+    await MailboxStep().run(world.context())
+
+    assert len(world.mailbox.sending_checked) == 1
+    _assert_mailbox_kept_without_sending(world)
+
+
+async def test_a_refused_sending_password_can_be_left_for_later_too() -> None:
+    world = make_world(_custom_answers("", "", False), configured_env())
+    world.mailbox.smtp_refuses = True
+
+    await MailboxStep().run(world.context())
+
+    assert "refused the app password for sending" in world.io.text()
+    _assert_mailbox_kept_without_sending(world)
+
+
+async def test_a_sending_server_of_an_earlier_mailbox_is_forgotten_when_none_signs_in() -> None:
+    env = configured_env() | {
+        "IMAP_HOST": "imap.old.example",
+        "IMAP_USERNAME": "sam",
+        "SMTP_HOST": "smtp.old.example",
+        "SMTP_PORT": "587",
+    }
+    world = make_world(_custom_answers("smtp.wrong.example", "", False), env)
+
+    await MailboxStep().run(world.context())
+
+    assert world.env.values["IMAP_HOST"] == "imap.mail.example"
+    assert world.env.get("SMTP_HOST") is None
+    assert world.env.get("SMTP_PORT") is None
+
+
+async def test_the_same_mailbox_keeps_its_saved_sending_server_when_none_signs_in() -> None:
+    env = configured_env() | {
+        "IMAP_HOST": "imap.mail.example",
+        "IMAP_USERNAME": "sam",
+        "SMTP_HOST": "smtp.mail.example",
+        "SMTP_PORT": "587",
+    }
+    world = make_world(_custom_answers("smtp.wrong.example", "", False), env)
+
+    await MailboxStep().run(world.context())
+
+    assert world.env.values["SMTP_HOST"] == "smtp.mail.example"
+    assert world.env.values["SMTP_PORT"] == "587"
+
+
+async def test_sending_server_names_that_never_pass_keep_the_checked_mailbox() -> None:
+    unusable = "not a server"
+    world = make_world(_custom_answers(unusable, unusable, unusable), configured_env())
+
+    await MailboxStep().run(world.context())
+
+    assert world.mailbox.sending_checked == []
+    _assert_mailbox_kept_without_sending(world)
+
+
+async def test_leaving_the_sending_server_for_later_says_how_to_add_it() -> None:
+    world = make_world(_custom_answers("smtp.wrong.example", "", False), configured_env())
+
+    await MailboxStep().run(world.context())
+
+    text = world.io.text()
+    assert "it asks for the app password" in text
+    assert "uv run tracker setup github" in text
 
 
 async def test_no_sending_server_is_asked_when_the_summary_goes_through_gmail() -> None:

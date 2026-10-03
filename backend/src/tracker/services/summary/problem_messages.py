@@ -16,9 +16,13 @@ from typing import Final
 
 from tracker.domain.enums import RunStep
 from tracker.schemas.summary import SummaryProblem
-from tracker.shared.constants.mailbox import IMAP_PRESETS, ImapProvider
+from tracker.shared.constants.mailbox import (
+    IMAP_MAX_MESSAGES_PER_FOLDER,
+    IMAP_PRESETS,
+    ImapProvider,
+)
 from tracker.shared.constants.runs import RUN_INTERRUPTED_CODE
-from tracker.shared.errors import MailboxPasswordError
+from tracker.shared.errors import MailboxPasswordError, MailboxWindowCappedError
 
 #: What to do when there is, honestly, nothing to do.
 _WAIT_IT_OUT: Final[str] = (
@@ -54,6 +58,13 @@ _BY_STEP_AND_CODE: Final[dict[tuple[RunStep, str], tuple[str, str]]] = {
     (RunStep.COLLECT_EMAIL, "source_unavailable"): (
         "Your mailbox did not answer this morning, so no new e-mails were read.",
         _WAIT_IT_OUT,
+    ),
+    (RunStep.COLLECT_EMAIL, MailboxWindowCappedError.code): (
+        "Your mailbox had more new mail than Threadline reads in one go, so only "
+        f"the newest {IMAP_MAX_MESSAGES_PER_FOLDER:,} messages of a folder were read "
+        "and the older ones from that stretch were skipped.",
+        "Nothing to do: everything recent was read. A skipped conversation is read "
+        "in full as soon as somebody writes in it again.",
     ),
     (RunStep.COLLECT_CALENDAR, "source_auth_failed"): (
         "Your calendar could not be read this morning: Microsoft refused "

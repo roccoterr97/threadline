@@ -20,6 +20,11 @@ from tracker.shared.constants.mailbox import MailSource
 class MailboxReader(Protocol):
     """Reads one mailbox, read-only, in the collector's two passes."""
 
+    @property
+    def window_capped(self) -> bool:
+        """Whether the reader had to leave the oldest messages of the window unread."""
+        ...
+
     async def list_messages_since(self, since: datetime) -> list[MailMessage]:
         """Read the metadata of every message received since a moment, without bodies."""
         ...

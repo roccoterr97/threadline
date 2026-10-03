@@ -75,6 +75,24 @@ class StepOutcome:
     error_detail: str | None = None
 
 
+def triggers_of_kind(*, refresh: bool) -> frozenset[RunTrigger]:
+    """List the triggers of one kind of run: refreshes, or everything else.
+
+    A refresh and a daily run each have their own concurrency group, so one of
+    each can be open at the same time; a command acts on the run of its own
+    kind, so a refresh can never record into, or close, the morning's run.
+
+    Args:
+        refresh: Whether the refresh kind is wanted.
+
+    Returns:
+        The triggers that start a run of that kind.
+    """
+    if refresh:
+        return frozenset({RunTrigger.REFRESH})
+    return frozenset(trigger for trigger in RunTrigger if trigger is not RunTrigger.REFRESH)
+
+
 def unconfigured_steps(settings: Settings) -> frozenset[RunStep]:
     """List the steps whose source the owner has not set up.
 
@@ -146,6 +164,29 @@ class RunRecorder:
             The stored step row, or ``None`` when the step's source is not set
             up and nothing was stored.
         """
+        # A step that will not be stored is not looked up either.
+        configured = outcome.step not in self._unconfigured
+        existing = self.find_step(run_id, outcome.step) if configured else None
+        return self.replace_step(run_id, outcome, existing)
+
+    def replace_step(
+        self, run_id: UUID, outcome: StepOutcome, existing: RunStepLog | None
+    ) -> RunStepLog | None:
+        """Store the result of one step whose earlier row the caller already looked up.
+
+        A caller that read the earlier row to add to its counts hands it over,
+        so the run's steps are not listed a second time to find it again.
+
+        Args:
+            run_id: The run the step belongs to.
+            outcome: What the step produced.
+            existing: The row :meth:`find_step` returned for this step of this
+                run, or ``None`` when it found none.
+
+        Returns:
+            The stored step row, or ``None`` when the step's source is not set
+            up and nothing was stored.
+        """
         if outcome.step in self._unconfigured:
             _log.info("run_step_not_configured", run_id=str(run_id), step=outcome.step.value)
             return None
@@ -158,7 +199,6 @@ class RunRecorder:
             error_code=self._error_code(outcome),
             error_detail=_shorten(outcome.error_detail),
         )
-        existing = self.find_step(run_id, outcome.step)
         if existing is not None:
             step = step.model_copy(update={"id": existing.id})
         self._repositories.run_step_logs.bulk_upsert([step])
@@ -203,33 +243,39 @@ class RunRecorder:
         )
         return finished
 
-    def resolve(self, run_id: UUID | None) -> RunLog:
+    def resolve(self, run_id: UUID | None, *, refresh: bool = False) -> RunLog:
         """Find the run a command should act on.
 
-        Without a named run, only the newest run counts, and only while it is
-        still open: when today's ``run start`` failed, the newest run is
-        yesterday's, closed, and today's steps must not overwrite it.
+        Without a named run, only the newest run of the caller's kind counts,
+        and only while it is still open: when today's ``run start`` failed,
+        the newest run is yesterday's, closed, and today's steps must not
+        overwrite it; and a refresh going at the same time as the daily run
+        has a run of its own, which neither may take for the other's.
 
         Args:
             run_id: The run the owner named, or ``None`` for the open one.
+            refresh: Whether the open run wanted is a refresh rather than a
+                daily run. Ignored for a named run.
 
         Returns:
             The run.
 
         Raises:
-            ValidationFailedError: If that run does not exist, if nothing has
-                ever run, or if no run is open.
+            ValidationFailedError: If that run does not exist, if no run of
+                that kind has ever run, or if none is open.
         """
         if run_id is not None:
             return self._named(run_id)
-        run = self._repositories.run_logs.find_latest()
+        kind = "refresh" if refresh else "daily run"
+        run = self._repositories.run_logs.find_latest(triggers_of_kind(refresh=refresh))
+        how_to_start = _how_to_start(refresh=refresh)
         if run is None:
-            message = "there is no run to work with — start one with 'tracker run start'"
+            message = f"there is no {kind} to work with — {how_to_start}"
             raise ValidationFailedError(message)
         if run.status is not RunStatus.RUNNING or self._is_stale(run):
             message = (
-                "no run is open: the latest one has already finished or was abandoned. "
-                "Start today's run with 'tracker run start', or name a run with --run"
+                f"no run is open: the latest {kind} has already finished or was abandoned. "
+                f"{how_to_start[:1].upper()}{how_to_start[1:]}, or name a run with --run"
             )
             raise ValidationFailedError(message)
         return run
@@ -267,6 +313,21 @@ class RunRecorder:
             return None
         code = (outcome.error_code or "").strip()
         return code or DEFAULT_ERROR_CODE
+
+
+def _how_to_start(*, refresh: bool) -> str:
+    """Tell the owner how to get a run of the kind a command was looking for.
+
+    ``tracker run start`` on its own opens a daily run, so a command looking
+    for a refresh names the refresh trigger, and the way back to the daily or
+    manual run that may well be open.
+    """
+    if refresh:
+        return (
+            "start one with 'tracker run start --trigger refresh', "
+            "or leave out --refresh to use the daily or manual run that is open"
+        )
+    return "start one with 'tracker run start'"
 
 
 def _shorten(detail: str | None) -> str | None:

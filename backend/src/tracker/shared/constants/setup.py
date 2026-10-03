@@ -25,6 +25,31 @@ SECRET_PROBE_NAME: Final[str] = "healthcheck_probe"
 #: What they write; the value itself is meaningless.
 SECRET_PROBE_VALUE: Final[str] = "healthcheck"
 
+# --- The set-up page in the browser -----------------------------------------
+
+#: The page is served to this computer only; never to the network.
+FORM_HOST: Final[str] = "127.0.0.1"
+
+#: The header the page sends with its key, so no other page can read or answer.
+FORM_KEY_HEADER: Final[str] = "X-Setup-Key"
+
+#: Bytes of randomness in that key.
+FORM_KEY_BYTES: Final[int] = 32
+
+#: Longest answer the page may send, in bytes; keys and addresses are far shorter.
+FORM_MAX_BODY_BYTES: Final[int] = 64 * 1024
+
+#: Seconds a question waits between two looks at whether the page is still there.
+FORM_WAIT_SLICE_SECONDS: Final[float] = 1.0
+
+#: Seconds without a sign of life from the page before the set-up stops, so a
+#: closed tab never leaves the command waiting forever. Browsers slow a tab
+#: that is not in front down to one check a minute, so this is generous.
+FORM_IDLE_LIMIT_SECONDS: Final[float] = 15 * 60
+
+#: Seconds the page is kept up after the end, so it can show the last word.
+FORM_FAREWELL_SECONDS: Final[float] = 5.0
+
 # --- Supabase ---------------------------------------------------------------
 
 #: Every Supabase project address ends with this.

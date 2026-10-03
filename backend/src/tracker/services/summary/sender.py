@@ -9,6 +9,7 @@ the file was changed after Python wrote it, and nothing is sent.
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Protocol
@@ -16,10 +17,11 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from tracker.domain.enums import RunStatus, RunStep
+from tracker.domain.enums import RunStep
 from tracker.infrastructure.smtp import SmtpAccount
 from tracker.schemas.summary import SummaryEmail
 from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
+from tracker.services.summary.send_once import SendOnce
 from tracker.shared.config import Settings
 from tracker.shared.constants.mailbox import IMAP_PRESETS, DeliveryRoute
 from tracker.shared.errors import ConfigurationError, TrackerError, ValidationFailedError
@@ -106,6 +108,20 @@ def read_summary(path: Path) -> SummaryEmail:
         raise ValidationFailedError(message) from error
 
 
+@dataclass(frozen=True, slots=True)
+class SentSummary:
+    """A summary that went out.
+
+    Attributes:
+        summary: What was sent.
+        step_error_code: Why the ``summary_email`` step could not be recorded
+            afterwards, or ``None`` when it was.
+    """
+
+    summary: SummaryEmail
+    step_error_code: str | None = None
+
+
 class SummarySender:
     """Sends the summary file to the configured recipient and records the step."""
 
@@ -124,24 +140,30 @@ class SummarySender:
         self._mailer_for = mailer_for
         self._recorder = recorder
 
-    def send(self, path: Path, run_id: UUID | None = None) -> SummaryEmail:
+    def send(self, path: Path, run_id: UUID | None = None) -> SentSummary:
         """Send the summary and record the step, whether it went or not.
 
         Args:
             path: The summary file.
-            run_id: The run to record against; the one still open when omitted.
+            run_id: The run to record against; the daily run still open when
+                omitted.
 
         Returns:
-            What was sent.
+            What was sent, and the code that kept the step from being recorded
+            when the mail went but the run log could not say so.
 
         Raises:
             ValidationFailedError: If this run's summary already went out; nothing
-                is sent and the step keeps its success.
+                is sent and nothing is recorded.
             TrackerError: If anything stopped the sending; the step is recorded
                 as failed with the error's code first.
         """
         run = self._recorder.resolve(run_id)
-        self._refuse_a_second_send(run.id)
+        once = SendOnce(self._recorder, path)
+        if once.already_sent(run.id):
+            _log.info("summary_already_sent", run_id=str(run.id))
+            message = "this run's summary was already sent, so it was not sent again"
+            raise ValidationFailedError(message)
         try:
             summary = self._checked(read_summary(path))
             self._mailer_for().send(compose(summary, self._sender()))
@@ -150,19 +172,24 @@ class SummarySender:
             self._recorder.record_step(run.id, outcome)
             _log.warning("summary_not_sent", run_id=str(run.id), code=error.code)
             raise
-        outcome = StepOutcome(RunStep.SUMMARY_EMAIL, StepResult.SUCCESS, items_found=1, items_new=1)
-        self._recorder.record_step(run.id, outcome)
+        once.remember(run.id)
         _log.info("summary_sent", run_id=str(run.id))
-        return summary
+        return SentSummary(summary=summary, step_error_code=self._record_success(run.id))
 
-    def _refuse_a_second_send(self, run_id: UUID) -> None:
-        """Stop before sending when this run's summary already went out."""
-        sent = self._recorder.find_step(run_id, RunStep.SUMMARY_EMAIL)
-        if sent is None or sent.status is not RunStatus.SUCCESS:
-            return
-        _log.info("summary_already_sent", run_id=str(run_id))
-        message = "this run's summary was already sent, so it was not sent again"
-        raise ValidationFailedError(message)
+    def _record_success(self, run_id: UUID) -> str | None:
+        """Record that the summary went, and hand back the code when that failed.
+
+        The mail is already in the owner's inbox by now, so a failure here is
+        reported, never raised: an error would read as "not sent" and invite a
+        second copy. The marker beside the file still stops one.
+        """
+        outcome = StepOutcome(RunStep.SUMMARY_EMAIL, StepResult.SUCCESS, items_found=1, items_new=1)
+        try:
+            self._recorder.record_step(run_id, outcome)
+        except TrackerError as error:
+            _log.error("summary_sent_step_not_recorded", run_id=str(run_id), code=error.code)
+            return error.code
+        return None
 
     def _checked(self, summary: SummaryEmail) -> SummaryEmail:
         """Refuse a file whose recipient or subject is not what the settings say."""

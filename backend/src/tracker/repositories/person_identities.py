@@ -72,10 +72,9 @@ class PersonIdentityRepository(SupabaseRepository[PersonIdentity]):
         found: list[PersonIdentity] = []
         for batch in batched(wanted, DATABASE_BATCH_SIZE):
             rows = self._select_every(
-                lambda values=list(batch): self._table()
-                .select(ALL_COLUMNS)
-                .eq("channel", channel.value)
-                .in_("identifier", values),
+                lambda query, values=list(batch): query.eq("channel", channel.value).in_(
+                    "identifier", values
+                ),
                 "list_by_identifiers",
             )
             found.extend(self._to_models(rows))
@@ -91,7 +90,7 @@ class PersonIdentityRepository(SupabaseRepository[PersonIdentity]):
             The person's identities.
         """
         rows = self._select_every(
-            lambda: self._table().select(ALL_COLUMNS).eq("person_id", str(person_id)),
+            lambda query: query.eq("person_id", str(person_id)),
             "list_for_person",
         )
         return self._to_models(rows)

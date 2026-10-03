@@ -17,7 +17,7 @@ from tests.setup_world import (
     configured_env,
     make_world,
 )
-from tracker.domain.categories import UNKNOWN_CATEGORY_KEY
+from tracker.domain.categories import UNKNOWN_CATEGORY_KEY, Category, ColourSlot
 from tracker.services.database_structure import KNOWN_MIGRATIONS
 from tracker.services.setup import values
 from tracker.services.setup.models import StepName
@@ -452,6 +452,25 @@ async def test_categories_mention_hidden_ones_and_a_profile_file() -> None:
     assert "profile/profile.toml file exists" in text
 
 
+async def test_categories_name_a_hidden_one_that_was_renamed() -> None:
+    world = make_world([True, _JOB_SEARCH, True, False, True], configured_env())
+    world.choices.archived = ("vc",)
+    world.choices.renamed = (
+        Category(
+            key="vc",
+            label="Investor (2)",
+            group_label="Investors (2)",
+            colour=ColourSlot.CYAN,
+            sort_order=20,
+        ),
+    )
+
+    await CategoriesStep().run(world.context())
+
+    text = world.io.text()
+    assert "Renamed while hidden, so no two categories share a name: 'Investor (2)'." in text
+
+
 # --- Microsoft -----------------------------------------------------------------
 
 
@@ -560,7 +579,7 @@ async def test_linkedin_first_connection_names_each_stage_and_its_guide_part() -
     said = world.io.said
     stages = [
         said.index("Stage 1 of 3 - create a developer application (guide, part 6a)."),
-        said.index("[paused] Press Enter once your application's own page is open"),
+        said.index("[paused] Once your application's own page is open"),
         said.index("Stage 2 of 3 - add the product (guide, part 6b)."),
         said.index("Stage 3 of 3 - make the key (guide, part 6c)."),
         said.index("LinkedIn accepted the key."),

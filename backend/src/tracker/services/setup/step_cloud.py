@@ -102,6 +102,6 @@ def copy_values(ctx: SetupContext, values_by_name: dict[str, str]) -> None:
         if not ctx.io.copy(value):
             ctx.io.say("No clipboard is available here; copy the values from .env instead.")
             return
-        ctx.io.pause(f"{name} is on the clipboard: paste it after '{name}=' then press Enter")
+        ctx.io.pause(f"{name} is on the clipboard: once it is pasted after '{name}='")
     ctx.io.copy("")
     ctx.io.say("Done. The clipboard has been emptied.")

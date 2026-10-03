@@ -8,10 +8,13 @@ Claude subscription.
 
 With ``--record``, ``export`` and ``import`` also record the assessment as its
 step of the run, which the daily recipe used to do with a command of its own.
+``import`` saves the verdicts first and only then looks for the run, so a run
+that can no longer be recorded into costs the step, never the verdicts.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Final
 from uuid import UUID
@@ -23,18 +26,25 @@ from tracker.domain.profile import Wording
 from tracker.infrastructure.database import create_database_client
 from tracker.repositories import Repositories, build_repositories
 from tracker.services.assessment.exporter import AssessmentExporter
-from tracker.services.assessment.importer import AssessmentImporter
+from tracker.services.assessment.importer import AssessmentImporter, ImportResult
 from tracker.services.assessment.run_step import record_assessment
 from tracker.services.assessment.work_files import clean_work_directory
-from tracker.services.identity.matcher import read_every
 from tracker.services.profile.loader import load_profile
 from tracker.services.runs.run_recorder import RunRecorder, unconfigured_steps
 from tracker.shared.clock import Clock, SystemClock
 from tracker.shared.config import Settings, get_settings
 from tracker.shared.constants.assessment import BATCH_DIRECTORY, RESULT_DIRECTORY
+from tracker.shared.errors import TrackerError
+from tracker.shared.logging import get_logger
 
 #: Panel the root help groups these commands under.
 HELP_PANEL: Final[str] = "assessment"
+
+#: What an import with ``--record`` prints when it saved the verdicts but the
+#: run could not take the step; the daily recipe reads it.
+STEP_NOT_RECORDED: Final[str] = "verdicts saved, step not recorded"
+
+_log = get_logger(__name__)
 
 ai_app = typer.Typer(
     help="Prepare people for assessment, then save what came back.",
@@ -66,6 +76,13 @@ RunOption = Annotated[
     typer.Option("--run", help="With --record: record into this run, not the one still open."),
 ]
 
+RefreshOption = Annotated[
+    bool,
+    typer.Option(
+        "--refresh", help="With --record: record into the refresh that is open, not the daily run."
+    ),
+]
+
 
 def register(cli: typer.Typer) -> None:
     """Attach the assessment commands to the root application.
@@ -83,13 +100,14 @@ def export(
     results: ResultDirectoryOption = RESULT_DIRECTORY,
     record: RecordOption = False,
     run: RunOption = None,
+    refresh: RefreshOption = False,
 ) -> None:
     """Write one file per group of people who still need a verdict."""
     settings = get_settings()
     repositories = _repositories(settings)
     clock = SystemClock(settings.owner_zone)
     recorder = _recorder(settings, repositories, clock)
-    target = _run_to_record(recorder, run, record=record)
+    target = recorder.resolve(run, refresh=refresh) if record else None
     result = AssessmentExporter(repositories, clock, batches).export(limit=limit)
     if result.batch_paths:
         # The verdicts are written by a helper that can only read and write
@@ -109,13 +127,12 @@ def import_results(
     batches: BatchDirectoryOption = BATCH_DIRECTORY,
     record: RecordOption = False,
     run: RunOption = None,
+    refresh: RefreshOption = False,
 ) -> None:
     """Check the verdict files and save the ones that pass."""
     settings = get_settings()
     repositories = _repositories(settings)
     clock = SystemClock(settings.owner_zone)
-    recorder = _recorder(settings, repositories, clock)
-    target = _run_to_record(recorder, run, record=record)
     importer = AssessmentImporter(
         repositories,
         clock,
@@ -133,8 +150,9 @@ def import_results(
         f"{outcome.marked_noise} marked noise, "
         f"{len(outcome.rejected)} rejected files"
     )
-    if target is not None:
-        _record(recorder, target, assessed=outcome.assessed, sent_to_review=outcome.sent_to_review)
+    if record:
+        recorder = _recorder(settings, repositories, clock)
+        _record_import(lambda: recorder.resolve(run, refresh=refresh), recorder, outcome)
 
 
 @ai_app.command("status")
@@ -155,7 +173,7 @@ def status(
         results,
         wording=_wording(repositories),
     ).result_files()
-    questions = read_every(repositories.review_items.list_unanswered)
+    questions = repositories.review_items.list_every_unanswered()
     typer.echo(f"people needing assessment: {pending}")
     typer.echo(f"verdict files waiting to be imported: {len(waiting_files)}")
     typer.echo(f"questions waiting for your answer: {len(questions)}")
@@ -178,19 +196,35 @@ def _recorder(settings: Settings, repositories: Repositories, clock: Clock) -> R
     return RunRecorder(repositories, clock, unconfigured_steps(settings))
 
 
-def _run_to_record(recorder: RunRecorder, run: UUID | None, *, record: bool) -> RunLog | None:
-    """Find the run the step is recorded into, when recording was asked for.
-
-    It is looked up before any work is done, so a run that does not exist is
-    reported straight away rather than after the export or the import.
-    """
-    return recorder.resolve(run) if record else None
-
-
 def _record(recorder: RunRecorder, target: RunLog, *, assessed: int, sent_to_review: int) -> None:
     """Record the assessment step and say so."""
     record_assessment(recorder, target.id, assessed=assessed, sent_to_review=sent_to_review)
     typer.echo("step recorded")
+
+
+def _record_import(
+    find_run: Callable[[], RunLog], recorder: RunRecorder, outcome: ImportResult
+) -> None:
+    """Record what the import saved, or say plainly that the run could not take it.
+
+    The run is looked up only after the verdicts are saved: a run that can no
+    longer be recorded into — closed by something else, or so old it counts as
+    abandoned — must never cost the assessment itself, whose verdict files would
+    otherwise be removed unimported at the end of the run.
+
+    Args:
+        find_run: Looks up the run to record into.
+        recorder: Writes the run's steps.
+        outcome: What the import saved.
+    """
+    try:
+        target = find_run()
+        _record(recorder, target, assessed=outcome.assessed, sent_to_review=outcome.sent_to_review)
+    except TrackerError as error:
+        _log.warning("assess_step_not_recorded", code=error.code, detail=error.message)
+        # The reason is printed, not only logged: "no run is open" is what tells
+        # the daily recipe to build and send no summary for this run.
+        typer.echo(f"{STEP_NOT_RECORDED} · {error.message} · code={error.code}")
 
 
 def _wording(repositories: Repositories) -> Wording:

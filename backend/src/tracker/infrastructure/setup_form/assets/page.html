@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Threadline set-up</title>
+    <link rel="stylesheet" href="/page.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="header">
+        <h1>Threadline set-up</h1>
+        <p class="lead">
+          Answer each question here. Keys go into hidden fields and stay on this computer;
+          nothing on this page is sent anywhere else.
+        </p>
+      </header>
+
+      <section id="transcript" class="transcript" aria-live="polite" aria-label="What the set-up says"></section>
+
+      <section id="question" class="question" hidden>
+        <p id="prompt" class="prompt"></p>
+        <form id="answer-form" class="answer" autocomplete="off">
+          <input id="answer-input" class="input" type="text" aria-labelledby="prompt" />
+          <p id="hint" class="hint" hidden>Hidden on purpose. Paste it with ⌘V (Ctrl+V), then continue.</p>
+          <div class="buttons">
+            <button id="primary" type="submit" class="button primary">Continue</button>
+            <button id="secondary" type="button" class="button" hidden>No</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="waiting" class="waiting">Working…</section>
+
+      <section id="ending" class="ending" hidden>
+        <p id="ending-message"></p>
+        <p class="hint">You can close this tab.</p>
+      </section>
+
+      <footer class="footer">
+        <button id="stop" type="button" class="link">Stop for now — what is finished stays saved</button>
+      </footer>
+    </main>
+    <script src="/page.js"></script>
+  </body>
+</html>

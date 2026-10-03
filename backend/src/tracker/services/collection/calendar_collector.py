@@ -27,7 +27,7 @@ from uuid import UUID
 
 from tracker.domain.enums import Channel, Direction, Relevance
 from tracker.domain.identity import name_from_address, organisation_key
-from tracker.domain.linking import only_person_at
+from tracker.domain.linking import LinkCandidate, only_person_at
 from tracker.domain.models import PersonIdentity
 from tracker.domain.own_meetings import company_in_title, is_own_meeting, own_meeting_identifier
 from tracker.domain.prefilter import is_relay_sender
@@ -46,7 +46,7 @@ from tracker.services.collection.models import (
 )
 from tracker.services.collection.writer import ConversationWriter
 from tracker.services.identity.linker import link_candidates
-from tracker.services.identity.matcher import IdentityMatcher, read_every
+from tracker.services.identity.matcher import IdentityMatcher
 from tracker.shared.clock import Clock, zone_label
 from tracker.shared.config import Settings
 from tracker.shared.constants.collection import (
@@ -69,6 +69,48 @@ _RESPONSES: Final[dict[str, str]] = {
 }
 _NO_ANSWER: Final[str] = "not answered yet"
 _NO_TITLE: Final[str] = "(no title)"
+
+
+class _PeopleOnRecord:
+    """Everybody already stored, as the linking rules describe them.
+
+    Read the first time an entry the owner typed asks who is at a company, and
+    kept for the rest of one save: nothing is written between two events, so a
+    second entry would read the same three tables to learn the same thing.
+    """
+
+    def __init__(self, repositories: Repositories, rules: RulePack) -> None:
+        """Bind to the database and the owner's rules; nothing is read yet."""
+        self._repositories = repositories
+        self._rules = rules
+        self._read: tuple[list[LinkCandidate], list[PersonIdentity]] | None = None
+
+    def at_company(self, company: str) -> RawParticipant | None:
+        """The one person already on record at a company, as a known identity.
+
+        The company's hiring system or a recruiter may already have written
+        ("Acme Hiring Team", Chloe at acmegroup.example): the meeting
+        belongs on that line, not on a new record of its own.
+        """
+        if self._read is None:
+            self._read = self._everybody()
+        candidates, identities = self._read
+        match = only_person_at(organisation_key(company), candidates)
+        if match is None:
+            return None
+        own = [identity for identity in identities if identity.person_id == match.person_id]
+        return _as_participant(own, self._rules)
+
+    def _everybody(self) -> tuple[list[LinkCandidate], list[PersonIdentity]]:
+        """Read the people who are not noise, and every identity, from the database."""
+        people = [
+            person
+            for person in self._repositories.people.list_every()
+            if person.relevance is not Relevance.NOISE
+        ]
+        identities = self._repositories.person_identities.list_every()
+        organisations = self._repositories.organisations.list_every()
+        return link_candidates(people, identities, organisations, self._rules), identities
 
 
 class CalendarCollector:
@@ -141,9 +183,10 @@ class CalendarCollector:
         invitations under, so it must run after the mail has been stored.
         """
         behind = self._people_behind_shared_calendars(events)
+        on_record = _PeopleOnRecord(self._repositories, self._rules)
         threads: dict[str, RawConversation] = {}
         for event in events:
-            thread = self._thread(event, now, behind)
+            thread = self._thread(event, now, behind, on_record)
             if thread is not None:
                 threads[thread.source_conversation_id] = _merged(
                     threads.get(thread.source_conversation_id), thread
@@ -166,6 +209,7 @@ class CalendarCollector:
         event: GraphEvent,
         now: datetime,
         behind: dict[str, RawParticipant],
+        on_record: _PeopleOnRecord,
     ) -> RawConversation | None:
         """Turn one event into a thread, or ``None`` when only the owner is in it."""
         participants = (
@@ -177,7 +221,7 @@ class CalendarCollector:
                     if address in behind
                 }.values()
             )
-            or self._company_of_own_entry(event)
+            or self._company_of_own_entry(event, on_record)
         )
         if not participants:
             return None
@@ -216,7 +260,9 @@ class CalendarCollector:
             )
         return tuple(found.values())
 
-    def _company_of_own_entry(self, event: GraphEvent) -> tuple[RawParticipant, ...]:
+    def _company_of_own_entry(
+        self, event: GraphEvent, on_record: _PeopleOnRecord
+    ) -> tuple[RawParticipant, ...]:
         """The company a meeting entry the owner typed themselves is with, if any."""
         if (
             event.attendees
@@ -227,7 +273,7 @@ class CalendarCollector:
         company = company_in_title(event.subject, self._owner_names, self._rules)
         if company is None:
             return ()
-        known = self._known_at_company(company)
+        known = on_record.at_company(company)
         if known is not None:
             return (known,)
         return (
@@ -238,27 +284,6 @@ class CalendarCollector:
                 organisation_name=company,
             ),
         )
-
-    def _known_at_company(self, company: str) -> RawParticipant | None:
-        """The one person already on record at a company, as a known identity.
-
-        The company's hiring system or a recruiter may already have written
-        ("Acme Hiring Team", Chloe at acmegroup.example): the meeting
-        belongs on that line, not on a new record of its own.
-        """
-        people = [
-            person
-            for person in read_every(self._repositories.people.list)
-            if person.relevance is not Relevance.NOISE
-        ]
-        identities = read_every(self._repositories.person_identities.list)
-        organisations = read_every(self._repositories.organisations.list)
-        candidates = link_candidates(people, identities, organisations, self._rules)
-        match = only_person_at(organisation_key(company), candidates)
-        if match is None:
-            return None
-        own = [identity for identity in identities if identity.person_id == match.person_id]
-        return _as_participant(own, self._rules)
 
     def _people_behind_shared_calendars(
         self,
@@ -280,10 +305,18 @@ class CalendarCollector:
                 if is_relay_sender(address, self._rules)
             }
         )
-        threads = self._repositories.messages.list_threads_from(shared)
+        sent = self._repositories.messages.list_threads_from(shared)
+        # One pair per message, so a thread of five invitations is named five
+        # times: each thread is fetched once, and all of them together.
+        threads = {
+            thread.id: thread
+            for thread in self._repositories.conversations.list_by_ids(
+                list(dict.fromkeys(thread_id for thread_id, _ in sent))
+            )
+        }
         person_by_address: dict[str, UUID] = {}
-        for thread_id, sender in threads:
-            thread = self._repositories.conversations.get(thread_id)
+        for thread_id, sender in sent:
+            thread = threads.get(thread_id)
             if thread is not None and thread.person_id is not None:
                 person_by_address.setdefault(sender, thread.person_id)
         return {

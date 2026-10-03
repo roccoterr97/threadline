@@ -116,16 +116,24 @@ class ChoiceSaver:
         return self._repositories.app_settings.read_preset()
 
     def save(self, choice: Choice) -> SavedChoice:
-        """Remember the preset, replace the categories and put the profile into effect.
+        """Replace the categories, remember the preset and put the profile into effect.
+
+        The preset is remembered only once the categories are in, because a
+        remembered preset is what tells the set-up its categories step is
+        done: a choice that could not be saved must be asked for again.
 
         Args:
             choice: What the owner chose.
 
         Returns:
             What changed.
+
+        Raises:
+            ValidationFailedError: If two of the categories share a name.
+            DatabaseUnavailableError: If the database could not be written.
         """
-        self._repositories.app_settings.save_preset(choice.preset)
         changes = self._applier.replace_categories(choice.categories)
+        self._repositories.app_settings.save_preset(choice.preset)
         loaded = load_profile(self._files.profile, chosen_preset=choice.preset)
         effect = put_into_effect(self._applier, loaded.profile, self._files)
         return SavedChoice(

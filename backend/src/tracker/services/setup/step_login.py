@@ -67,7 +67,7 @@ async def _switch_off_signups(ctx: SetupContext) -> None:
             ref=values.project_ref(ctx.require("SUPABASE_URL", "supabase"))
         )
     )
-    io.pause("Press Enter once you have saved")
+    io.pause("Once you have saved")
     if await _signups_disabled(ctx):
         io.say("Sign-ups are now switched off.")
         return

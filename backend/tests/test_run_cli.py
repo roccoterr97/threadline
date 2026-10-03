@@ -227,6 +227,44 @@ def test_a_command_without_configuration_fails_on_one_line(
     assert "Traceback" not in errors[0]
 
 
+def test_no_second_summary_is_built_once_the_connector_sent_the_first(
+    runner: CliRunner, database: FakeSupabaseClient, settings: Settings, tmp_path: Path
+) -> None:
+    """The Gmail connector route: the session sends, then records; a rerun finds no file."""
+    assert database.tables["run_logs"]
+    assert settings.supabase_url
+    out = tmp_path / "summary.json"
+    runner.invoke(build_cli(), ["run", "start", "--trigger", "cloud"])
+    first = runner.invoke(build_cli(), ["summary", "build", "--out", str(out)])
+    sent = ["run", "step", "--step", "summary_email", "--result", "success", "--found", "1"]
+    runner.invoke(build_cli(), [*sent, "--new", "1"])
+
+    second = runner.invoke(build_cli(), ["summary", "build", "--out", str(out)])
+
+    assert first.exit_code == 0
+    assert second.exit_code != 0
+    assert isinstance(second.exception, ValidationFailedError)
+    assert "already sent" in second.exception.message
+    assert not out.exists()
+
+
+def test_a_closed_runs_summary_can_still_be_built_by_hand(
+    runner: CliRunner, database: FakeSupabaseClient, settings: Settings, tmp_path: Path
+) -> None:
+    assert database.tables["run_logs"]
+    assert settings.supabase_url
+    out = tmp_path / "summary.json"
+    runner.invoke(build_cli(), ["run", "start", "--trigger", "cloud"])
+    sent = ["run", "step", "--step", "summary_email", "--result", "success", "--found", "1"]
+    runner.invoke(build_cli(), [*sent, "--new", "1"])
+    runner.invoke(build_cli(), ["run", "finish"])
+
+    result = runner.invoke(build_cli(), ["summary", "build", "--out", str(out)])
+
+    assert result.exit_code == 0
+    assert out.is_file()
+
+
 def test_sending_without_an_imap_mailbox_is_refused_and_recorded(
     runner: CliRunner,
     database: FakeSupabaseClient,
@@ -390,6 +428,33 @@ def test_the_help_offers_the_folded_steps(runner: CliRunner, command: str, optio
     assert option in _COLOUR_CODES.sub("", result.output)
 
 
+def test_a_refresh_closes_its_own_run_and_leaves_the_daily_run_going(
+    runner: CliRunner, database: FakeSupabaseClient, settings: Settings
+) -> None:
+    assert settings.supabase_url
+    daily = _printed_run_id(
+        runner.invoke(build_cli(), ["run", "start", "--trigger", "github"]).output
+    )
+    refresh = _printed_run_id(
+        runner.invoke(build_cli(), ["run", "start", "--trigger", "refresh"]).output
+    )
+
+    closed = runner.invoke(build_cli(), ["run", "finish", "--refresh"])
+    recorded = runner.invoke(
+        build_cli(), ["run", "step", "--step", "assess", "--result", "success"]
+    )
+
+    assert printed_lines(closed) == [f"run {refresh} finished · status failed"]
+    assert recorded.exit_code == 0
+    statuses = {row["id"]: row["status"] for row in database.tables["run_logs"]}
+    assert statuses[daily] == RunStatus.RUNNING.value
+    assessed = [
+        row["run_id"] for row in database.tables["run_step_logs"] if row["step"] == "assess"
+    ]
+    assert daily in assessed
+    assert refresh not in assessed
+
+
 # --- run finish --clean: the work files removed in the same step ----------------
 
 
@@ -455,21 +520,26 @@ def test_a_cleaning_that_fails_is_printed_and_the_run_is_still_closed(
     assert stored[0]["finished_at"] is not None
 
 
-def test_the_work_files_are_removed_even_when_the_run_cannot_be_closed(
+def test_the_work_files_are_kept_when_the_run_cannot_be_closed(
     runner: CliRunner,
     database: FakeSupabaseClient,
     settings: Settings,
     work: Path,
 ) -> None:
+    """Verdicts the run could not take may still wait to be imported: nothing is removed."""
     assert settings.supabase_url
     database.tables["run_logs"].clear()
+    verdicts = work / "results"
+    verdicts.mkdir()
+    (verdicts / "batch-0001.json").write_text("{}", encoding="utf-8")
 
     result = runner.invoke(build_cli(), ["run", "finish", "--clean"])
 
     assert result.exit_code != 0
     assert isinstance(result.exception, ValidationFailedError)
-    assert printed_lines(result) == ["2 files removed from the work directory"]
-    assert list(work.iterdir()) == []
+    assert printed_lines(result) == ["work files kept · the run could not be closed"]
+    assert (verdicts / "batch-0001.json").is_file()
+    assert (work / "batches" / "batch-0001.json").is_file()
 
 
 def test_without_clean_a_finish_leaves_the_work_files(

@@ -13,7 +13,7 @@ from tracker.domain.enums import Channel, Direction, Relevance
 from tracker.domain.models import Conversation, Message, Organisation, Person, PersonIdentity
 from tracker.repositories import Repositories
 from tracker.repositories.organisations import OrganisationRepository
-from tracker.shared.constants.collection import DATABASE_BATCH_SIZE
+from tracker.shared.constants.collection import DATABASE_BATCH_SIZE, NAME_LOOKUP_BATCH_SIZE
 from tracker.shared.errors import DatabaseUnavailableError, ValidationFailedError
 
 
@@ -253,3 +253,104 @@ def test_the_same_natural_key_twice_in_one_batch_does_not_lose_the_batch(
     assert len(written) == 2
     assert {message.source_message_id for message in stored} == {"m-1", "m-2"}
     assert next(m for m in stored if m.source_message_id == "m-1").body == "second copy"
+
+
+def test_several_names_are_looked_up_in_one_request(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    northwind, harbour = Organisation(name="Northwind"), Organisation(name="Harbour, Ltd (UK)")
+    repositories.organisations.bulk_upsert([northwind, harbour, Organisation(name="Elsewhere")])
+    fake_client.executed.clear()
+
+    found = repositories.organisations.find_by_names(
+        [" Northwind ", "Harbour, Ltd (UK)", "Northwind", "Nobody", "  ", ""]
+    )
+
+    assert {name: row.id for name, row in found.items()} == {
+        "Northwind": northwind.id,
+        "Harbour, Ltd (UK)": harbour.id,
+    }
+    assert fake_client.executed == [("organisations", "select")]
+
+
+def test_looking_up_no_name_touches_nothing(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    assert repositories.organisations.find_by_names(["", "  "]) == {}
+    assert fake_client.executed == []
+
+
+def test_a_long_list_of_names_is_split_into_several_requests(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    names = [f"Company {index}" for index in range(NAME_LOOKUP_BATCH_SIZE + 1)]
+    repositories.organisations.bulk_upsert([Organisation(name=name) for name in names])
+    fake_client.executed.clear()
+
+    found = repositories.organisations.find_by_names(names)
+
+    assert sorted(found) == sorted(names)
+    assert fake_client.executed == [("organisations", "select")] * 2
+
+
+def test_of_two_rows_with_one_name_the_oldest_is_found_whatever_its_identifier(
+    repositories: Repositories,
+) -> None:
+    """The row a single look-up answers with: the one the database stored first."""
+    low, high = sorted([uuid4(), uuid4()], key=str)
+    lower, higher = sorted([uuid4(), uuid4()], key=str)
+    first_day, later = datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 9, 5, tzinfo=UTC)
+    repositories.organisations.bulk_upsert(
+        [
+            Organisation(id=high, name="Twice", created_at=first_day),
+            Organisation(id=low, name="Twice", created_at=later),
+            Organisation(id=lower, name="Again", created_at=first_day),
+            Organisation(id=higher, name="Again", created_at=later),
+        ]
+    )
+
+    found = repositories.organisations.find_by_names(["Twice", "Again"])
+    alone = {name: repositories.organisations.find_by_name(name) for name in ("Twice", "Again")}
+
+    assert found["Twice"].id == high
+    assert found["Again"].id == lower
+    assert {name: row.id for name, row in found.items()} == {
+        name: row.id for name, row in alone.items() if row is not None
+    }
+
+
+def test_two_rows_of_one_name_and_one_age_are_settled_by_identifier(
+    repositories: Repositories,
+) -> None:
+    low, high = sorted([uuid4(), uuid4()], key=str)
+    same_moment = datetime(2026, 9, 1, tzinfo=UTC)
+    repositories.organisations.bulk_upsert(
+        [
+            Organisation(id=high, name="Twice", created_at=same_moment),
+            Organisation(id=low, name="Twice", created_at=same_moment),
+        ]
+    )
+
+    assert repositories.organisations.find_by_names(["Twice"])["Twice"].id == low
+
+
+def test_a_name_the_client_cannot_list_is_asked_for_by_itself(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    quoted, slashed = Organisation(name='The "Good" Company'), Organisation(name="A\\B")
+    plain = Organisation(name="Plain")
+    repositories.organisations.bulk_upsert([quoted, slashed, plain])
+    fake_client.executed.clear()
+
+    found = repositories.organisations.find_by_names([quoted.name, slashed.name, plain.name])
+
+    assert {name: row.id for name, row in found.items()} == {
+        quoted.name: quoted.id,
+        slashed.name: slashed.id,
+        plain.name: plain.id,
+    }
+    assert len(fake_client.executed) == 3

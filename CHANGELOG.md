@@ -8,6 +8,24 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- A set-up that Claude runs for you: the recipe `/setup`
+  (`.claude/commands/setup.md`) walks a non-technical person through the
+  tools, their private copy, the three accounts, the guided set-up and the
+  first run, with Claude doing every command and the person pasting keys only
+  into the set-up page. [`docs/setup-with-claude.md`](docs/setup-with-claude.md)
+  is the one sentence to paste into the Claude app; the README and the demo's
+  "Set up your own" link now lead there first.
+- `uv run tracker setup --browser` (also for a single step): the same
+  questions asked on a page in your web browser instead of terminal prompts,
+  with keys in hidden fields, a Continue button for every "press Return", a
+  Stop-for-now link, and the final check shown on the page. The page is served
+  to your computer only, on a random port, and every request must carry a key
+  that only the opened page knows. The terminal still shows what is said and
+  asked, never an answer, so whoever started the command can follow along. A
+  page closed or left alone for fifteen minutes ends the set-up cleanly.
+
+- The set-up's "press Enter" and "press Return" phrases now come from the
+  terminal itself, so each step's wording reads right on the page too.
 - `tracker setup refresh`, a set-up step right after `tracker setup github`
   that switches on the dashboard's Refresh now button with nothing to install:
   it opens GitHub's new-token page already filled in (Actions: Read and write),
@@ -56,6 +74,14 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- The daily run asks the database less often. Tidying people no longer looks
+  up every pair an earlier merge already joined; saving the assessment looks a
+  file's organisations up together and reads the categories once; a collector
+  reads the whole people list only when somebody new turns up; and the calendar
+  reads a shared calendar's invitation threads, and who is on record for your
+  own interview entries, once instead of once per entry. The same rows are
+  stored and the same lines printed.
+
 - The daily run collects every source in one step. `tracker collect all
   --record` reads LinkedIn, the mailboxes and the calendar at the same time,
   stores them one after the other, records each as its own step of the run and
@@ -88,6 +114,14 @@ All notable changes to this project are recorded here. The format follows
   commands to 29. A connection that drops is reopened with its folder, even
   when it drops again while reopening. The same messages are read and the same
   rows stored; Outlook is read as before.
+- The database is asked less often. Reading every matching row used to end
+  with one more request, sent only to see it come back empty. The first request
+  now also asks how many rows match, and the reading stops once that many have
+  arrived, so a read that fits in one answer costs one request. On a made-up
+  morning of 300 people and 400 threads the daily run went from 283 database
+  requests to 197. A page the server cut short is still read past, and an
+  answer that carries no total is still read until an empty page. The same
+  rows are read, in the same order.
 - `tracker doctor` runs its checks side by side, so the waits overlap instead
   of adding up. The report keeps its order.
 - `tracker setup linkedin` walks a first connection through three stages —
@@ -200,6 +234,52 @@ All notable changes to this project are recorded here. The format follows
   asks before it removes a category. The reserved category's group name is
   now "Not known", like its name.
 - Clearer wording, colours, page titles and accessibility on the dashboard.
+- Choosing another preset no longer fails when a hidden category still has a
+  name the new list uses (job search to fundraising with someone filed as
+  "Investor"): the hidden one becomes "Investor (2)" and keeps its people. A
+  list that names two categories alike is refused before anything changes, the
+  preset is remembered only once the categories are saved, and
+  `tracker profile choose` refuses a group name you already have.
+- `tracker setup database` and `tracker doctor` now see whether
+  `0015_category_names.sql` is applied, so a database at 0014 is offered it. A
+  database at 0006 or 0010 is now also offered 0007 or 0011.
+- For another mailbox provider, a sending (SMTP) server that will not sign in
+  no longer throws away the checked app password: the mailbox is saved first,
+  and you can carry on without the sending server and add it later with
+  `tracker setup mailbox`. A sending server saved for a different mailbox is
+  removed rather than used with the new one.
+- `tracker setup refresh` only uses a private GitHub repository you administer
+  as your copy, never the public template; when that cannot be checked, it is
+  switched on only on a typed yes.
+- A run interrupted for hours (a Mac that slept) no longer loses its
+  assessment: the verdicts are saved even when the run can no longer be
+  recorded, and `run finish --clean` keeps the exchanged files when the run
+  could not be closed.
+- A daily run and a refresh no longer cross: a GitHub hiccup is never read as
+  "nothing else is going" (a refresh stops, the daily run keeps asking and
+  goes ahead once its wait is up), each lookup is cut off after 30 seconds,
+  and a refresh can close only a refresh, the daily run only its own run.
+- The morning summary is sent once even when recording that it went fails. On
+  the Gmail-connector route, a summary already recorded as sent is not built
+  again for the same run.
+- When a mailbox holds more new mail than is read at once, or one of several
+  mailboxes cannot be read, the mail that was read is judged the same morning,
+  the summary and the run page say so in plain words, and the next read does
+  not skip the part left unread.
+- Two Refresh now presses a moment apart: the one that loses is told a refresh
+  is starting, or starts it itself when the first could not, instead of being
+  told to wait ten minutes.
+- The daily recipe says one thing about a run that is not open, and about
+  verdicts that were saved without their step being recorded.
+- The dashboard keeps your place: Back, Forward and a reload return to where
+  you were on a page (as close as possible when the list got shorter), a page
+  opened fresh starts at the top, and "Back to people" and hiding a person
+  return to the list with your filters and sort.
+- A hidden person leaves the list at once. A suggested category whose name
+  another category has is no longer offered.
+- A failed save is always unmissable: a failed category move, a failed hide
+  and a failed undo each take the keyboard and scroll into view. A saved
+  answer on the review page no longer takes the keyboard away from the list.
 
 ### Security
 

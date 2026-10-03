@@ -41,10 +41,20 @@ from tracker.shared.clock import Clock
 from tracker.shared.concurrency import gather_all
 from tracker.shared.config import Settings
 from tracker.shared.constants.collection import GROUP_SUBJECT_PREFIX
-from tracker.shared.errors import TrackerError
+from tracker.shared.constants.mailbox import IMAP_MAX_MESSAGES_PER_FOLDER
+from tracker.shared.errors import MailboxWindowCappedError, TrackerError
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
+
+
+@dataclasses.dataclass(slots=True)
+class _MailboxesRead:
+    """What reading every mailbox came to, before anything is stored."""
+
+    conversations: list[RawConversation] = dataclasses.field(default_factory=list)
+    failures: list[TrackerError] = dataclasses.field(default_factory=list)
+    capped: bool = False
 
 
 class EmailCollector:
@@ -82,8 +92,8 @@ class EmailCollector:
         """Read every mailbox and store what falls inside the window.
 
         One mailbox that cannot be read never stops the others: what the others
-        found is stored first, then the first failure is raised so the run
-        records the step as failed.
+        found is stored first, then why some mail was not read is raised, so
+        whoever typed the command sees it.
 
         Args:
             since: An explicit start the owner asked for, which beats the run log.
@@ -94,8 +104,12 @@ class EmailCollector:
         Raises:
             SourceAuthError: If a mailbox refused the saved sign-in or password.
             SourceUnavailableError: If a mailbox could not be reached.
+            MailboxWindowCappedError: If a mailbox could be read only in part.
         """
-        return asyncio.run(self.read(since=since))()
+        report = asyncio.run(self.read(since=since))()
+        if report.problem is not None:
+            raise report.problem
+        return report
 
     async def read(self, *, since: datetime | None = None) -> SaveStep:
         """Read every mailbox, and hand back the step that stores what was read.
@@ -105,8 +119,10 @@ class EmailCollector:
 
         Returns:
             The step that stores the threads. When one mailbox could not be
-            read, the step stores what the others found and then raises that
-            mailbox's failure.
+            read, or one could be read only in part, the step still stores
+            everything that was read and names why the rest was not as the
+            report's ``problem``, so the run both tells the owner and goes on
+            to assess what was stored.
 
         Raises:
             SourceAuthError: If no mailbox could be read and the first one
@@ -122,23 +138,17 @@ class EmailCollector:
             last_run_at=last_collected_at(self._repositories, RunStep.COLLECT_EMAIL),
             since=since,
         )
-        conversations, failures = await self._read_all(start)
-        if len(failures) == len(self._sources):
-            raise failures[0]
-        return lambda: self._save(conversations, failures)
+        read = await self._read_all(start)
+        if len(read.failures) == len(self._sources):
+            raise read.failures[0]
+        return lambda: self._save(read)
 
-    def _save(
-        self, conversations: list[RawConversation], failures: list[TrackerError]
-    ) -> CollectionReport:
-        """Store what was read, then raise the failure of a mailbox that was not."""
-        report = self._store(conversations)
-        if failures:
-            raise failures[0]
-        return report
+    def _save(self, read: _MailboxesRead) -> CollectionReport:
+        """Store what was read, and name why some mail was not read, if any was not."""
+        report = self._store(read.conversations)
+        return dataclasses.replace(report, problem=_shortfall(read))
 
-    async def _read_all(
-        self, start: datetime
-    ) -> tuple[list[RawConversation], list[TrackerError]]:
+    async def _read_all(self, start: datetime) -> _MailboxesRead:
         """Read the mailboxes side by side, keeping what failed apart from what was read.
 
         Two mailboxes are two different services, so neither waits for the
@@ -149,23 +159,25 @@ class EmailCollector:
             start: Earliest moment the metadata pass asks for.
 
         Returns:
-            Every thread read, and the failure of each mailbox that was not.
+            Every thread read, the failure of each mailbox that was not, and
+            whether any mailbox was read only in part.
         """
         outcomes = await gather_all(
             self._read_or_failure(source, start) for source in self._sources
         )
-        conversations: list[RawConversation] = []
-        failures: list[TrackerError] = []
+        read = _MailboxesRead()
         for outcome in outcomes:
             if isinstance(outcome, TrackerError):
-                failures.append(outcome)
+                read.failures.append(outcome)
                 continue
-            conversations.extend(outcome)
-        return conversations, failures
+            threads, capped = outcome
+            read.conversations.extend(threads)
+            read.capped = read.capped or capped
+        return read
 
     async def _read_or_failure(
         self, source: MailboxSource, start: datetime
-    ) -> list[RawConversation] | TrackerError:
+    ) -> tuple[list[RawConversation], bool] | TrackerError:
         """Read one mailbox, handing back its failure rather than raising it.
 
         Args:
@@ -173,7 +185,8 @@ class EmailCollector:
             start: Earliest moment the metadata pass asks for.
 
         Returns:
-            The mailbox's threads, or why it could not be read.
+            The mailbox's threads and whether the oldest mail of the window was
+            left unread, or why it could not be read.
         """
         try:
             return await self._read_mailbox(source, start)
@@ -183,7 +196,7 @@ class EmailCollector:
 
     async def _read_mailbox(
         self, source: MailboxSource, start: datetime
-    ) -> list[RawConversation]:
+    ) -> tuple[list[RawConversation], bool]:
         """Run the metadata pass, then the body pass, on one mailbox.
 
         Args:
@@ -191,12 +204,13 @@ class EmailCollector:
             start: Earliest moment the metadata pass asks for.
 
         Returns:
-            One entry per thread touched by the window.
+            One entry per thread touched by the window, and whether the reader
+            had to leave the oldest mail of the window unread.
         """
         async with source.open() as mailbox:
             recent = await mailbox.list_messages_since(start)
             _log.info("mailbox_scanned", mailbox=source.kind.value, messages=len(recent))
-            return await self._threads(mailbox, recent)
+            return await self._threads(mailbox, recent), mailbox.window_capped
 
     async def _threads(
         self,
@@ -420,3 +434,19 @@ def _subject(messages: Sequence[MailMessage], participant_count: int) -> str | N
         return f"{GROUP_SUBJECT_PREFIX} {title}"
     return title
 
+
+def _shortfall(read: _MailboxesRead) -> TrackerError | None:
+    """Why some of the mail was not read, or ``None`` when all of it was.
+
+    A mailbox that could not be read at all outranks one read only in part:
+    its fix needs the owner, the other only needs telling.
+    """
+    if read.failures:
+        return read.failures[0]
+    if not read.capped:
+        return None
+    message = (
+        "a mailbox held more new mail than is read at once: the newest "
+        f"{IMAP_MAX_MESSAGES_PER_FOLDER} messages of a folder were read, the older ones not"
+    )
+    return MailboxWindowCappedError(message)

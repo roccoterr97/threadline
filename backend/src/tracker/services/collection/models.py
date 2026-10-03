@@ -13,10 +13,15 @@ from datetime import datetime
 from typing import Final
 
 from tracker.domain.enums import Channel, Direction, Relevance
+from tracker.shared.errors import TrackerError
 
 #: What a collection command prints for a source the owner never set up. The
 #: daily recipe looks for exactly this line and then records nothing for it.
 NOT_CONFIGURED_LINE: Final[str] = "not configured — skipped"
+
+#: What a collection command prints, after the counts, for a source that was
+#: stored but not read in full. The daily recipe looks for exactly this start.
+READ_IN_PART_LINE: Final[str] = "read in part · code="
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +105,11 @@ class CollectionReport:
     Attributes:
         not_configured: The owner never set this source up, so nothing was
             read. That is not a failure, and the run does not count it as one.
+        problem: Why some of the source was not read although the rest was
+            read and stored — a mailbox that held more new mail than is read at
+            once, or one of several mailboxes that could not be read. The run
+            records the step as failed with its code, so the owner is told,
+            while what was stored still counts as collected.
     """
 
     channel: Channel
@@ -112,17 +122,19 @@ class CollectionReport:
     review_items_new: int = 0
     folders_seen: tuple[str, ...] = field(default_factory=tuple)
     not_configured: bool = False
+    problem: TrackerError | None = None
 
     def as_lines(self) -> tuple[str, ...]:
         """Render the report for the command line.
 
         Returns:
-            One short line per number, in reading order, or the "not
-            configured" line when the source was skipped.
+            One short line per number, in reading order, then the "read in
+            part" line when there was a problem; or the "not configured" line
+            when the source was skipped.
         """
         if self.not_configured:
             return (f"channel: {self.channel.value}", NOT_CONFIGURED_LINE)
-        return (
+        counts = (
             f"channel: {self.channel.value}",
             f"conversations found: {self.conversations_found}"
             f" (new: {self.conversations_new}, noise: {self.conversations_noise})",
@@ -130,6 +142,9 @@ class CollectionReport:
             f"people added: {self.people_new}",
             f"questions to review added: {self.review_items_new}",
         )
+        if self.problem is None:
+            return counts
+        return (*counts, f"{READ_IN_PART_LINE}{self.problem.code}")
 
 
 #: The second half of a collection. A collector's ``read`` makes every request

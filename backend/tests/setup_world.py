@@ -13,6 +13,7 @@ from pathlib import Path
 
 from pydantic import SecretStr
 
+from tracker.domain.categories import Category
 from tracker.infrastructure.github_cli import GitHubRepository
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
@@ -144,6 +145,9 @@ class FakeAdmin:
     def is_enum_column(self, table: str, column: str) -> bool:
         return SCHEMA_MIGRATION in self.present and not self._still_text(table, column)
 
+    def has_row(self, table: str, matches: Mapping[str, str]) -> bool:
+        return self._marker_present(table, _row_detail(tuple(matches.items())))
+
     def _still_text(self, table: str, column: str) -> bool:
         migration = TEXT_UNTIL.get((table, column))
         return migration is not None and migration not in self.present
@@ -183,7 +187,15 @@ def _describes(marker: object, table: str, detail: str) -> bool:
     columns = getattr(marker, "columns", None)
     if columns is not None:
         return columns == detail
+    matches = getattr(marker, "matches", None)
+    if matches is not None:
+        return _row_detail(matches) == detail
     return f"{getattr(marker, 'column', '')}={getattr(marker, 'value', '')}" == detail
+
+
+def _row_detail(matches: tuple[tuple[str, str], ...]) -> str:
+    """The values a row probe asks for, written as one string."""
+    return ",".join(f"{column}={value}" for column, value in matches)
 
 
 @dataclass
@@ -278,6 +290,8 @@ class FakeMailbox:
     checked: list[tuple[ImapAccount, str]] = field(default_factory=list)
     smtp_hosts: set[str] = field(default_factory=lambda: {"smtp.mail.example"})
     sending_checked: list[SmtpAccount] = field(default_factory=list)
+    #: The sending server turns down even the password the inbox accepts.
+    smtp_refuses: bool = False
 
     async def has_password(self, access: StoreAccess, username: str) -> bool:
         return username in self.saved
@@ -296,7 +310,7 @@ class FakeMailbox:
         if account.host not in self.smtp_hosts:
             message = f"{account.label} could not send the summary"
             raise SourceUnavailableError(message)
-        if password.get_secret_value() != self.good_password:
+        if self.smtp_refuses or password.get_secret_value() != self.good_password:
             message = f"{account.company} refused the app password for sending"
             raise MailboxPasswordError(message)
 
@@ -311,6 +325,7 @@ class FakeChoices:
     preset: str | None = None
     saved: list[Choice] = field(default_factory=list)
     archived: tuple[str, ...] = ()
+    renamed: tuple[Category, ...] = ()
     profile_file_wins: bool = False
 
     def chosen_preset(self) -> str | None:
@@ -323,6 +338,7 @@ class FakeChoices:
             saved=tuple(category.key for category in choice.categories),
             archived=self.archived,
             deleted=(),
+            renamed=self.renamed,
         )
         effect = Effect(
             applied=ApplyReport(stages=6, suggestions=len(choice.profile.suggestions())),

@@ -284,7 +284,8 @@ Open **Actions → Threadline run**. Every run is one line:
 | Green tick after a few seconds, no summary | A required secret is missing, so the run did nothing on purpose. The run page names the missing secrets in a note at the top. | `uv run tracker setup github`. |
 | Red cross at **Run the recipe with Claude** | The Claude key was refused or expired, or the session stopped. | [Renew the Claude key](#renew-the-claude-key-once-a-year); if it happens again, read the end of that step's log. |
 | Red cross at **Install Threadline** | GitHub could not install the tool, usually a passing outage. | Nothing; the next run tries again. |
-| Grey, cancelled after 45 minutes | The run took too long and was stopped. | Nothing once; if it repeats, see [When something keeps failing](#when-something-keeps-failing). |
+| Red cross at **Run the recipe with Claude** after 45 minutes of it | The run took too long and was stopped. | Nothing once; if it repeats, see [When something keeps failing](#when-something-keeps-failing). |
+| A yellow warning at the top: "GitHub could not say whether a refresh is going" | GitHub's own service kept having a hiccup, so the daily run waited as long as a refresh can last and then went ahead. | Nothing. A refresh going at the same time keeps to its own run, so the summary still goes out. |
 
 GitHub e-mails you when a run fails, if your GitHub notification settings allow
 it. The log never contains your messages' text or any key.

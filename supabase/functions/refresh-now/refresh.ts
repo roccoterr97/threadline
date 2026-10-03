@@ -391,25 +391,37 @@ async function dispatch(config: RefreshConfig, ports: RefreshPorts): Promise<Ref
   }
 }
 
-/** The whole cool-down, for a press that lost the race to another one. */
-const COOLDOWN_SECONDS =
-  (REFRESH_COOLDOWN_MINUTES * MILLISECONDS_PER_MINUTE) / MILLISECONDS_PER_SECOND;
-
-/**
- * Takes the cool-down before the runner is asked, so two presses a moment
- * apart can never both start a run: the database lets only one row in.
- */
-async function claim(
-  target: RefreshTarget,
-  ports: RefreshPorts,
-): Promise<Claim | GuardVerdict | RefreshCode> {
+/** Stores the request; null when another press already holds the cool-down. */
+async function claim(target: RefreshTarget, ports: RefreshPorts): Promise<Claim | null | RefreshCode> {
   try {
-    const claimed = await ports.claimRequest(target);
-    return claimed ?? { code: RefreshCode.TooSoon, retryAfterSeconds: COOLDOWN_SECONDS };
+    return await ports.claimRequest(target);
   } catch (error) {
     if (error instanceof StoreError) return error.code;
     throw error;
   }
+}
+
+/**
+ * Takes the cool-down before the runner is asked, so two presses a moment
+ * apart can never both start a run: the database lets only one row in.
+ *
+ * A press that loses is told what the winner is doing now, not the worst
+ * case: the winner is starting a refresh this moment ("already running"), or,
+ * when its runner refused, it has already given the cool-down back, and this
+ * press takes its turn instead of waiting ten minutes for nothing.
+ */
+async function claimTurn(
+  target: RefreshTarget,
+  ports: RefreshPorts,
+): Promise<Claim | GuardVerdict | RefreshCode> {
+  const first = await claim(target, ports);
+  if (first !== null) return first;
+  const current = await readVerdict(ports);
+  if (typeof current === 'string') return current;
+  if (current.code !== RefreshCode.Started) return { code: RefreshCode.AlreadyRunning };
+  // When this second claim fails too, yet another press took the cool-down
+  // in between and is starting a refresh now.
+  return (await claim(target, ports)) ?? { code: RefreshCode.AlreadyRunning };
 }
 
 async function release(claimed: Claim, target: RefreshTarget, ports: RefreshPorts): Promise<void> {
@@ -456,7 +468,7 @@ export async function handleRefresh(request: Request, ports: RefreshPorts): Prom
   if (typeof verdict === 'string' || verdict.code !== RefreshCode.Started) {
     return replyToVerdict(verdict, cors, target);
   }
-  const claimed = await claim(target, ports);
+  const claimed = await claimTurn(target, ports);
   if (typeof claimed === 'string' || 'code' in claimed) return replyToVerdict(claimed, cors, target);
 
   const requestedAt = ports.now();

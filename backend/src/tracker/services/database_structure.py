@@ -2,19 +2,23 @@
 
 The project keeps no table of applied migrations, and Threadline reaches the
 database only through Supabase's data API. So each known migration is paired
-with one object it creates — a table, a column, an enum value or an enum-typed
-column — and the object's presence stands for the migration's. A migration that only changes
-behaviour (a trigger, a function body) leaves nothing the data API can see, and
-a migration newer than this module is unknown to it: both are reported as
-"unconfirmed" rather than guessed at.
+with one thing it leaves behind — a table, a column, an enum value, an
+enum-typed column or a row it rewrites — and its presence stands for the
+migration's. A migration that only changes behaviour (a trigger, a function
+body) leaves nothing the data API can see, and a migration newer than this
+module is unknown to it: both are reported as "unconfirmed" rather than guessed
+at, and the set-up judges them by where they sit among the ones it can see.
 
 Every migration from 0003 on is written to be safe to run twice, so applying an
 unconfirmed one again is harmless. 0001 and 0002 are not, which is why both have
-a probe and are only ever applied when that probe says they are missing.
+a probe and are only ever applied when that probe says they are missing. The
+newest migration always has a marker: an unconfirmed one after every visible
+one would otherwise be offered again on a database that already has it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, Protocol
@@ -36,6 +40,10 @@ class StructureProbe(Protocol):
 
     def is_enum_column(self, table: str, column: str) -> bool:
         """Tell whether a column is enum-typed, so it refuses a value outside its list."""
+        ...
+
+    def has_row(self, table: str, matches: Mapping[str, str]) -> bool:
+        """Tell whether a table holds a row with all of the given values."""
         ...
 
 
@@ -81,8 +89,24 @@ class EnumColumnProbe:
         return probe.is_enum_column(self.table, self.column)
 
 
-#: A migration's visible mark: the object its presence is judged by.
-type MigrationMarker = ColumnsProbe | EnumValueProbe | EnumColumnProbe
+@dataclass(frozen=True, slots=True)
+class RowProbe:
+    """A migration is present when a row it rewrites holds the new values.
+
+    Only for a row nothing but that migration may change: then the new values
+    can only be there because the migration ran.
+    """
+
+    table: str
+    matches: tuple[tuple[str, str], ...]
+
+    def present(self, probe: StructureProbe) -> bool:
+        """Ask the database."""
+        return probe.has_row(self.table, dict(self.matches))
+
+
+#: A migration's visible mark: what its presence is judged by.
+type MigrationMarker = ColumnsProbe | EnumValueProbe | EnumColumnProbe | RowProbe
 
 #: What each known migration leaves behind; ``None`` when nothing is visible.
 KNOWN_MIGRATIONS: Final[dict[str, MigrationMarker | None]] = {
@@ -100,9 +124,12 @@ KNOWN_MIGRATIONS: Final[dict[str, MigrationMarker | None]] = {
     "0012_refresh_trigger": EnumColumnProbe("run_logs", "trigger"),
     "0013_refresh_requests": ColumnsProbe("refresh_requests", "requested_at,target"),
     "0014_refresh_cooldown": ColumnsProbe("refresh_requests", "cooldown_until"),
-    # Two unique indexes and renamed rows: the data API cannot see an index
-    # without trying to write a clash, and no probe reads a row's value.
-    "0015_category_names": None,
+    # The data API cannot see 0015's unique indexes, but the same file renames
+    # the reserved category's group from the seeded "Unknown" to "Not known",
+    # and the database's guard lets nothing else change that row.
+    "0015_category_names": RowProbe(
+        "categories", (("key", "unknown"), ("group_label", "Not known"))
+    ),
 }
 
 

@@ -367,6 +367,27 @@ def test_a_folder_with_too_many_messages_gives_its_newest(
     assert subjects == {"Coffee next week?", "Re: Coffee next week?"}
 
 
+def test_a_folder_read_in_part_says_so() -> None:
+    async def capped() -> tuple[bool, bool]:
+        async with ImapMailbox(session_on(gmail_server())) as mailbox:
+            before = mailbox.window_capped
+            await mailbox.list_messages_since(SINCE)
+            return before, mailbox.window_capped
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(reader, "IMAP_MAX_MESSAGES_PER_FOLDER", 1)
+        assert asyncio.run(capped()) == (False, True)
+
+
+def test_a_folder_read_whole_is_not_capped() -> None:
+    async def capped() -> bool:
+        async with ImapMailbox(session_on(gmail_server())) as mailbox:
+            await mailbox.list_messages_since(SINCE)
+            return mailbox.window_capped
+
+    assert asyncio.run(capped()) is False
+
+
 def test_sent_messages_are_the_owners_and_carry_the_headers_needed() -> None:
     messages = read_window(gmail_server())
 

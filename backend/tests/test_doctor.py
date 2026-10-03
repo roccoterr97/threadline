@@ -31,6 +31,7 @@ from tracker.services.database_structure import (
     KNOWN_MIGRATIONS,
     MigrationFile,
     inspect_structure,
+    is_applied,
     list_migration_files,
 )
 from tracker.services.doctor.checks import (
@@ -559,6 +560,65 @@ async def test_unconfirmed_files_after_a_missing_one_are_pending() -> None:
 
     assert [item.name for item in pending][-1] == files[-1].name
     assert pending_files(files, inspect_structure(files, FakeAdmin())) == ()
+
+
+def _pending_when_applied_up_to(newest: str, *more: MigrationFile) -> list[str]:
+    """What the set-up offers a database that has every visible file up to ``newest``."""
+    files = (*migration_files(), *more)
+    admin = FakeAdmin(present={name for name in KNOWN_MIGRATIONS if name <= newest})
+    return [item.name for item in pending_files(files, inspect_structure(files, admin))]
+
+
+async def test_a_database_at_0014_is_offered_0015() -> None:
+    assert _pending_when_applied_up_to("0014_refresh_cooldown") == ["0015_category_names"]
+
+
+async def test_the_doctor_says_0015_is_missing_from_a_database_at_0014() -> None:
+    admin = FakeAdmin(present=set(KNOWN_MIGRATIONS) - {"0015_category_names"})
+
+    result = await MigrationsCheck(admin, migration_files()).run()
+
+    assert result.status is CheckStatus.PROBLEM
+    assert result.detail == "not applied yet: 0015_category_names"
+
+
+async def test_0015_shows_once_the_reserved_group_is_renamed() -> None:
+    admin = FakeAdmin()
+
+    assert is_applied("0015_category_names", admin) is True
+    assert admin.has_row("categories", {"key": "unknown", "group_label": "Not known"})
+
+
+@pytest.mark.parametrize(
+    ("newest", "unseen"),
+    [
+        ("0006_meeting_time", "0007_apply_relevance_answers"),
+        ("0010_status_in_process", "0011_function_access"),
+    ],
+)
+async def test_a_file_that_leaves_no_mark_is_offered_when_nothing_after_it_shows(
+    newest: str, unseen: str
+) -> None:
+    assert _pending_when_applied_up_to(newest)[0] == unseen
+
+
+async def test_a_file_that_leaves_no_mark_is_taken_as_applied_when_a_later_one_shows() -> None:
+    assert _pending_when_applied_up_to("0015_category_names") == []
+
+
+async def test_a_file_this_version_does_not_know_is_offered(tmp_path: Path) -> None:
+    future = MigrationFile("0099_future", tmp_path / "0099_future.sql")
+
+    assert _pending_when_applied_up_to("0015_category_names", future) == ["0099_future"]
+
+
+async def test_the_newest_migration_can_be_seen_from_outside() -> None:
+    """Else a database that has it would be offered it again every time."""
+    from tracker.shared.constants.setup import MIGRATIONS_DIRECTORY
+
+    newest = list_migration_files(MIGRATIONS_DIRECTORY)[-1].name
+
+    assert KNOWN_MIGRATIONS.get(newest) is not None
 
 
 # --- The composition root ------------------------------------------------------

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import pytest
@@ -174,3 +175,89 @@ def test_a_new_person_whose_address_spells_no_name_is_shown_by_the_address(
     matcher.resolve([participant(Channel.EMAIL, "jeanmarc@acmedata.example", "")])
 
     assert rows(fake_client, "people")[0]["full_name"] == "jeanmarc@acmedata.example"
+
+
+# --- how often the database is asked ------------------------------------------------
+
+
+def test_when_nobody_is_new_the_people_are_not_read(
+    matcher: IdentityMatcher,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """Everybody is found by their address; there is nobody to compare names for."""
+    seen = [
+        participant(Channel.LINKEDIN, ELODIE_PROFILE, "Élodie Martin"),
+        participant(Channel.EMAIL, "marco.rossi@acme.example", "Marco Rossi"),
+    ]
+    first = matcher.resolve(seen)
+    stored = copy.deepcopy(fake_client.tables)
+    fake_client.executed.clear()
+
+    second = matcher.resolve(seen)
+
+    assert fake_client.executed == [("person_identities", "select")] * 2
+    assert second.person_by_identity == first.person_by_identity
+    assert (second.people_created, second.review_items_created) == (0, 0)
+    assert fake_client.tables == stored
+
+
+def test_when_somebody_is_new_everybody_is_read_once_and_compared_as_before(
+    matcher: IdentityMatcher,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """A new address still meets the people stored on earlier runs."""
+    known = participant(Channel.LINKEDIN, ELODIE_PROFILE, "Élodie Martin")
+    first = matcher.resolve(
+        [known, participant(Channel.LINKEDIN, MARCO_ONE, "Marco Rossi")]
+    )
+    fake_client.executed.clear()
+
+    second = matcher.resolve(
+        [
+            known,
+            participant(Channel.EMAIL, "elodie.martin@acme.example", "Elodie Martin"),
+            participant(Channel.EMAIL, "mrossi@gmail.com", ""),
+            participant(Channel.EMAIL, "hello@harbour.example", "Inès Faure"),
+        ]
+    )
+
+    reads = [table for table, operation in fake_client.executed if operation == "select"]
+    assert reads.count("people") == 1
+    # Once to find who is known by address on each channel, once for everybody.
+    assert reads.count("person_identities") == 3
+    elodie = first.person_by_identity[known.key]
+    marco = first.person_by_identity[(Channel.LINKEDIN, MARCO_ONE)]
+    assert second.person_by_identity[(Channel.EMAIL, "elodie.martin@acme.example")] == elodie
+    assert (second.people_created, second.review_items_created) == (2, 1)
+    assert sorted(row["full_name"] for row in rows(fake_client, "people")) == [
+        "Inès Faure",
+        "Marco Rossi",
+        "mrossi@gmail.com",
+        "Élodie Martin",
+    ]
+    [question] = rows(fake_client, "review_items")
+    by_address = second.person_by_identity[(Channel.EMAIL, "mrossi@gmail.com")]
+    assert (question["person_id"], question["other_person_id"]) == (str(by_address), str(marco))
+    assert question["question"] == (
+        "Is mrossi@gmail.com on email the same person as Marco Rossi on linkedin?"
+    )
+    assert sorted(row["name"] for row in rows(fake_client, "organisations")) == [
+        "Acme",
+        "Harbour",
+    ]
+
+
+def test_each_run_reads_the_people_afresh(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """Two collectors never share what one of them read: the other's people would be missing."""
+    linkedin = IdentityMatcher(repositories, JOB_SEARCH_RULES)
+    mailbox = IdentityMatcher(repositories, JOB_SEARCH_RULES)
+    mailbox.resolve([participant(Channel.EMAIL, "someone@acme.example", "Somebody Else")])
+    linkedin.resolve([participant(Channel.LINKEDIN, ELODIE_PROFILE, "Élodie Martin")])
+
+    mailbox.resolve([participant(Channel.EMAIL, "elodie.martin@acme.example", "Elodie Martin")])
+
+    assert len(rows(fake_client, "people")) == 2
+    assert rows(fake_client, "review_items") == []

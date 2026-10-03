@@ -22,7 +22,10 @@ from tracker.domain.categories import (
     UNKNOWN_CATEGORY_KEY,
     Category,
     ColourSlot,
+    NameField,
+    comparable_name,
     key_for,
+    name_in,
 )
 from tracker.domain.profile import SORT_ORDER_STEP, Profile
 from tracker.services.profile.choice import Choice
@@ -164,14 +167,16 @@ def _own_category(
 ) -> Category:
     """Build one of the owner's categories, refusing a name the list already has.
 
+    The name and the group name are each checked, as the database checks each
+    against every other category's.
+
     Raises:
         ValidationFailedError: If a value breaks the database's rules, or the
-            name is already taken.
+            name or the group name is already taken.
     """
     taken = (*chosen, UNKNOWN_CATEGORY)
-    if any(category.label.casefold() == label.strip().casefold() for category in taken):
-        message = f'you already have a category called "{label.strip()}"'
-        raise ValidationFailedError(message)
+    _refuse_taken(taken, NameField.LABEL, label, "category")
+    _refuse_taken(taken, NameField.GROUP_LABEL, group_label, "group")
     try:
         return Category.model_validate(
             {
@@ -185,3 +190,15 @@ def _own_category(
         )
     except ValidationError as error:
         raise ValidationFailedError(describe_problems(error)) from error
+
+
+def _refuse_taken(taken: Sequence[Category], field: NameField, typed: str, wording: str) -> None:
+    """Refuse a name one of ``taken`` already has, whatever its capitals and spaces.
+
+    Raises:
+        ValidationFailedError: If it is taken.
+    """
+    wanted = comparable_name(typed)
+    if any(comparable_name(name_in(category, field)) == wanted for category in taken):
+        message = f'you already have a {wording} called "{typed.strip()}"'
+        raise ValidationFailedError(message)

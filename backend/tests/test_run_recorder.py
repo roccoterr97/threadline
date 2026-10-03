@@ -259,12 +259,80 @@ def test_an_abandoned_open_run_is_not_the_default(repositories: Repositories) ->
         RunRecorder(repositories, FixedClock(NOW)).resolve(None)
 
 
+@pytest.mark.parametrize("earlier_refresh", [False, True], ids=["never", "closed"])
+def test_looking_for_a_refresh_beside_a_daily_run_says_what_to_do_instead(
+    repositories: Repositories, *, earlier_refresh: bool
+) -> None:
+    """``tracker run start`` alone opens a daily run, so the refusal names the refresh trigger."""
+    if earlier_refresh:
+        yesterday = RunRecorder(repositories, FixedClock(NOW - timedelta(days=1)))
+        yesterday.finish(yesterday.start(RunTrigger.REFRESH).id)
+    recorder = RunRecorder(repositories, FixedClock(NOW))
+    recorder.start(RunTrigger.MANUAL)
+
+    with pytest.raises(ValidationFailedError) as refused:
+        recorder.resolve(None, refresh=True)
+
+    assert "'tracker run start --trigger refresh'" in refused.value.message
+    assert "leave out --refresh to use the daily or manual run that is open" in (
+        refused.value.message
+    )
+
+
 def test_a_named_run_is_used_even_when_it_is_closed(repositories: Repositories) -> None:
     yesterday = RunRecorder(repositories, FixedClock(NOW - timedelta(days=1)))
     closed = yesterday.start(RunTrigger.CLOUD)
     yesterday.finish(closed.id)
 
     assert RunRecorder(repositories, FixedClock(NOW)).resolve(closed.id).id == closed.id
+
+
+def _recorder_at(repositories: Repositories, minutes_ago: int) -> RunRecorder:
+    return RunRecorder(repositories, FixedClock(NOW - timedelta(minutes=minutes_ago)))
+
+
+@pytest.mark.parametrize("refresh_first", [True, False], ids=["refresh first", "daily first"])
+def test_a_daily_run_and_a_refresh_going_together_each_keep_their_own_run(
+    repositories: Repositories, *, refresh_first: bool
+) -> None:
+    """Whichever started last, neither may take, record into or close the other's run."""
+    first, second = (RunTrigger.REFRESH, RunTrigger.GITHUB)
+    if not refresh_first:
+        first, second = second, first
+    earlier = _recorder_at(repositories, 20).start(first)
+    later = _recorder_at(repositories, 5).start(second)
+    runs = {earlier.trigger: earlier.id, later.trigger: later.id}
+    recorder = RunRecorder(repositories, FixedClock(NOW))
+
+    assert recorder.resolve(None).id == runs[RunTrigger.GITHUB]
+    assert recorder.resolve(None, refresh=True).id == runs[RunTrigger.REFRESH]
+
+
+def test_closing_the_refresh_leaves_the_daily_run_open(repositories: Repositories) -> None:
+    daily = _recorder_at(repositories, 20).start(RunTrigger.GITHUB)
+    refresh = _recorder_at(repositories, 5).start(RunTrigger.REFRESH)
+    recorder = RunRecorder(repositories, FixedClock(NOW))
+
+    recorder.finish(recorder.resolve(None, refresh=True).id)
+
+    closed = repositories.run_logs.get(refresh.id)
+    assert closed is not None
+    assert closed.status is not RunStatus.RUNNING
+    assert recorder.resolve(None).id == daily.id
+
+
+def test_a_refresh_alone_is_not_the_open_daily_run(repositories: Repositories) -> None:
+    _recorder_at(repositories, 5).start(RunTrigger.REFRESH)
+
+    with pytest.raises(ValidationFailedError, match="no daily run"):
+        RunRecorder(repositories, FixedClock(NOW)).resolve(None)
+
+
+def test_a_daily_run_alone_is_not_the_open_refresh(repositories: Repositories) -> None:
+    _recorder_at(repositories, 5).start(RunTrigger.MANUAL)
+
+    with pytest.raises(ValidationFailedError, match="no refresh"):
+        RunRecorder(repositories, FixedClock(NOW)).resolve(None, refresh=True)
 
 
 def test_asking_for_a_run_before_anything_has_run_is_refused(recorder: RunRecorder) -> None:

@@ -197,6 +197,9 @@ def _print_changes(changes: CategoryChanges) -> None:
         f"categories saved: {len(changes.saved)}{_DOT}"
         f"archived: {_listed(changes.archived)}{_DOT}deleted: {_listed(changes.deleted)}"
     )
+    if changes.renamed:
+        renamed = tuple(f"{category.key} is now {category.label}" for category in changes.renamed)
+        typer.echo(f"renamed so no two categories share a name: {_listed(renamed)}")
 
 
 def _listed(keys: tuple[str, ...]) -> str:

@@ -15,6 +15,7 @@ import { DataUnavailableError, RefusalReason, RefusedError } from '../lib/errors
 import { expectNoAxeViolations } from '../test/axe';
 import { category, NOW, sampleCategories, withArchived } from '../test/__fixtures__/sampleData';
 import { renderWithProviders } from '../test/renderWithProviders';
+import { scrollIntoViewCalls } from '../test/scrollIntoView';
 import type { CategorySuggestion } from '../types/database';
 import { SettingsPage } from './SettingsPage';
 
@@ -178,6 +179,19 @@ describe('SettingsPage — adding', () => {
     await user.click(screen.getByRole('button', { name: actions.addSuggestion('Mentor') }));
 
     expect(addMock).toHaveBeenCalledWith({ ...MENTOR, colour: 'orange', sort_order: 40 });
+  });
+
+  it('does not offer a suggestion whose name a category already has', async () => {
+    fetchCategoriesMock.mockResolvedValue([
+      ...withArchived(sampleCategories, 'network'),
+      category('advisor', 'mentor', 'Advisors', 'pink', 40),
+    ]);
+    await renderSettings();
+
+    expect(
+      screen.queryByRole('button', { name: actions.addSuggestion('Mentor') }),
+    ).not.toBeInTheDocument();
+    expect(addMock).not.toHaveBeenCalled();
   });
 
   it('starts "Add your own" on a colour nobody uses, and follows it until one is picked', async () => {
@@ -410,6 +424,22 @@ describe('SettingsPage — changing', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: actions.moveDownLabel('Investor') })).toHaveFocus();
     });
+  });
+
+  it('gives the keyboard to the message, not the row, when a move fails', async () => {
+    orderMock.mockRejectedValue(new DataUnavailableError('categories.order'));
+    const { user } = await renderSettings();
+
+    await user.click(screen.getByRole('button', { name: actions.moveUpLabel('Investor') }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(copy.categorySettings.failed.generic);
+    expect(scrollIntoViewCalls(alert)).toHaveLength(1);
+    // The row would take the keyboard back once the list is fetched again.
+    await waitFor(() => {
+      expect(fetchCategoriesMock).toHaveBeenCalledTimes(2);
+    });
+    expect(alert).toHaveFocus();
   });
 
   it('removes a category nobody has', async () => {

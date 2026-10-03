@@ -13,8 +13,8 @@ words: both are the ones in the file, checked against the settings.
 Two options fold the small commands around a run into its first and last step,
 because every step of the recipe costs the session the same few seconds
 whatever it does. ``run start --prepare`` goes on to the health check and
-``profile apply``; ``run finish --clean`` goes on to ``ai clean``. Each folded
-command prints what it prints on its own.
+``profile apply``; ``run finish --clean`` goes on to ``ai clean`` once the run
+is closed. Each folded command prints what it prints on its own.
 """
 
 from __future__ import annotations
@@ -45,14 +45,18 @@ from tracker.services.runs.run_recorder import (
     unconfigured_steps,
 )
 from tracker.services.summary.builder import SummaryBuilder
+from tracker.services.summary.send_once import SendOnce
 from tracker.services.summary.sender import SummarySender, smtp_account
 from tracker.shared.clock import SystemClock
 from tracker.shared.config import Settings, get_settings
 from tracker.shared.constants.summary import SUMMARY_FILE
-from tracker.shared.errors import DatabaseUnavailableError
+from tracker.shared.errors import DatabaseUnavailableError, TrackerError
 
 #: Panel the root help groups these commands under.
 HELP_PANEL: Final[str] = "daily run"
+
+#: What ``run finish --clean`` prints instead of cleaning when the run stays open.
+WORK_FILES_KEPT: Final[str] = "work files kept · the run could not be closed"
 
 run_app = typer.Typer(
     help="Record what today's run did, step by step.",
@@ -121,6 +125,11 @@ RunOption = Annotated[
     typer.Option("--run", help="Act on this run instead of the one still open."),
 ]
 
+RefreshRunOption = Annotated[
+    bool,
+    typer.Option("--refresh", help="Act on the refresh that is open, not the daily run."),
+]
+
 ReportedRunOption = Annotated[
     UUID | None,
     typer.Option("--run", help="Report on this run instead of the most recent one."),
@@ -168,10 +177,11 @@ def record_step(
     error_code: ErrorCodeOption = None,
     error_detail: ErrorDetailOption = None,
     run: RunOption = None,
+    refresh: RefreshRunOption = False,
 ) -> None:
     """Record what one part of the run did."""
     recorder = _recorder(get_settings())
-    target = recorder.resolve(run)
+    target = recorder.resolve(run, refresh=refresh)
     outcome = StepOutcome(
         step=step,
         result=result,
@@ -188,23 +198,32 @@ def record_step(
 
 
 @run_app.command("finish")
-def finish_run(run: RunOption = None, clean: CleanOption = False) -> None:
+def finish_run(
+    run: RunOption = None, clean: CleanOption = False, refresh: RefreshRunOption = False
+) -> None:
     """Close the run with the status its steps add up to."""
     try:
-        _close(run)
-    finally:
-        # Message text must not stay on disk, whether or not the run could be
-        # closed: the recipe used to clean up after a failed closing too.
+        _close(run, refresh=refresh)
+    except TrackerError:
+        # A run that could not be closed may also have been unable to take an
+        # earlier step, so verdict files may still wait to be imported. They are
+        # kept for 'tracker ai import'; the next closed run cleans up.
         if clean:
-            attempt("ai clean", clean_work_files)
+            typer.echo(WORK_FILES_KEPT)
+        raise
+    if clean:
+        attempt("ai clean", clean_work_files)
 
 
 @summary_app.command("build")
 def build_summary(out: OutOption = SUMMARY_FILE, run: ReportedRunOption = None) -> None:
     """Write the morning summary to a file, ready for the session to send."""
     settings = get_settings()
-    builder = SummaryBuilder(_repositories(settings), settings, SystemClock(settings.owner_zone))
-    email = builder.build(run)
+    repositories = _repositories(settings)
+    builder = SummaryBuilder(repositories, settings, SystemClock(settings.owner_zone))
+    target = builder.run_to_report(run)
+    SendOnce(_recorder(settings, repositories), out).refuse_a_new_summary(target)
+    email = builder.build_for(target)
     _write(email, out)
     typer.echo(str(out))
     typer.echo(f"to: {email.recipient}")
@@ -225,7 +244,9 @@ def send_summary(file: FileOption = SUMMARY_FILE, run: RunOption = None) -> None
         return SmtpMailer(smtp_account(settings), password)
 
     sent = SummarySender(settings, mailer, _recorder(settings, repositories)).send(file, run)
-    typer.echo(f"summary sent · to: {sent.recipient}")
+    typer.echo(f"summary sent · to: {sent.summary.recipient}")
+    if sent.step_error_code is not None:
+        typer.echo(f"step not recorded · code={sent.step_error_code}")
 
 
 def _time_zone_line(repositories: Repositories, settings: Settings) -> str:
@@ -254,10 +275,10 @@ def _prepare() -> bool:
     return True
 
 
-def _close(run: UUID | None) -> None:
-    """Close the named run, or the one still open, and print its status."""
+def _close(run: UUID | None, *, refresh: bool) -> None:
+    """Close the named run, or the open one of its kind, and print its status."""
     recorder = _recorder(get_settings())
-    target = recorder.resolve(run)
+    target = recorder.resolve(run, refresh=refresh)
     finished = recorder.finish(target.id)
     typer.echo(f"run {finished.id} finished · status {finished.status.value}")
 

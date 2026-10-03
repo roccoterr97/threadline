@@ -1,16 +1,21 @@
 import { useEffect, useRef } from 'react';
 
-/** How the last save or clear ended, in one sentence. */
-export interface SaveOutcome {
-  tone: 'success' | 'error';
-  text: string;
-  /**
-   * Leave the keyboard where it is: set when the owner is working through a
-   * list (moving a row) and taking focus would throw them out of it. The
-   * sentence is still announced.
-   */
-  keepFocus?: boolean;
-}
+/**
+ * How the last save or clear ended, in one sentence. Only a success can leave
+ * the keyboard alone: a failure always takes the focus, so it is never missed.
+ */
+export type SaveOutcome =
+  | {
+      tone: 'success';
+      text: string;
+      /**
+       * Leave the keyboard where it is: set when the owner is working through
+       * a list (moving a row) and taking focus would throw them out of it. The
+       * sentence is still announced.
+       */
+      keepFocus?: boolean;
+    }
+  | { tone: 'error'; text: string };
 
 interface SaveFeedbackProps {
   outcome: SaveOutcome;
@@ -40,7 +45,7 @@ function scrollBehaviour(): ScrollBehavior {
 export function SaveFeedback({ outcome }: SaveFeedbackProps) {
   const banner = useRef<HTMLParagraphElement>(null);
 
-  const keepFocus = outcome.keepFocus === true;
+  const keepFocus = outcome.tone === 'success' && outcome.keepFocus === true;
   useEffect(() => {
     const element = banner.current;
     if (element === null || keepFocus) return;

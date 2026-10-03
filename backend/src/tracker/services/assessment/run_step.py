@@ -28,7 +28,7 @@ def record_assessment(
     earlier = recorder.find_step(run_id, RunStep.ASSESS)
     found_before = (earlier.items_found or 0) if earlier is not None else 0
     new_before = (earlier.items_new or 0) if earlier is not None else 0
-    recorder.record_step(
+    recorder.replace_step(
         run_id,
         StepOutcome(
             step=RunStep.ASSESS,
@@ -36,4 +36,5 @@ def record_assessment(
             items_found=found_before + assessed,
             items_new=new_before + sent_to_review,
         ),
+        earlier,
     )

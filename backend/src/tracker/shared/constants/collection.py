@@ -31,6 +31,11 @@ SOURCE_PAGE_SIZE: Final[int] = 100
 #: Rows written per call when upserting into the database.
 DATABASE_BATCH_SIZE: Final[int] = 200
 
+#: Organisation names looked up in one request. Far fewer than
+#: ``DATABASE_BATCH_SIZE`` because a name is free text of up to two hundred
+#: characters, and the whole list travels in the address of the request.
+NAME_LOOKUP_BATCH_SIZE: Final[int] = 20
+
 #: Seconds a single request to a message source may take.
 HTTP_TIMEOUT_SECONDS: Final[float] = 30.0
 

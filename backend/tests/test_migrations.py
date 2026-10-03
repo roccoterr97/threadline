@@ -22,6 +22,7 @@ from tracker.services.database_structure import (
     ColumnsProbe,
     EnumColumnProbe,
     MigrationFile,
+    RowProbe,
     inspect_structure,
 )
 from tracker.shared.config import REPOSITORY_ROOT
@@ -195,7 +196,7 @@ def test_the_owner_may_withdraw_a_request_but_never_set_its_cool_down() -> None:
 def test_the_function_claims_the_cool_down_before_it_asks_the_runner() -> None:
     handler = REFRESH_FUNCTION[REFRESH_FUNCTION.index("export async function handleRefresh") :]
 
-    assert handler.index("await claim(") < handler.index("await dispatch(")
+    assert handler.index("await claimTurn(") < handler.index("await dispatch(")
     assert "'23P01'" in REFRESH_FUNCTION
 
 
@@ -237,5 +238,22 @@ def test_the_guard_is_back_on_in_the_same_statement_that_turned_it_off() -> None
     )
 
 
-def test_unique_indexes_cannot_be_seen_from_outside() -> None:
-    assert KNOWN_MIGRATIONS["0015_category_names"] is None
+def test_0015_is_seen_by_the_group_name_it_gives_the_reserved_row() -> None:
+    """The indexes cannot be seen from outside; the renamed group can."""
+    marker = KNOWN_MIGRATIONS["0015_category_names"]
+
+    assert marker == RowProbe(
+        "categories",
+        (("key", UNKNOWN_CATEGORY.key), ("group_label", UNKNOWN_CATEGORY.group_label)),
+    )
+    assert f"('unknown', 'Not known', '{SEEDED_UNKNOWN_GROUP}'," in CATEGORIES_SQL
+    assert UNKNOWN_CATEGORY.group_label != SEEDED_UNKNOWN_GROUP
+
+
+def test_nothing_but_0015_may_change_the_reserved_row() -> None:
+    guard = CATEGORIES_SQL[
+        CATEGORIES_SQL.index("create or replace function public.categories_guard") :
+    ]
+
+    assert "if tg_op = 'UPDATE' and old.key = 'unknown'" in guard
+    assert 'the category "unknown" is reserved and cannot be changed' in guard

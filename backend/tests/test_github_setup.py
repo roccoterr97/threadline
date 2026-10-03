@@ -334,7 +334,7 @@ async def test_the_claude_key_instruction_says_where_and_what_it_looks_like() ->
     await GitHubStep().run(world.context())
 
     shown = world.io.text()
-    assert "second Terminal window (⌘ + N), run claude setup-token" in shown
+    assert "Open the Terminal app (a new window: ⌘ + N), run claude setup-token" in shown
     assert "sk-ant-" in shown
 
 

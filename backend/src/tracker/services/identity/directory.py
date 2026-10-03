@@ -16,7 +16,6 @@ from uuid import UUID
 from tracker.domain.enums import Channel
 from tracker.domain.models import Person
 from tracker.repositories import Repositories
-from tracker.services.identity.matcher import read_every
 
 #: Sorts people Threadline has no message for below everybody else.
 _NEVER: Final[datetime] = datetime.min.replace(tzinfo=UTC)
@@ -56,7 +55,7 @@ class PeopleDirectory:
         Returns:
             One entry per person the collectors have created.
         """
-        people = read_every(self._repositories.people.list)
+        people = self._repositories.people.list_every()
         if not people:
             return []
         channels = self._channels_of(people)
@@ -93,7 +92,7 @@ class PeopleDirectory:
         """Map each person to the channels they are reachable on."""
         known = {person.id for person in people}
         channels: dict[UUID, set[Channel]] = {}
-        for identity in read_every(self._repositories.person_identities.list):
+        for identity in self._repositories.person_identities.list_every():
             if identity.person_id in known:
                 channels.setdefault(identity.person_id, set()).add(identity.channel)
         return channels

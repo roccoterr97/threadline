@@ -142,6 +142,11 @@ class GraphMailbox:
             await self._http.aclose()
             self._http = None
 
+    @property
+    def window_capped(self) -> bool:
+        """Always ``False``: a listing too long to finish fails instead of being cut short."""
+        return False
+
     async def list_messages_since(self, since: datetime) -> list[MailMessage]:
         """Read the metadata of every message received since a moment.
 

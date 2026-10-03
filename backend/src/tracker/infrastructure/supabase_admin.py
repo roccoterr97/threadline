@@ -8,7 +8,7 @@ All of it goes through the same service-key client, over HTTPS.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Final, cast
 
 import httpx
@@ -118,6 +118,32 @@ class SupabaseAdmin:
         except (SupabaseException, httpx.HTTPError) as error:
             raise _unavailable("probe", error) from error
         return False
+
+    def has_row(self, table: str, matches: Mapping[str, str]) -> bool:
+        """Tell whether a table holds a row with all of the given values.
+
+        Args:
+            table: Name in the ``public`` schema.
+            matches: Column names and the value each must hold.
+
+        Returns:
+            ``False`` when no row matches, or the table or a column is missing.
+
+        Raises:
+            DatabaseUnavailableError: If the database could not answer.
+        """
+        query = self._client.table(table).select(",".join(matches))
+        for column, value in matches.items():
+            query = query.eq(column, value)
+        try:
+            response = query.limit(1).execute()
+        except APIError as error:
+            if str(error.code) in MISSING_OBJECT_CODES:
+                return False
+            raise _unavailable("probe", error) from error
+        except (SupabaseException, httpx.HTTPError) as error:
+            raise _unavailable("probe", error) from error
+        return bool(response.data)
 
     def owner_ids(self) -> tuple[str, ...]:
         """List the logins recorded as the dashboard owner.

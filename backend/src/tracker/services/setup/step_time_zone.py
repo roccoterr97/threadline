@@ -32,7 +32,7 @@ class TimeZoneStep:
     async def run(self, ctx: SetupContext) -> None:
         """Ask the zone, offering the computer's, then the optional name."""
         ctx.io.say("Dates are read in your time zone: what 'today' is, and when the daily")
-        ctx.io.say("run starts. The one this computer uses is offered; press Return to keep it.")
+        ctx.io.say("run starts. The one this computer uses is offered; keep it unless it is wrong.")
         ask_time_zone(ctx)
         _ask_display_name(ctx)
 
@@ -81,10 +81,10 @@ def saved_time_zone(ctx: SetupContext) -> str | None:
 
 
 def _ask_display_name(ctx: SetupContext) -> None:
-    """Ask for the name the owner goes by; Return keeps what is there."""
+    """Ask for the name the owner goes by; an empty answer keeps what is there."""
     saved = ctx.env.get(OWNER_DISPLAY_NAME)
     raw = ctx.io.ask(
-        "Your name as people write it, such as Sam Rivera (optional, Return to skip)",
+        "Your name as people write it, such as Sam Rivera (optional; leave empty to skip)",
         default=saved,
     )
     name = " ".join(raw.split())

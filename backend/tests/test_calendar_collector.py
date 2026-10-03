@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
+import pytest
 import respx
 from pydantic import SecretStr
 
@@ -255,6 +256,113 @@ def test_a_meeting_organised_by_a_shared_calendar_joins_the_person_who_sent_its_
     assert len(rows(fake_client, "people")) == 1
 
 
+def _shared_calendar_event() -> dict[str, Any]:
+    """A meeting a shared calendar organised, naming nobody but the owner."""
+    return graph_event(
+        "e-northwind",
+        organizer=(SHARED_CALENDAR, "Interviews"),
+        attendees=((OWNER, "Sam"), (SHARED_CALENDAR, "Interviews")),
+    )
+
+
+def _with_invitations(
+    repositories: Repositories, clock: FixedClock, name: str, message_ids: list[UUID]
+) -> UUID:
+    """Store one person and the thread a shared calendar sent them invitations in."""
+    person = make_person(name)
+    repositories.people.bulk_upsert([person])
+    address = f"{name.split()[0].lower()}@northwind.example"
+    repositories.person_identities.bulk_upsert(
+        [
+            PersonIdentity(
+                person_id=person.id, channel=Channel.EMAIL, identifier=address, display_name=name
+            )
+        ]
+    )
+    thread = make_thread(person, source=f"t-{address}", channel=Channel.EMAIL)
+    repositories.conversations.bulk_upsert([thread])
+    repositories.messages.bulk_upsert(
+        [
+            make_message(
+                thread,
+                direction=Direction.INBOUND,
+                sent_at=clock.now(),
+                body="Invitation",
+                source=f"m-{message_id}",
+            ).model_copy(update={"id": message_id, "sender_identifier": SHARED_CALENDAR})
+            for message_id in message_ids
+        ]
+    )
+    return person.id
+
+
+@pytest.mark.parametrize("first_is", ["Hanna Keller", "Bruno Lang"])
+def test_of_two_threads_from_one_shared_calendar_the_first_one_read_still_wins(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+    first_is: str,
+) -> None:
+    """The messages come back in identifier order; the first one's thread names the person."""
+    lowest, *later = sorted([uuid4() for _ in range(4)], key=str)
+    names = ["Hanna Keller", "Bruno Lang"]
+    people = {
+        name: _with_invitations(
+            repositories, clock, name, [lowest, later[0]] if name == first_is else later[1:]
+        )
+        for name in names
+    }
+
+    collect(repositories, settings, clock, [_shared_calendar_event()])
+
+    (meeting,) = [row for row in rows(fake_client, "conversations") if row["channel"] == "calendar"]
+    assert meeting["person_id"] == str(people[first_is])
+    assert len(rows(fake_client, "people")) == 2
+
+
+def test_the_threads_of_a_shared_calendar_are_fetched_together(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """Six stored invitations in two threads cost one read, not six."""
+    _with_invitations(repositories, clock, "Hanna Keller", [uuid4() for _ in range(4)])
+    _with_invitations(repositories, clock, "Bruno Lang", [uuid4() for _ in range(2)])
+    fake_client.executed.clear()
+
+    collect(repositories, settings, clock, [_shared_calendar_event()])
+
+    # Once for the threads the invitations sit in, once by the writer to find
+    # the meeting it may already have stored.
+    assert fake_client.executed.count(("conversations", "select")) == 2
+
+
+def test_an_invitation_filed_under_nobody_gives_way_to_the_next_thread(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    lowest, later = sorted([uuid4(), uuid4()], key=str)
+    hanna = _with_invitations(repositories, clock, "Hanna Keller", [later])
+    orphan = make_thread(make_person("Nobody"), source="t-orphan", channel=Channel.EMAIL)
+    repositories.conversations.bulk_upsert([orphan.model_copy(update={"person_id": None})])
+    repositories.messages.bulk_upsert(
+        [
+            make_message(
+                orphan, direction=Direction.INBOUND, sent_at=clock.now(), body="Invitation"
+            ).model_copy(update={"id": lowest, "sender_identifier": SHARED_CALENDAR})
+        ]
+    )
+
+    collect(repositories, settings, clock, [_shared_calendar_event()])
+
+    (meeting,) = [row for row in rows(fake_client, "conversations") if row["channel"] == "calendar"]
+    assert meeting["person_id"] == str(hanna)
+
+
 def _acme_entry() -> dict[str, Any]:
     """SmartRecruiters' invitation, imported as an entry the owner organises alone."""
     return graph_event(
@@ -329,6 +437,90 @@ def test_an_own_interview_entry_for_a_company_nobody_is_at_gets_its_own_record(
     assert meeting["person_id"] != str(other)
     identifiers = {str(row["identifier"]) for row in rows(fake_client, "person_identities")}
     assert "own-calendar#acme" in identifiers
+
+
+def _own_entry(company: str) -> dict[str, Any]:
+    """An interview with one company, typed into the calendar by the owner."""
+    return graph_event(
+        f"e-{company.lower()}",
+        subject=f"Video interview - Sam and {company}",
+        organizer=(OWNER, "Sam"),
+        attendees=(),
+        is_organizer=True,
+    )
+
+
+def test_several_own_interview_entries_read_the_people_on_record_once(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """Three entries used to read three whole tables three times over."""
+    companies = ["Acme", "Harbour", "Zephyr"]
+    for company in companies:
+        _on_record(repositories, f"{company} Hiring Team", f"jobs@{company}.example", company)
+    fake_client.executed.clear()
+
+    collect(repositories, settings, clock, [_own_entry(company) for company in companies])
+
+    reads = [table for table, operation in fake_client.executed if operation == "select"]
+    assert reads.count("people") == 1
+    assert reads.count("organisations") == 1
+    # Once for everybody on record, once by the matcher to find the three by address.
+    assert reads.count("person_identities") == 2
+    assert len(rows(fake_client, "conversations")) == 3
+
+
+def test_each_own_interview_entry_is_still_filed_where_it_was(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """A recruiter, a company record and a company nobody is at, in one calendar."""
+    chloe = _on_record(repositories, "Chloe Garner", "chloe.garner@acmegroup.example", "Acmegroup")
+    record = _on_record(
+        repositories, "Harbour Hiring Team", "no-reply@harbourcareers.example#harbour", "Harbour"
+    )
+
+    collect(
+        repositories,
+        settings,
+        clock,
+        [_own_entry("Acme"), _own_entry("Harbour"), _own_entry("Zephyr")],
+    )
+
+    filed = {
+        row["source_conversation_id"]: row["person_id"]
+        for row in rows(fake_client, "conversations")
+    }
+    people = {row["id"]: row["full_name"] for row in rows(fake_client, "people")}
+    assert filed["uid-e-acme"] == str(chloe)
+    assert filed["uid-e-harbour"] == str(record)
+    assert people[filed["uid-e-zephyr"]] == "Zephyr"
+    assert sorted(people.values()) == ["Chloe Garner", "Harbour Hiring Team", "Zephyr"]
+    assert sorted(str(row["identifier"]) for row in rows(fake_client, "person_identities")) == [
+        "chloe.garner@acmegroup.example",
+        "no-reply@harbourcareers.example#harbour",
+        "own-calendar#zephyr",
+    ]
+
+
+def test_a_calendar_with_no_entry_of_the_owners_reads_nobody(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    collect(repositories, settings, clock, [graph_event("e-1")])
+    fake_client.executed.clear()
+
+    collect(repositories, settings, clock, [graph_event("e-1")])
+
+    reads = [table for table, operation in fake_client.executed if operation == "select"]
+    assert "people" not in reads
+    assert "organisations" not in reads
 
 
 # --- The owner's settings (Plan 18) -------------------------------------------

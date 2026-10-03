@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import copy
 from datetime import UTC, datetime
 
 from tests.assessment_world import make_person, make_thread
+from tests.conftest import FakeSupabaseClient
 from tracker.domain.enums import Channel, ReviewAnswer, ReviewKind
 from tracker.domain.models import PersonIdentity, PersonOverride, ReviewItem
 from tracker.repositories import Repositories
-from tracker.services.identity.merge import PersonMerger
+from tracker.services.identity.merge import MergeReport, PersonMerger
 
 
 def _confirmed(person_id: object, other_id: object) -> ReviewItem:
@@ -166,3 +168,79 @@ def test_an_open_question_about_a_third_person_stays(repositories: Repositories)
     moved = repositories.review_items.get(about_other.id)
     assert moved is not None
     assert (moved.person_id, moved.other_person_id, moved.answer) == (named.id, other.id, None)
+
+
+def test_a_pair_merged_on_an_earlier_run_is_not_looked_up_again(
+    repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    """Every answer ever given stays in the list; none of them costs a request."""
+    pairs = [
+        (make_person(f"Person {index}"), make_person(f"p{index}@acme.example"))
+        for index in range(3)
+    ]
+    repositories.people.bulk_upsert([person for pair in pairs for person in pair])
+    repositories.review_items.bulk_upsert(
+        [_confirmed(by_address.id, named.id) for named, by_address in pairs]
+    )
+    merger = PersonMerger(repositories)
+    assert merger.apply_answers().merged == 3
+    stored = copy.deepcopy(fake_client.tables)
+    fake_client.executed.clear()
+
+    report = merger.apply_answers()
+
+    assert fake_client.executed == [("review_items", "select")]
+    assert (report.merged, report.skipped, report.questions_closed) == (0, 3, 0)
+    assert fake_client.tables == stored
+
+
+def test_with_nothing_confirmed_the_questions_are_read_once(
+    repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    one, other = make_person("Marco Rossi"), make_person("marco@acme.example")
+    repositories.people.bulk_upsert([one, other])
+    still_open = _open(other.id, one.id)
+    repositories.review_items.bulk_upsert([still_open])
+    fake_client.executed.clear()
+
+    report = PersonMerger(repositories).apply_answers()
+
+    assert fake_client.executed == [("review_items", "select")]
+    assert report == MergeReport()
+    assert repositories.review_items.get(still_open.id) is not None
+
+
+def test_a_pair_whose_other_record_is_gone_is_still_looked_up_and_skipped(
+    repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    """Only a question naming one record twice is known to be done without asking."""
+    kept, gone = make_person("Nicolas Rey"), make_person("nicolasrey75@gmail.com")
+    repositories.people.bulk_upsert([kept])
+    repositories.review_items.bulk_upsert([_confirmed(gone.id, kept.id)])
+    fake_client.executed.clear()
+
+    report = PersonMerger(repositories).apply_answers()
+
+    assert fake_client.executed == [("review_items", "select"), ("people", "select")]
+    assert (report.merged, report.skipped) == (0, 1)
+    assert repositories.people.get(kept.id) is not None
+
+
+def test_a_question_opened_before_a_merge_is_closed_from_what_the_merge_left(
+    repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    """After a merge the questions are read again: the first reading is out of date."""
+    mikael, by_address = make_person("Mikael Sandberg"), make_person("mikael@railfreight.example")
+    repositories.people.bulk_upsert([mikael, by_address])
+    still_open = _open(by_address.id, mikael.id)
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, mikael.id), still_open])
+    fake_client.executed.clear()
+
+    report = PersonMerger(repositories).apply_answers()
+
+    assert (report.merged, report.questions_closed) == (1, 1)
+    reads = [call for call in fake_client.executed if call == ("review_items", "select")]
+    # Once to find the answers, once to move the absorbed record's questions,
+    # once more because the merge changed them.
+    assert len(reads) == 3
+    assert repositories.review_items.get(still_open.id) is None

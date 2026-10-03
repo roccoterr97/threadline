@@ -16,6 +16,7 @@ its correction if the survivor has none — moves across before it is removed.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
 from tracker.domain.enums import ReviewAnswer, ReviewKind
@@ -55,10 +56,15 @@ class PersonMerger:
         Returns:
             What was changed.
         """
+        questions = self._same_person_questions()
         report = MergeReport()
-        for item in self._confirmed_pairs():
+        for item in _confirmed_pairs(questions):
             report = self._apply_one(item, report)
-        report = replace(report, questions_closed=self._close_settled_questions())
+        if report.merged:
+            # A merge points questions at the record that survived, so what
+            # was read before it no longer says which ones name one record twice.
+            questions = self._same_person_questions()
+        report = replace(report, questions_closed=self._close_settled_questions(questions))
         _log.info(
             "people_merged",
             merged=report.merged,
@@ -69,7 +75,11 @@ class PersonMerger:
         )
         return report
 
-    def _close_settled_questions(self) -> int:
+    def _same_person_questions(self) -> list[ReviewItem]:
+        """Every "same person?" question, answered or not, as stored right now."""
+        return self._repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
+
+    def _close_settled_questions(self, questions: Sequence[ReviewItem]) -> int:
         """Remove unanswered "same person?" questions that name one record twice.
 
         A merge points every question at the surviving record. One still
@@ -77,28 +87,30 @@ class PersonMerger:
         themselves, and would sit in the review list for ever. It is removed
         rather than marked "yes", because the owner never gave that answer;
         answered ones stay as the record of the owner's decision.
+
+        Args:
+            questions: The "same person?" questions, read after the last merge.
+
+        Returns:
+            How many questions were removed.
         """
         settled = [
             item.id
-            for item in self._repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
+            for item in questions
             if item.answer is None
             and item.person_id is not None
             and item.person_id == item.other_person_id
         ]
         return self._repositories.review_items.delete_by_ids(settled)
 
-    def _confirmed_pairs(self) -> list[ReviewItem]:
-        """The answered "same person?" questions still naming two records."""
-        return [
-            item
-            for item in self._repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
-            if item.answer is ReviewAnswer.YES
-            and item.person_id is not None
-            and item.other_person_id is not None
-        ]
-
     def _apply_one(self, item: ReviewItem, report: MergeReport) -> MergeReport:
         """Merge the two people one answered question names."""
+        if item.person_id == item.other_person_id:
+            # An earlier run merged this pair and left the question naming the
+            # survivor twice. Every answer ever given stays in the list, so
+            # asking the database about each of them again would cost one
+            # request per old answer, every day, to learn nothing.
+            return replace(report, skipped=report.skipped + 1)
         people = self._repositories.people.list_by_ids(
             [person_id for person_id in (item.person_id, item.other_person_id) if person_id]
         )
@@ -185,8 +197,8 @@ class PersonMerger:
         and the owner's answer would be lost. A settled "same person?" ends up
         naming the survivor on both sides: the database requires the question
         to name a second person, and a question about one record and itself is
-        exactly what a finished merge means. A later run sees one person where
-        it expects two and leaves it alone.
+        exactly what a finished merge means. A later run sees one record
+        named twice and leaves it alone, without asking the database about it.
         """
         items = self._repositories.review_items.list_for_people([absorbed.id])
         if not items:
@@ -204,6 +216,24 @@ class PersonMerger:
                 for item in items
             ]
         )
+
+
+def _confirmed_pairs(questions: Sequence[ReviewItem]) -> list[ReviewItem]:
+    """The "same person?" questions the owner answered yes to.
+
+    Args:
+        questions: Every "same person?" question.
+
+    Returns:
+        The confirmed ones, including those an earlier run already acted on.
+    """
+    return [
+        item
+        for item in questions
+        if item.answer is ReviewAnswer.YES
+        and item.person_id is not None
+        and item.other_person_id is not None
+    ]
 
 
 def _order(first: Person, second: Person) -> tuple[Person, Person]:

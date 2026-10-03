@@ -3,7 +3,7 @@
 Supabase names each file it applies after the current second, so two files sent
 within one second collide. The step therefore waits a moment between files and
 sends a refused file once more before switching to the SQL editor. By hand, it
-checks after each Return that the file really ran, and asks again if not.
+checks after each confirmation that the file really ran, and asks again if not.
 """
 
 from __future__ import annotations
@@ -74,8 +74,11 @@ def pending_files(
 ) -> tuple[MigrationFile, ...]:
     """Choose the files to apply.
 
-    A file the database cannot confirm is taken to be applied when it comes
-    before the first missing one, and to be pending when it comes after.
+    A file the database cannot confirm is taken to be applied only when a
+    later file shows and no earlier one is missing. Otherwise it is applied
+    again, which every such file allows: one that comes after a missing file,
+    or after every file that shows (a database at 0006 is offered 0007), may
+    never have run.
 
     Args:
         files: Every migration file, in order.
@@ -84,15 +87,21 @@ def pending_files(
     Returns:
         The files to apply, in order; empty when nothing is missing.
     """
-    if not report.missing:
-        return ()
-    first_missing = min(report.missing)
     return tuple(
         item
         for item in files
         if item.name in report.missing
-        or (item.name in report.unconfirmed and item.name > first_missing)
+        or (item.name in report.unconfirmed and _may_not_have_run(item.name, report))
     )
+
+
+def _may_not_have_run(name: str, report: StructureReport) -> bool:
+    """Whether an unconfirmed file comes after a missing one or after every one that shows."""
+    first_missing = min(report.missing, default=None)
+    newest_present = max(report.present, default=None)
+    after_a_gap = first_missing is not None and name > first_missing
+    after_the_last_seen = newest_present is None or name > newest_present
+    return after_a_gap or after_the_last_seen
 
 
 async def _apply_automatically(
@@ -179,7 +188,7 @@ def _apply_by_hand(ctx: SetupContext, item: MigrationFile, probe: StructureProbe
     io = ctx.io
     for attempt in range(1, MAX_ATTEMPTS + 1):
         _hand_over(io, item)
-        io.pause("Press Enter once Supabase shows 'Success. No rows returned'")
+        io.pause("Once Supabase shows 'Success. No rows returned'")
         if is_applied(item.name, probe) is not False:
             return
         io.say(f"The database does not show {item.name} yet, so it has not been run.")

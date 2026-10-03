@@ -16,9 +16,11 @@ vi.stubGlobal(
 );
 
 // jsdom implements none of these: the save banner uses the first two to bring
-// itself on screen, and the layout scrolls each new page to the top. `restoreMocks` resets spies between tests, so they are put
-// back before each one rather than once. A test file that runs outside the
-// browser stand-in (the build check) has no `Element` and needs neither.
+// itself on screen, the layout scrolls each new page to the top, and going
+// back watches the page grow while its list loads. `restoreMocks` resets spies
+// between tests, so they are put back before each one rather than once. A test
+// file that runs outside the browser stand-in (the build check) has no
+// `Element` and needs none of them.
 beforeEach(() => {
   if (typeof Element === 'undefined') return;
   Element.prototype.scrollIntoView = vi.fn();
@@ -26,5 +28,12 @@ beforeEach(() => {
   vi.stubGlobal(
     'matchMedia',
     vi.fn((query: string) => ({ matches: false, media: query })),
+  );
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe = vi.fn();
+      disconnect = vi.fn();
+    },
   );
 });

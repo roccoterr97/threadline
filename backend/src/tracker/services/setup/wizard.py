@@ -19,7 +19,7 @@ from tracker.services.setup.step_refresh import RefreshStep
 from tracker.services.setup.step_schedule import ScheduleStep
 from tracker.services.setup.step_supabase import EncryptionStep, SupabaseStep
 from tracker.services.setup.step_time_zone import TimeZoneStep
-from tracker.shared.errors import TrackerError
+from tracker.shared.errors import SetupStoppedError, TrackerError
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
@@ -92,6 +92,11 @@ class SetupWizard:
                 self._ctx.io.say(f"Already done. To redo it: uv run tracker setup {step.name}")
                 return True
             await step.run(self._ctx)
+        except SetupStoppedError as error:
+            _log.info("setup_stopped", step=step.name.value, detail=error.message)
+            self._ctx.io.say(f"Stopped here: {error.message}.")
+            self._ctx.io.say("Run 'uv run tracker setup' again to carry on; what is done is kept.")
+            return False
         except TrackerError as error:
             _log.warning("setup_step_stopped", step=step.name.value, code=error.code)
             self._ctx.io.say(f"Stopped: {error.message}.")

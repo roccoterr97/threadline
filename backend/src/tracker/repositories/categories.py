@@ -8,7 +8,7 @@ from typing import Any, ClassVar, Final
 from supabase import Client
 
 from tracker.domain.models import CategoryRecord
-from tracker.repositories.base import ALL_COLUMNS, SupabaseRepository
+from tracker.repositories.base import SupabaseRepository
 
 #: The natural key every write is keyed on.
 KEY_COLUMN: Final[str] = "key"
@@ -41,7 +41,7 @@ class CategoryRepository(SupabaseRepository[CategoryRecord]):
         Returns:
             The categories in display order: by sort order, then by key.
         """
-        rows = self._select_every(lambda: self._table().select(ALL_COLUMNS), "list_all")
+        rows = self._select_every(lambda query: query, "list_all")
         return sorted(self._to_models(rows), key=lambda row: (row.sort_order, row.key))
 
     def active_keys(self) -> frozenset[str]:

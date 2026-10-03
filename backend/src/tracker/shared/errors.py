@@ -73,6 +73,24 @@ class MailboxPasswordError(SourceAuthError):
     code = "mailbox_password_refused"
 
 
+class MailboxWindowCappedError(TrackerError):
+    """A mailbox held more new mail than is read at once; its oldest part was left unread.
+
+    The collector hands it back on its report after storing what was read,
+    rather than raising it: the run counts the mailbox as collected and assesses
+    what was stored, and records the step as failed with this code so the owner
+    is told. Only a collection typed by hand raises it, once it has stored.
+    """
+
+    code = "mailbox_window_capped"
+
+
+class SetupStoppedError(TrackerError):
+    """The person running the set-up stopped it, or walked away from its page."""
+
+    code = "setup_stopped"
+
+
 class ValidationFailedError(TrackerError):
     """Data did not satisfy a rule the application guarantees."""
 

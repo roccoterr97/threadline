@@ -1,8 +1,8 @@
 import * as copy from '../copy/en';
 
-/** Where a visitor who liked the demo learns to set up their own copy. */
+/** Where a visitor who liked the demo learns to set up their own copy: the easy way first. */
 export const SETUP_GUIDE_URL =
-  'https://github.com/roccoterr97/threadline/blob/main/docs/setup-your-accounts.md';
+  'https://github.com/roccoterr97/threadline/blob/main/docs/setup-with-claude.md';
 
 /** The strip across the top of every demo page, so nobody mistakes it for real data. */
 export function DemoBanner() {

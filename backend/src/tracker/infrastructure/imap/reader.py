@@ -116,6 +116,7 @@ class ImapMailbox:
         self._locations: dict[str, _Location] = {}
         self._members: dict[str, dict[str, MailMessage]] = {}
         self._thread_search: dict[str, tuple[str, ...]] = {}
+        self._capped = False
         # An IMAP connection carries one command at a time and remembers which
         # folder is open, so callers asking for many things at once take turns.
         self._turn = asyncio.Lock()
@@ -127,6 +128,15 @@ class ImapMailbox:
         """Sign in and find the inbox and the Sent folder."""
         await self._alone(self._open)
         return self
+
+    @property
+    def window_capped(self) -> bool:
+        """Whether a folder held more matching messages than are read at once.
+
+        Only the newest :data:`IMAP_MAX_MESSAGES_PER_FOLDER` were then read, so
+        the oldest part of what was asked for was left unread.
+        """
+        return self._capped
 
     async def __aexit__(
         self,
@@ -286,7 +296,9 @@ class ImapMailbox:
     def _read_folder(self, folder: str, in_sent: bool, criteria: tuple[str, ...]) -> list[_Seen]:
         """Search one folder and fetch the headers of what matched."""
         self._session.examine(folder)
-        uids = _newest(self._session.search(*criteria), in_sent=in_sent)
+        matched = self._session.search(*criteria)
+        uids = _newest(matched, in_sent=in_sent)
+        self._capped = self._capped or len(uids) < len(matched)
         items = _GMAIL_METADATA_ITEMS if self._gmail else _METADATA_ITEMS
         return [
             _Seen(folder, in_sent, record, parse_headers(record.literal))

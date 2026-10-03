@@ -45,7 +45,10 @@ permissions:
 # two daily runs, or two refreshes, still never overlap. A daily run and a
 # refresh take turns in the gate: the daily run waits for a refresh that is
 # going, and a refresh that finds the daily run going stops, since the daily
-# run reads everything new anyway.
+# run reads everything new anyway. When GitHub cannot say what is going, even
+# after a few tries, a refresh stops, and the daily run keeps asking and goes
+# ahead once its wait is up: a refresh can be pressed again, a skipped morning
+# cannot be had back.
 concurrency:
   group: threadline-${{ inputs.mode == 'refresh' && 'refresh' || 'daily' }}
   cancel-in-progress: false
@@ -54,8 +57,12 @@ jobs:
   run:
     name: Threadline
     runs-on: ubuntu-latest
-    # Up to 45 minutes waiting for a refresh to finish, then up to 45 running.
-    timeout-minutes: 90
+    # A refresh: under 2 minutes asking GitHub what is going, then setting up,
+    # then the recipe's 45 at most (50).
+    # A daily run may first wait out a whole refresh: 55 minutes (50 plus a
+    # margin for GitHub to mark it finished), plus one last look of under 3,
+    # then the refresh's 50 again, about 108 in all; 120 leaves time to spare.
+    timeout-minutes: ${{ inputs.mode == 'refresh' && 50 || 120 }}
     steps:
       # Decides whether to run at all, and in which mode, then takes turns with
       # the other kind of run. Prints names only, never a value.
@@ -87,29 +94,67 @@ jobs:
             refresh) trigger=refresh ;;
             *) echo "::error::mode must be daily or refresh"; exit 1 ;;
           esac
-          # How many other runs with this title are going; 0 when GitHub cannot say.
+          # How many other runs with this title are going, or "unknown" when
+          # GitHub cannot say after a few tries. An error, a lookup that hangs
+          # (cut off after 30 seconds) or an answer that is not a number is
+          # never read as 0. At most 3 x 30 + 2 x 10 seconds: under 2 minutes.
+          lookup_attempts=3
+          lookup_pause_seconds=10
+          lookup_timeout_seconds=30
           going() {
-            local count
-            count=$(gh run list --workflow threadline-run.yml --status in_progress \
-              --json databaseId,displayTitle \
-              --jq "[.[] | select(.databaseId != $RUN_ID and .displayTitle == \"$1\")] | length" \
-              2>/dev/null) || count=0
-            echo "${count:-0}"
+            local attempt count
+            for attempt in $(seq "$lookup_attempts"); do
+              if count=$(timeout "$lookup_timeout_seconds" gh run list --workflow threadline-run.yml \
+                --status in_progress --json databaseId,displayTitle \
+                --jq "[.[] | select(.databaseId != $RUN_ID and .displayTitle == \"$1\")] | length") \
+                && [[ "$count" =~ ^[0-9]+$ ]]; then
+                echo "$count"
+                return 0
+              fi
+              if [ "$attempt" -lt "$lookup_attempts" ]; then sleep "$lookup_pause_seconds"; fi
+            done
+            echo unknown
           }
-          if [ "$trigger" = refresh ] && [ "$(going 'Threadline daily run')" -gt 0 ]; then
-            echo "::notice::The daily run is going and reads everything new, so this refresh stops here."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            exit 0
+          if [ "$trigger" = refresh ]; then
+            daily=$(going 'Threadline daily run')
+            if [ "$daily" = unknown ]; then
+              echo "::notice::GitHub could not say whether the daily run is going, so this refresh stops here rather than risk running beside it. Press Refresh now again in a few minutes."
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            if [ "$daily" -gt 0 ]; then
+              echo "::notice::The daily run is going and reads everything new, so this refresh stops here."
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
           if [ "$trigger" = github ]; then
-            # A refresh lives 45 minutes at most (its own timeout); look every 30 seconds.
-            wait_limit_seconds=2700
+            # A refresh is stopped by GitHub after 50 minutes (the job timeout
+            # above); 55 leaves GitHub time to mark it finished. Look every 30
+            # seconds. The clock is bash's own SECONDS, so the time each lookup
+            # takes counts too. Not knowing is not "nothing is going": the daily
+            # run keeps asking, and goes ahead only at the limit, never skipping
+            # the morning.
+            wait_limit_seconds=3300
             poll_seconds=30
-            waited=0
-            while [ "$(going 'Threadline refresh')" -gt 0 ] && [ "$waited" -lt "$wait_limit_seconds" ]; do
-              echo "A refresh is going; waiting for it to finish."
+            waiting_since=$SECONDS
+            while true; do
+              refreshes=$(going 'Threadline refresh')
+              if [ "$refreshes" = 0 ]; then break; fi
+              if [ $((SECONDS - waiting_since)) -ge "$wait_limit_seconds" ]; then
+                if [ "$refreshes" = unknown ]; then
+                  echo "::warning::GitHub could not say whether a refresh is going, even after $((wait_limit_seconds / 60)) minutes of asking, so the daily run goes ahead rather than skip the morning."
+                else
+                  echo "::warning::A refresh still looked busy after $((wait_limit_seconds / 60)) minutes, so the daily run goes ahead."
+                fi
+                break
+              fi
+              if [ "$refreshes" = unknown ]; then
+                echo "GitHub could not say whether a refresh is going; asking again."
+              else
+                echo "A refresh is going; waiting for it to finish."
+              fi
               sleep "$poll_seconds"
-              waited=$((waited + poll_seconds))
             done
           fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -139,6 +184,7 @@ jobs:
       - name: Run the recipe with Claude
         if: steps.gate.outputs.ready == 'true'
         uses: anthropics/claude-code-action@v1
+        timeout-minutes: 45
         # Every setting Threadline reads, in one place. Secrets are hidden in
         # the log by GitHub; variables are the settings that are neither secret
         # nor personal. backend/src/tracker/shared/constants/github.py says

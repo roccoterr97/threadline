@@ -84,7 +84,10 @@ RefreshOption = Annotated[
     bool,
     typer.Option(
         "--refresh",
-        help="Read only what is new since the mailboxes were last read successfully.",
+        help=(
+            "Read only what is new since the mailboxes were last read successfully; "
+            "with --record, record into the refresh that is open."
+        ),
     ),
 ]
 
@@ -170,7 +173,7 @@ def collect_all(
     recorder = RunRecorder(repositories, clock, unconfigured_steps(settings))
     # Looked up before anything is read, so a run that does not exist is
     # reported straight away rather than after the whole collection.
-    target = recorder.resolve(run) if record else None
+    target = recorder.resolve(run, refresh=refresh) if record else None
     start = _parse_since(since, settings.owner_zone)
     mail_start = _mail_start(repositories, start, refresh=refresh)
     sources = _sources(repositories, settings, clock, start, mail_start)
@@ -366,13 +369,14 @@ def _print_outcomes(outcomes: Sequence[SourceOutcome]) -> None:
 
 
 def _raise_first_failure(outcomes: Sequence[SourceOutcome]) -> None:
-    """End a run by hand on the first failure, once every source has been printed.
+    """End a run by hand on the first problem, once every source has been printed.
 
     Raises:
-        TrackerError: The first source's failure, when there is one.
+        TrackerError: The first source's failure, or why it was read only in
+            part, when there is one.
     """
     failure: TrackerError | None = next(
-        (outcome.failure for outcome in outcomes if outcome.failure is not None), None
+        (outcome.problem for outcome in outcomes if outcome.problem is not None), None
     )
     if failure is not None:
         raise failure

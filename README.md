@@ -111,7 +111,17 @@ LinkedIn's copy of your messages also runs one to two days behind, so a
 LinkedIn message reaches Threadline a day or two after you receive it. Mail and
 calendar entries are read as they are at the moment of the run.
 
-## Quick start
+## Set it up
+
+**The easy way: let Claude do it.** You already need a Claude plan, and
+Claude can run the whole set-up for you: install the tools, make your private
+copy, start the guided set-up and check the result, while you create the
+accounts and click where it says. Keys go into a page in your browser, never
+into the chat. About an hour. See
+[`docs/setup-with-claude.md`](./docs/setup-with-claude.md): it is one
+sentence to paste into the Claude app.
+
+**By hand**, in a terminal:
 
 1. Follow [`docs/setup-your-accounts.md`](./docs/setup-your-accounts.md) to
    create the accounts and collect the values Threadline needs.
@@ -129,6 +139,10 @@ calendar entries are read as they are at the moment of the run.
    uv run tracker setup
    uv run tracker doctor
    ```
+
+   Add `--browser` to have the questions asked on a page in your web browser
+   instead of in the terminal: keys go into hidden fields, and the page is
+   served to your computer only.
 
 4. The first time, answer **no** to "Is the dashboard published already?",
    publish the dashboard on Vercel (part 7 of the guide), then run
@@ -156,6 +170,7 @@ information.
 |---------|--------------|
 | `tracker setup` | Guided setup that writes your `.env` |
 | `tracker setup <step>` | Re-run one step of the set-up. The steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `linkedin`, `dashboard`, `schedule`, `github`, `refresh` and `cloud` |
+| `tracker setup [<step>] --browser` | The same, asked on a page in your web browser instead of the terminal; what is said and asked is still shown in the terminal, answers never are |
 | `tracker setup mailbox` | Choose the mailbox to read; for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
 | `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow; commit and push it only after a yes |
 | `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. It only ever uses your own private copy |
@@ -175,7 +190,7 @@ information.
 | `tracker collect linkedin [--since YYYY-MM-DD] [--show-folders]` | Read the LinkedIn archive and store the recent conversations; `--show-folders` also prints the distinct LinkedIn folder values |
 | `tracker collect email [--since YYYY-MM-DD \| --refresh]` | Read every mailbox you set up (Outlook, Gmail…) and store the conversations worth keeping; `--refresh` reads only what is new since the mailboxes were last read successfully |
 | `tracker collect calendar` | Read the Outlook calendar and store the meetings with other people |
-| `tracker collect all [--since YYYY-MM-DD \| --refresh] [--record] [--run ID]` | Read every source at the same time, then store them one after the other. `--record` also records each source as its step of the run and carries on past a source that failed — this is the command the daily run uses |
+| `tracker collect all [--since YYYY-MM-DD \| --refresh] [--record] [--run ID]` | Read every source at the same time, then store them one after the other. `--record` also records each source as its step of the run and carries on past a source that failed; with `--refresh` it records into the refresh that is open, never the daily run — this is the command the daily run uses |
 | `tracker people list` | Show everybody the collectors have found, most recent first |
 | `tracker people merge` | Join the records you have confirmed are one person |
 | `tracker people link` | Ask about records that look like one person or one opportunity |
@@ -189,8 +204,8 @@ from the last successful run.
 
 | Command | What it does |
 |---------|--------------|
-| `tracker ai export [--limit N] [--batches DIR] [--results DIR] [--record] [--run ID]` | Write one file per group of people who still need a verdict, and make the directory their verdicts go in. `--record` also records the `assess` step of the run when there is nobody to assess |
-| `tracker ai import [--results DIR] [--batches DIR] [--record] [--run ID]` | Check the verdict files, save the ones that pass, and delete the files it applied. `--record` also records the `assess` step of the run: people assessed, and how many were sent to review |
+| `tracker ai export [--limit N] [--batches DIR] [--results DIR] [--record [--refresh]] [--run ID]` | Write one file per group of people who still need a verdict, and make the directory their verdicts go in. `--record` also records the `assess` step of the run when there is nobody to assess; with `--refresh`, into the refresh that is open rather than the daily run |
+| `tracker ai import [--results DIR] [--batches DIR] [--record [--refresh]] [--run ID]` | Check the verdict files, save the ones that pass, and delete the files it applied. `--record` also records the `assess` step of the run: people assessed, and how many were sent to review; with `--refresh`, into the refresh that is open rather than the daily run |
 | `tracker ai status [--results DIR] [--batches DIR]` | Show what is waiting: people to judge, files to import, questions to answer |
 | `tracker ai clean` | Remove every exchanged file, including batches that were never answered |
 
@@ -213,8 +228,8 @@ See [`docs/customising.md`](./docs/customising.md).
 | Command | What it does |
 |---------|--------------|
 | `tracker run start [--trigger github\|cloud\|refresh\|mac\|manual] [--prepare]` | Open today's run and print its identifier (default trigger: `cloud`). `--prepare` goes on to `tracker healthcheck` and `tracker profile apply` and ends with `ready: yes` or `ready: no` — this is how the daily run opens |
-| `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `assess` or `summary_email` |
-| `tracker run finish [--run ID] [--clean]` | Close the run with the status its steps add up to. `--clean` then removes the exchanged files, as `tracker ai clean` does — this is how the daily run closes |
+| `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID \| --refresh]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `assess` or `summary_email`. `--refresh` records into the refresh that is open rather than the daily run |
+| `tracker run finish [--run ID \| --refresh] [--clean]` | Close the run with the status its steps add up to. `--refresh` closes the refresh that is open rather than the daily run. `--clean` then removes the exchanged files, as `tracker ai clean` does — this is how the daily run closes |
 | `tracker summary build [--out PATH] [--run ID]` | Write the morning summary to a file, ready to send, and say how it is sent (`delivery: smtp` or `gmail_connector`) |
 | `tracker summary send [--file PATH] [--run ID]` | Send that file from your own mailbox by SMTP, exactly as built and only to your configured recipient, and record the step |
 

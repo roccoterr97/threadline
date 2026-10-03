@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import pytest
 from cryptography.fernet import Fernet
+from postgrest import APIError, CountMethod
 from supabase import Client
 from typer.testing import Result
 
@@ -114,9 +115,10 @@ def clock() -> FixedClock:
 class FakeResponse:
     """Stands in for the query builder's response object."""
 
-    def __init__(self, data: list[dict[str, Any]]) -> None:
-        """Hold the rows a query returned."""
+    def __init__(self, data: list[dict[str, Any]], count: int | None = None) -> None:
+        """Hold the rows a query returned, and the total when one was asked for."""
         self.data = data
+        self.count = count
 
 
 class FakeQuery:
@@ -133,10 +135,12 @@ class FakeQuery:
         self._limit: int | None = None
         self._operation = "select"
         self._payload: list[dict[str, Any]] = []
+        self._count: CountMethod | None = None
 
-    def select(self, *_columns: str, **_options: Any) -> Self:
-        """Start a read."""
+    def select(self, *_columns: str, **options: Any) -> Self:
+        """Start a read, asking for the total of matching rows when ``count`` is given."""
         self._operation = "select"
+        self._count = options.get("count")
         return self
 
     def upsert(self, json: list[dict[str, Any]], **options: Any) -> Self:
@@ -191,7 +195,19 @@ class FakeQuery:
             for row in matched:
                 self._rows.remove(row)
             return FakeResponse(matched)
-        return FakeResponse(self._page(matched))
+        return FakeResponse(self._page(matched), self._total(matched))
+
+    def _total(self, matched: list[dict[str, Any]]) -> int | None:
+        """Note that a read asked for the total, and answer as the server does.
+
+        The real client reports a total only for a request that asked for one,
+        and only when the answer carries it. The total is of every row the
+        filters keep, whatever page was asked for and whatever the cap cut off.
+        """
+        if self._count is None:
+            return None
+        self._client.totals_asked.append(self._table)
+        return len(matched) if self._client.reports_totals else None
 
     def _matching(self) -> list[dict[str, Any]]:
         """Return the rows that satisfy every filter."""
@@ -222,11 +238,46 @@ class FakeQuery:
         # Supabase caps every answer, whatever range was asked for, and says
         # nothing about it. Modelling the cap here is what makes a query that
         # forgets to page fail in the tests instead of in production.
-        return result[:SERVER_ROW_CAP]
+        return result[: self._client.row_cap]
+
+    def _refuse_duplicate_names(self, keys: list[str]) -> None:
+        """Refuse a write that gives two rows the same name, as a unique index does.
+
+        Postgres checks a unique index row by row as the write goes, so a
+        payload is played on a copy in its own order: a row may only take a
+        name once the row holding it has let go of it earlier in the payload.
+        Nothing is changed when the write is refused.
+        """
+        columns = self._client.unique_names.get(self._table, ())
+        if not columns:
+            return
+        rows = [dict(row) for row in self._rows]
+        for candidate in self._payload:
+            signature = tuple(str(candidate.get(key)) for key in keys)
+            target = next(
+                (row for row in rows if tuple(str(row.get(k)) for k in keys) == signature), None
+            )
+            if target is None:
+                target = {}
+                rows.append(target)
+            target.update(candidate)
+            for column in columns:
+                name = _comparable(target.get(column))
+                if any(
+                    other is not target and _comparable(other.get(column)) == name for other in rows
+                ):
+                    raise APIError(
+                        {
+                            "code": UNIQUE_VIOLATION_CODE,
+                            "message": "duplicate key value violates unique constraint "
+                            f'"{self._table}_{column}_unique"',
+                        }
+                    )
 
     def _apply_upsert(self) -> list[dict[str, Any]]:
         """Replace rows matching the natural key, insert the rest."""
         keys = self._client.conflict_columns[self._table].split(",")
+        self._refuse_duplicate_names(keys)
         written: list[dict[str, Any]] = []
         for candidate in self._payload:
             signature = tuple(str(candidate.get(key)) for key in keys)
@@ -252,6 +303,14 @@ JOB_SEARCH_RULES: Final[RulePack] = read_profile(preset_path("job_search")).rule
 #: Rows Supabase returns at most for one request, however large a range is asked for.
 SERVER_ROW_CAP: Final[int] = 1000
 
+#: Postgres code for a write a unique index refuses.
+UNIQUE_VIOLATION_CODE: Final[str] = "23505"
+
+
+def _comparable(value: object) -> str:
+    """A name as migration 0015's indexes compare it: ``lower(btrim(name))``."""
+    return str(value).strip(" ").lower()
+
 
 class FakeSupabaseClient:
     """An in-memory stand-in for the Supabase client."""
@@ -261,6 +320,17 @@ class FakeSupabaseClient:
         self.tables: dict[str, list[dict[str, Any]]] = tables or {}
         self.conflict_columns: dict[str, str] = {}
         self.executed: list[tuple[str, str]] = []
+        #: Rows one answer holds at most. A test lowers it to imitate a project
+        #: whose owner turned the server's cap down.
+        self.row_cap: int = SERVER_ROW_CAP
+        #: Whether an answer carries the total a read asked for. A test turns it
+        #: off to imitate an answer that arrives without one.
+        self.reports_totals: bool = True
+        #: The table of every read that asked for a total, in order.
+        self.totals_asked: list[str] = []
+        #: Columns each of which a unique index keeps apart, per table, compared
+        #: without capitals or surrounding spaces. Empty: nothing is refused.
+        self.unique_names: dict[str, tuple[str, ...]] = {}
 
     def table(self, table_name: str) -> FakeQuery:
         """Return a query builder for one table."""

@@ -394,3 +394,26 @@ def test_outcomes_say_whether_a_source_was_collected() -> None:
 
     assert SourceOutcome(source, report=CollectionReport(channel=Channel.EMAIL)).succeeded
     assert not SourceOutcome(source, failure=SourceAuthError("refused")).succeeded
+
+
+def test_a_source_stored_in_part_counts_as_collected_and_is_recorded_as_failed(
+    repositories: Repositories, clock: FixedClock
+) -> None:
+    source = fake_source(Channel.EMAIL, RunStep.COLLECT_EMAIL, [])
+    refused = SourceAuthError("refused")
+    report = CollectionReport(
+        channel=Channel.EMAIL, conversations_found=7, conversations_new=2, problem=refused
+    )
+    outcome = SourceOutcome(source, report=report)
+    recorder = RunRecorder(repositories, clock)
+    run = recorder.start(RunTrigger.MANUAL)
+
+    record_outcomes(recorder, run.id, [outcome])
+
+    assert outcome.succeeded
+    assert outcome.problem is refused
+    step = recorder.find_step(run.id, RunStep.COLLECT_EMAIL)
+    assert step is not None
+    assert (step.status, step.error_code) == (RunStatus.FAILED, "source_auth_failed")
+    assert (step.items_found, step.items_new) == (7, 2)
+    assert report.as_lines()[-1] == "read in part · code=source_auth_failed"

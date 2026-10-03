@@ -19,7 +19,7 @@ from pydantic import SecretStr
 
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
-from tracker.services.setup.github_copy import repository_from_origin
+from tracker.services.setup.github_copy import LinkedCopy, linked_copy
 from tracker.services.setup.models import StepName
 from tracker.shared.constants.github import (
     FINE_GRAINED_TOKEN_PAGE,
@@ -70,10 +70,14 @@ class RefreshStep:
         io = ctx.io
         io.say("The dashboard's Refresh now button starts one extra, quick run whenever you")
         io.say("want. It needs a small helper in your Supabase project, which this step adds.")
-        repository = _ready_repository(ctx)
-        if repository is None or not io.confirm("Switch on Refresh now?", default=True):
+        copy = _ready_copy(ctx)
+        # A copy that could not be checked is switched on only by a typed yes.
+        if copy is None or not io.confirm(
+            f"Switch on Refresh now for {copy.name}?", default=copy.confirmed
+        ):
             io.say(f"Skipped. To switch it on later: uv run tracker setup {self.name}")
             return
+        repository = copy.name
         project_url = ctx.require(_SUPABASE_URL, StepName.SUPABASE)
         settings = _function_settings(ctx, repository, await _github_token(ctx, repository))
         ref = values.project_ref(project_url)
@@ -112,21 +116,30 @@ def token_page(repository: str) -> str:
     return f"{FINE_GRAINED_TOKEN_PAGE}?{urlencode(query)}"
 
 
-def _ready_repository(ctx: SetupContext) -> str | None:
-    """Name the copy on GitHub when the dashboard and the copy both exist."""
+def _ready_copy(ctx: SetupContext) -> LinkedCopy | None:
+    """Name the owner's private copy on GitHub when it and the dashboard both exist.
+
+    The helper's GitHub key and settings go to this repository, so it must
+    be the owner's own private copy, checked the same way as in the GitHub
+    step; never the public template ``origin`` may still point at.
+    """
     if ctx.env.get(_DASHBOARD_URL) is None:
         ctx.io.say(
             "The dashboard's address is not saved yet: publish the dashboard and run "
             f"'uv run tracker setup {StepName.DASHBOARD}' first."
         )
         return None
-    repository = repository_from_origin(ctx.gateways.git.origin_url())
-    if repository is None:
+    copy = linked_copy(ctx)
+    if copy is None:
         ctx.io.say(
-            "This folder is not linked to your copy on GitHub yet: run "
+            "This folder is not linked to your own private copy on GitHub yet: run "
             f"'uv run tracker setup {StepName.GITHUB}' first."
         )
-    return repository
+        return None
+    if not copy.confirmed:
+        ctx.io.say(f"Without the GitHub CLI this cannot check that {copy.name} is your own")
+        ctx.io.say("private copy. Answer y below only if it is; the public template never works.")
+    return copy
 
 
 async def _github_token(ctx: SetupContext, repository: str) -> SecretStr:

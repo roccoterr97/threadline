@@ -19,8 +19,10 @@ file is the whole recipe — assume you know nothing else about this project.
 - `--mode daily` (the default) — everything below, with the summary e-mail.
 - `--mode refresh` — an extra run between two mornings: collect only what is
   new, tidy the people list, assess, record, clean up. **No summary, no
-  e-mail.** Steps marked *daily only* are skipped, and the run is opened with
-  `--trigger refresh` whatever trigger was given.
+  e-mail.** Steps marked *daily only* are skipped, the run is opened with
+  `--trigger refresh` whatever trigger was given, and every later command that
+  records gets `--refresh`, as each step shows, so a refresh never touches a
+  daily run that is going at the same time.
 
 Accept only these words. Anything else in `$ARGUMENTS` is ignored; if the mode
 is not one of the two, use `daily`.
@@ -47,6 +49,27 @@ The Python tool lives in `backend/` and is run with `uv`.
 5. **You never choose the recipient or write the wording of the e-mail.** Both
    come out of `work/summary.json` exactly as the tool wrote them.
 6. **Never read, print or copy `.env` or any key.**
+7. **`no run is open` ends the run's work.** If any command answers
+   `no run is open`, this session's run was never opened, is more than three
+   hours old, or was closed by something else. From then on: do not run step 2,
+   3 or 4 (an import already under way still saves its verdicts and says
+   `verdicts saved, step not recorded`), record no step, do not build or send a
+   summary (steps 5 and 6) — it could describe another run — and go to step 7
+   and step 8. The answer goes on to suggest what to do instead — start a run,
+   leave out `--refresh`, or name a run with `--run`: that is advice for the
+   owner at a keyboard. Follow none of it — never start a second run, never
+   drop `--refresh`, never pass `--run`.
+
+**How a failed command reads.** A `tracker` command that stops on a failure
+ends with one error line, `command_failed`, carrying a code. By hand it shows
+`command_failed`, then `code=<code>`, then the reason after `detail=`. With
+`APP_ENV=production`, as on GitHub, it is one JSON object instead:
+`{"code": "<code>", "detail": "<reason>", "event": "command_failed", …}`.
+Wherever this recipe speaks of a line carrying a `code=`, either form counts:
+the code is what follows `code=` or `"code":`, and the reason — where
+`no run is open` appears — is the `detail`. Lines the tool prints as part of
+its normal output, such as `healthcheck failed · code=<code>`, read the same
+everywhere.
 
 ## Steps
 
@@ -61,11 +84,9 @@ This one command does three things, one after the other, and prints each one's
 lines. Read all of them, then let the **last line** decide what you do next.
 
 **It opens the run.** It prints
-`run <identifier> started · trigger <trigger>`. Keep that identifier in mind;
-every later command works on the run still open by default, so you only need
-to pass `--run <identifier>` if something else has started a run in between. If
-a command answers `no run is open`, the run did not start: stop and report it
-rather than naming an older run.
+`run <identifier> started · trigger <trigger>`. Note the identifier for your
+report. Every later command finds this run by itself (a refresh's commands find
+it through `--refresh`), so never pass `--run`.
 
 It also copies the owner's configured time zone into the database, so the
 dashboard's "overdue" follows the owner's day, and prints `time zone: <zone>`.
@@ -95,14 +116,16 @@ still in place.
 
 - `ready: yes` — the plumbing works. Go on to step 2, even if the profile
   failed.
-- `ready: no` — the health check failed. Skip straight to step 5 (build the
-  summary) and step 7 (close the run). The run will record no step, the summary
-  will say the run could not start, and the e-mail still goes out. In refresh
-  mode skip straight to step 7. Do not try to repair anything.
+- `ready: no` — the health check failed, but the run is open. Skip straight
+  to step 5 (build the summary), then step 6 (send it) and step 7 (close the
+  run). The run records no step and the summary says the run could not start;
+  it goes out if building and sending still work, and step 5 or 6 tells you if
+  they do not. In refresh mode skip straight to step 7. Do not try to repair
+  anything.
 - **No `ready:` line at all** — the command stopped early, with one line
-  carrying a `code=` at the end: the run could not even be opened. Note the
-  code for your report and do exactly as for `ready: no`. Do not run the three
-  parts one by one instead.
+  carrying a `code=`: the run could not even be opened. Note the
+  code for your report and follow rule 7: no summary, then steps 7 and 8. Do
+  not run the three parts one by one instead.
 
 ### 2. Collect the sources, all at once
 
@@ -123,11 +146,17 @@ them one after the other, and **records each source as its own step of the
 run**. Do not run `tracker run step` for anything in this step.
 
 It prints one block per source, starting `channel: linkedin`, `channel: email`
-and `channel: calendar`. Under each you see one of three things:
+and `channel: calendar`. Under each you see one of four things:
 
 - **Counts** — five lines including `conversations found: N (new: N, noise: N)`
   and `messages found: N (new: N)`. The source worked. All mailboxes together
   are one set of counts, under `channel: email`.
+- **Counts, then `read in part · code=<code>`** — what was read is stored and
+  the source counts as collected, but some mail was not read, and that is
+  already recorded so the summary tells the owner. The code is
+  `mailbox_window_capped` (a mailbox held more new mail than is read at once:
+  the newest was read and stored, the oldest skipped — nothing to do), or, when
+  one of several mailboxes failed, that mailbox's code from the list below.
 - **`not configured — skipped`** — the owner has not set that source up. That is
   not a failure and nothing is recorded for it. Say "LinkedIn not set up" or
   "Calendar not set up (it needs Outlook)" in your report.
@@ -137,11 +166,9 @@ and `channel: calendar`. Under each you see one of three things:
   `mailbox_password_refused` (a Gmail or other IMAP mailbox refused its app
   password), `source_unavailable` (the other service did not answer),
   `database_unavailable`, `configuration_invalid` and `validation_failed`.
-  When one of several mailboxes fails, the others' messages are still saved,
-  but `channel: email` shows the failing mailbox's code.
 
-It ends with `sources collected: N` — how many sources were read and stored —
-and `steps recorded`.
+It ends with `sources collected: N` — how many sources were read and stored,
+in full or in part — and `steps recorded`.
 
 A `source_auth_failed` means LinkedIn or Microsoft refused the stored key;
 `mailbox_password_refused` means Gmail (or another IMAP mailbox) refused its
@@ -152,7 +179,8 @@ tells the owner what to do.
 **If the command prints no `steps recorded`** and ends with one line carrying a
 `code=`, it could not work at all (for example the database did not answer).
 Nothing was recorded: note the code for your report, treat it as
-`sources collected: 0`, and carry on. Do not run the sources one by one instead.
+`sources collected: 0`, and carry on — unless that line says `no run is open`,
+in which case follow rule 7. Do not run the sources one by one instead.
 
 ### 3. Tidy the people list
 
@@ -183,7 +211,8 @@ The same goes if the command itself ends with one line carrying a `code=`.
 Only if step 2 printed `sources collected:` with 1 or more. If it was 0, skip to
 step 5.
 
-Run the `/assess --record` recipe in this same session. It exports batch files,
+Run the `/assess --record` recipe in this same session (in refresh mode,
+`/assess --record --refresh`). It exports batch files,
 gives one restricted `conversation-assessor` helper each, imports the verdicts
 and prints a line such as `8 people assessed, 2 sent to review, 1 marked noise,
 0 rejected files`. Follow `/assess` as written; do not open any file it
@@ -194,8 +223,15 @@ the number of people assessed as found, the number sent to review as new — and
 prints `step recorded`. That also happens when there was nothing to assess. Do
 **not** record a success again with `tracker run step`.
 
-If `/assess` could not finish, record it as failed with the code from the line
-it printed, or `tracker_error` if it printed none:
+If the import printed `verdicts saved, step not recorded · …`, the verdicts
+are safe: record **no** failure for `assess`, note the reason for your report
+and go on to step 5 — or, when the reason is `no run is open`, follow rule 7.
+If the export itself answered `no run is open`, record nothing and follow
+rule 7.
+
+Otherwise, if `/assess` could not finish, record it as failed with the code
+from the line it printed, or `tracker_error` if it printed none (in refresh mode
+add `--refresh`):
 
 ```bash
 cd backend && uv run tracker run step --step assess --result failed --error-code <code>
@@ -213,6 +249,11 @@ It prints the file it wrote, the recipient, the subject, one line of counts,
 and `delivery: smtp` or `delivery: gmail_connector`, which decides step 6.
 Python builds every word of the e-mail from the database: there is no wording
 for you to invent, improve or shorten.
+
+If it answers that this run's summary was already sent, it wrote no file and
+removed the earlier one: the owner has the e-mail already. Skip step 6 and go
+to step 7. If it fails with any other line carrying a `code=`, there is nothing
+to send: note the code for your report, skip step 6 and go to step 7.
 
 Read `work/summary.json`. It holds:
 
@@ -238,10 +279,13 @@ cd backend && uv run tracker summary send
 
 It prints `summary sent · to: <address>`. It sends the file exactly as it was
 built, only to the recipient in the settings, and records the `summary_email`
-step itself — do **not** record that step again. If it fails it printed one
-line with a `code=` in it and has already recorded the failure: note it for
-your report and go on to step 7. If it says the summary was already sent, it
-sent nothing and recorded nothing: the owner has it already, so go on to step 7.
+step itself — do **not** record that step again. If `summary sent` is followed
+by `step not recorded · code=<code>`, the e-mail **did** go out but the run
+could not record it: never send it again, note it for your report and go on to
+step 7. If it fails it printed one line carrying a `code=` and has already
+recorded the failure: note it for your report and go on to step 7. If it says
+the summary was already sent, it sent nothing and recorded nothing: the owner
+has it already, so go on to step 7.
 
 **6b. `delivery: gmail_connector`** — send one e-mail with the **Gmail
 connector** attached to this session:
@@ -261,11 +305,14 @@ connector** attached to this session:
 
 Add nothing, remove nothing, reorder nothing, and do not summarise the summary.
 
-Then record it:
+Send it once. Then record it straight away — that record is what stops a
+second summary being built for this run:
 
 ```bash
 cd backend && uv run tracker run step --step summary_email --result success --found 1 --new 1
 ```
+
+If recording it fails, the e-mail still went: do not send it again.
 
 **If sending is refused or the connector is not available** (it never is on
 GitHub Actions), record the failure and say so clearly in your report:
@@ -283,16 +330,28 @@ the summary in a message to anyone else.
 cd backend && uv run tracker run finish --clean
 ```
 
+In refresh mode add `--refresh`, so the refresh closes its own run and never a
+daily run going at the same time:
+
+```bash
+cd backend && uv run tracker run finish --clean --refresh
+```
+
 It prints `run <identifier> finished · status <status>`, where the status is
 `success` (everything worked), `partial` (something failed, the rest worked) or
 `failed` (nothing worked). You do not choose it: it is derived from the steps
 that were recorded.
 
 Then it removes the exchanged files, so no message text stays on disk, and
-prints `N files removed from the work directory`. The files are removed even
-when the run could not be closed. If some file could not be removed it prints
-`ai clean failed · code=<code>` instead; the run is closed all the same: note
-the code for your report.
+prints `N files removed from the work directory`. If some file could not be
+removed it prints `ai clean failed · code=<code>` instead; the run is closed all
+the same: note the code for your report.
+
+If the run could not be closed (`no run is open`, or another line carrying a
+`code=`), it prints
+`work files kept · the run could not be closed` and removes nothing, so no
+verdict is lost; the next run cleans up. Note it for your report. Do not remove
+the files yourself and do not run `tracker ai clean`.
 
 ### 8. Report
 

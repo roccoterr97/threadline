@@ -1,6 +1,6 @@
 ---
 description: Assess the collected conversations with Claude and save the results
-argument-hint: [--limit N] [--record]
+argument-hint: [--limit N] [--record] [--refresh]
 ---
 
 # Assess
@@ -14,6 +14,8 @@ paid API is involved at any point.
 - `--limit N` to assess only the first N people — useful for a first trial run;
 - `--record` to record the assessment as the `assess` step of the run that is
   open. The daily run passes it; by hand, with no run open, leave it out.
+- `--refresh`, with `--record`, to record into the refresh that is open rather
+  than the daily run. The daily run passes it in refresh mode.
 
 ## The rule that shapes this whole recipe
 
@@ -69,17 +71,27 @@ Ignore it, and say so in your closing summary.
    cd backend && uv run tracker ai import --record
    ```
 
+   If it also contained `--refresh`, pass both on:
+
+   ```bash
+   cd backend && uv run tracker ai import --record --refresh
+   ```
+
    It prints, for example:
    `8 people assessed, 2 sent to review, 1 marked noise, 0 rejected files`.
    With `--record` it then records the step and prints `step recorded`; a
-   second import adds its people to what the first one recorded.
+   second import adds its people to what the first one recorded. If it prints
+   `verdicts saved, step not recorded · <reason> · code=<code>` instead, the
+   verdicts were saved but the run could not take the step: stop here, and
+   report the reason as it was printed. Do not record the step any other way,
+   and do not record it as failed: the verdicts are saved.
 
 5. **Deal with rejected files.** A rejected file is printed with its reason and
    changed nothing in the database. For each one:
    - relaunch `conversation-assessor` for that batch once, mentioning the reason
      that was printed (the reason names fields, never values);
-   - run `tracker ai import` again (with `--record` if `$ARGUMENTS` contained
-     it);
+   - run `tracker ai import` again (with `--record` and `--refresh` if
+     `$ARGUMENTS` contained them);
    - if it is rejected a second time, leave it, and report it. Do not hand-edit a
      verdict file yourself, and do not import it any other way.
 

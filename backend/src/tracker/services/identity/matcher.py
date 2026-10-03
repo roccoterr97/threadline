@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Final, Protocol
+from typing import Final
 from uuid import UUID
 
 from tracker.domain.enums import Channel, ReviewKind
@@ -34,7 +34,6 @@ from tracker.domain.relay import is_relay_identity
 from tracker.domain.rules import RulePack
 from tracker.repositories import Repositories
 from tracker.services.collection.models import RawParticipant
-from tracker.shared.constants.pagination import MAX_PAGE_SIZE
 from tracker.shared.logging import get_logger
 
 #: Question shown to the owner when two identities might be one person.
@@ -44,14 +43,6 @@ _log = get_logger(__name__)
 
 #: Marks an organisation key built from a company name rather than a domain.
 _NAME_KEY_PREFIX: Final[str] = "name:"
-
-
-class _PageReader[RowT](Protocol):
-    """A repository ``list`` method, seen from the paging helper."""
-
-    def __call__(self, *, limit: int, offset: int) -> list[RowT]:
-        """Return one page of rows."""
-        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,23 +97,45 @@ class IdentityMatcher:
         if not unique:
             return MatchResult()
         known = self._known_identities(unique)
-        resolved: dict[tuple[Channel, str], UUID] = dict(known)
+        new = [participant for participant in unique if participant.key not in known]
         pending = _Pending()
-        index = _NameIndex(self._read_all_people(), self._read_all_identities())
-        counts = _count_new_names(unique, known)
-        organisations = self._organisations_for(unique, known, pending)
-        for participant in unique:
-            if participant.key in resolved:
-                continue
-            resolved[participant.key] = self._place(
-                participant, index, counts, organisations, pending
-            )
+        resolved = {**known, **self._place_all(new, pending)}
         self._write(pending)
         return MatchResult(
             person_by_identity=resolved,
             people_created=len(pending.people),
             review_items_created=len(pending.review_items),
         )
+
+    def _place_all(
+        self,
+        new: list[RawParticipant],
+        pending: _Pending,
+    ) -> dict[tuple[Channel, str], UUID]:
+        """Find or create the person behind every participant not seen before.
+
+        A new identity is compared with everybody already known, which means
+        reading every person and every identity. On most mornings nobody is
+        new, so those two tables are read only once somebody is.
+
+        Args:
+            new: The participants that have no identity row yet, one per key.
+            pending: Collects the records to write.
+
+        Returns:
+            The person each of them now belongs to, by participant key.
+        """
+        if not new:
+            return {}
+        index = _NameIndex(self._read_all_people(), self._read_all_identities())
+        counts = _count_new_names(new)
+        organisations = self._organisations_for(new, pending)
+        placed: dict[tuple[Channel, str], UUID] = {}
+        for participant in new:
+            placed[participant.key] = self._place(
+                participant, index, counts, organisations, pending
+            )
+        return placed
 
     def _place(
         self,
@@ -213,21 +226,18 @@ class IdentityMatcher:
 
     def _organisations_for(
         self,
-        participants: list[RawParticipant],
-        known: dict[tuple[Channel, str], UUID],
+        new: list[RawParticipant],
         pending: _Pending,
     ) -> dict[str, UUID]:
         """Find or create the organisation of every new participant.
 
         Args:
-            participants: Everybody the collectors saw.
-            known: Participants that already belong to somebody.
+            new: The participants that do not belong to anybody yet.
             pending: Collects the organisations to write.
 
         Returns:
             Organisation identifier per key (see :func:`_organisation_key_of`).
         """
-        new = [item for item in participants if item.key not in known]
         return {
             **self._organisations_by_domain(new, pending),
             **self._organisations_by_name(new, pending),
@@ -282,7 +292,7 @@ class IdentityMatcher:
             return {}
         by_key: dict[str, UUID] = {
             _NAME_KEY_PREFIX + organisation_key(organisation.name): organisation.id
-            for organisation in read_every(self._repositories.organisations.list)
+            for organisation in self._repositories.organisations.list_every()
         }
         for key, name in sorted((key, name) for key, name in named.items() if key and name):
             if key in by_key:
@@ -294,11 +304,11 @@ class IdentityMatcher:
 
     def _read_all_people(self) -> list[Person]:
         """Read every person, one page at a time."""
-        return read_every(self._repositories.people.list)
+        return self._repositories.people.list_every()
 
     def _read_all_identities(self) -> list[PersonIdentity]:
         """Read every identity, one page at a time."""
-        return read_every(self._repositories.person_identities.list)
+        return self._repositories.person_identities.list_every()
 
     def _write(self, pending: _Pending) -> None:
         """Write the new records, parents before children."""
@@ -422,15 +432,10 @@ def _deduplicate(participants: list[RawParticipant]) -> list[RawParticipant]:
     return list(unique.values())
 
 
-def _count_new_names(
-    participants: list[RawParticipant],
-    known: dict[tuple[Channel, str], UUID],
-) -> dict[tuple[Channel, str], int]:
+def _count_new_names(new: list[RawParticipant]) -> dict[tuple[Channel, str], int]:
     """Count how many *new* identities per channel share each normalised name."""
     counts: dict[tuple[Channel, str], int] = defaultdict(int)
-    for participant in participants:
-        if participant.key in known:
-            continue
+    for participant in new:
         name = normalise_name(participant.display_name)
         if name:
             counts[(participant.channel, name)] += 1
@@ -509,24 +514,3 @@ def _question(
         ),
     )
 
-
-def read_every[RowT](read_page: _PageReader[RowT]) -> list[RowT]:
-    """Read a whole table by asking for one full page after another.
-
-    Args:
-        read_page: A repository ``list`` method.
-
-    Returns:
-        Every row the table holds.
-    """
-    rows: list[RowT] = []
-    offset = 0
-    while True:
-        page = read_page(limit=MAX_PAGE_SIZE, offset=offset)
-        rows.extend(page)
-        # Stopping on an empty page rather than a short one: a short page is
-        # also what a server-side cap below MAX_PAGE_SIZE looks like, and that
-        # would truncate the table silently.
-        if not page:
-            return rows
-        offset += len(page)

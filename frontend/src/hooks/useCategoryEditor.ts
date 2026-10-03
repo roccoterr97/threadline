@@ -27,10 +27,8 @@ export type CategoryAction =
 
 /** What a caller wants to hear back about one change. */
 export interface RunCallbacks {
-  /** Runs only if the change was saved. */
+  /** Runs only if the change was saved, once the list has been fetched again. */
   onSaved?: () => void;
-  /** Runs once the change has ended either way and the list has been fetched again. */
-  onSettled?: () => void;
 }
 
 /** What the settings page's parts need to change categories. */
@@ -97,13 +95,13 @@ export function useCategoryEditor(): CategoryEditor {
     onMutate: () => {
       setFeedback(null);
     },
-    // A move keeps the keyboard on the moved row, so its sentence must not take focus.
+    // A move that worked keeps the keyboard on the moved row, so its sentence
+    // must not take focus. A failure always does, so it cannot be missed.
     onSuccess: (text, action) => {
       setFeedback({ tone: 'success', text, keepFocus: action.kind === 'move' });
     },
-    onError: (error, action) => {
-      const text = categoryEditFailureText(error);
-      setFeedback({ tone: 'error', text, keepFocus: action.kind === 'move' });
+    onError: (error) => {
+      setFeedback({ tone: 'error', text: categoryEditFailureText(error) });
     },
     onSettled: async () => {
       await Promise.all([
@@ -115,7 +113,7 @@ export function useCategoryEditor(): CategoryEditor {
 
   return {
     run: (action, callbacks = {}) => {
-      mutation.mutate(action, { onSuccess: callbacks.onSaved, onSettled: callbacks.onSettled });
+      mutation.mutate(action, { onSuccess: callbacks.onSaved });
     },
     isBusy: mutation.isPending,
     feedback,

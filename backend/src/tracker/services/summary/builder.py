@@ -27,8 +27,7 @@ from tracker.schemas.summary import (
     SummaryPerson,
     SummaryProblem,
 )
-from tracker.services.identity.matcher import read_every
-from tracker.services.runs.run_recorder import derive_run_status
+from tracker.services.runs.run_recorder import derive_run_status, triggers_of_kind
 from tracker.services.summary.problem_messages import explain
 from tracker.services.summary.renderer import format_day, render_email
 from tracker.services.summary.wording import Branding
@@ -70,8 +69,9 @@ class SummaryBuilder:
         """Build the summary for one run.
 
         Args:
-            run_id: The run to report on. ``None`` uses the most recent run, and
-                a database with no run at all simply reports no problem.
+            run_id: The run to report on. ``None`` uses the most recent run
+                that is not a refresh, and a database with no such run simply
+                reports no problem.
 
         Returns:
             The e-mail, ready to send.
@@ -79,13 +79,23 @@ class SummaryBuilder:
         Raises:
             ValidationFailedError: If ``run_id`` names a run that does not exist.
         """
-        run = self._resolve_run(run_id)
+        return self.build_for(self.run_to_report(run_id))
+
+    def build_for(self, run: RunLog | None) -> SummaryEmail:
+        """Build the summary for a run already looked up with :meth:`run_to_report`.
+
+        Args:
+            run: The run to report on, or ``None`` when there is none.
+
+        Returns:
+            The e-mail, ready to send.
+        """
         problems, status = self._run_outcome(run)
         recent = self._repositories.run_logs.list(limit=RECENT_RUNS_SCANNED)
         interrupted = self._interrupted(recent)
         window_start = self._reply_window_start(run, recent, interrupted)
         problems += _interrupted_problems(run, recent, interrupted, window_start)
-        overview = read_every(self._repositories.people_overview.list)
+        overview = self._repositories.people_overview.list_every()
         do_today = [row for row in overview if _is_waiting_on_owner(row)]
         overdue = [row for row in overview if row.is_overdue]
         chase = [row for row in overview if row.is_chase_due]
@@ -103,7 +113,7 @@ class SummaryBuilder:
             chase_total=len(chase),
             replied=_section(replied),
             replied_total=len(replied),
-            open_questions=len(read_every(self._repositories.review_items.list_unanswered)),
+            open_questions=len(self._repositories.review_items.list_every_unanswered()),
             key_reminder=self._key_reminder(),
             dashboard_url=self._settings.dashboard_base_url,
         )
@@ -125,14 +135,22 @@ class SummaryBuilder:
             ),
         )
 
-    def _resolve_run(self, run_id: UUID | None) -> RunLog | None:
-        """Find the run to report on.
+    def run_to_report(self, run_id: UUID | None) -> RunLog | None:
+        """Find the run a summary reports on.
+
+        Args:
+            run_id: The run asked for, or ``None`` for the most recent run that
+                is not a refresh.
+
+        Returns:
+            The run, or ``None`` when no run has happened yet.
 
         Raises:
             ValidationFailedError: If ``run_id`` names a run that does not exist.
         """
         if run_id is None:
-            return self._repositories.run_logs.find_latest()
+            # A refresh sends no summary, so the morning's run is the one to report.
+            return self._repositories.run_logs.find_latest(triggers_of_kind(refresh=False))
         run = self._repositories.run_logs.get(run_id)
         if run is None:
             message = f"no run with identifier {run_id}"

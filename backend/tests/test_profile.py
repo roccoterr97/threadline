@@ -18,6 +18,7 @@ from tracker.domain.categories import (
     UNKNOWN_CATEGORY_KEY,
     Category,
     ColourSlot,
+    free_name,
     key_for,
 )
 from tracker.domain.enums import ContactStatus
@@ -25,6 +26,7 @@ from tracker.domain.models import CategoryRecord
 from tracker.domain.profile import Profile
 from tracker.repositories import Repositories, build_repositories
 from tracker.services.profile.applier import ProfileApplier
+from tracker.services.profile.choice import Choice, ChoiceSaver, ProfileFiles
 from tracker.services.profile.guide import render_guide, write_guide
 from tracker.services.profile.loader import (
     load_profile,
@@ -34,7 +36,7 @@ from tracker.services.profile.loader import (
 )
 from tracker.shared.clock import FixedClock
 from tracker.shared.constants.profile import GUIDE_FILE, GUIDE_TEMPLATE_FILE, MAX_CATEGORIES
-from tracker.shared.errors import ConfigurationError
+from tracker.shared.errors import ConfigurationError, ValidationFailedError
 
 EXPECTED_PRESETS = (
     "freelance_clients",
@@ -352,6 +354,21 @@ def test_a_new_categorys_key_is_made_from_its_label(
     assert key_for(label, taken) == expected
 
 
+@pytest.mark.parametrize(
+    ("name", "taken", "expected"),
+    [
+        ("Investor", {"investor"}, "Investor (2)"),
+        (" Investor", {"investor", "investor (2)"}, "Investor (3)"),
+        ("x" * 40, set(), "x" * 36 + " (2)"),
+        ("a" * 35 + "    b", set(), "a" * 35 + " (2)"),
+    ],
+)
+def test_a_name_is_told_apart_as_migration_0015_does(
+    name: str, taken: set[str], expected: str
+) -> None:
+    assert free_name(name, taken) == expected
+
+
 # --- Applying -------------------------------------------------------------------
 
 
@@ -493,6 +510,110 @@ def test_listing_an_archived_category_again_brings_it_back(
     applier.replace_categories(_preset("job_search").all_categories())
 
     assert "vc" in repositories.categories.active_keys()
+
+
+@pytest.fixture
+def named_apart(fake_client: FakeSupabaseClient) -> FakeSupabaseClient:
+    """The in-memory database with migration 0015's two unique name indexes."""
+    fake_client.unique_names["categories"] = ("label", "group_label")
+    return fake_client
+
+
+def _row(repositories: Repositories, key: str) -> CategoryRecord:
+    return next(row for row in repositories.categories.list_all() if row.key == key)
+
+
+@pytest.mark.usefixtures("named_apart")
+def test_a_new_category_takes_the_name_a_hidden_one_had(
+    applier: ProfileApplier,
+    repositories: Repositories,
+) -> None:
+    """Job search to fundraising: `investor` is called "Investor", as `vc` still is."""
+    seed(repositories, people=[make_person(person_type="vc")])
+
+    changes = applier.replace_categories(_preset("fundraising").all_categories())
+
+    assert changes.archived == ("vc",)
+    assert [category.key for category in changes.renamed] == ["vc"]
+    hidden = _row(repositories, "vc")
+    assert (hidden.label, hidden.group_label) == ("Investor (2)", "Investors (2)")
+    assert hidden.archived_at is not None
+    investor = _row(repositories, "investor")
+    assert (investor.label, investor.group_label) == ("Investor", "Investors")
+    assert repositories.people.uses_category("vc")
+
+
+@pytest.mark.usefixtures("named_apart")
+def test_choosing_the_same_list_again_changes_nothing_more(
+    applier: ProfileApplier,
+    repositories: Repositories,
+) -> None:
+    seed(repositories, people=[make_person(person_type="vc")])
+    fundraising = _preset("fundraising").all_categories()
+    applier.replace_categories(fundraising)
+
+    again = applier.replace_categories(fundraising)
+
+    assert again.renamed == ()
+    assert _row(repositories, "vc").label == "Investor (2)"
+
+
+@pytest.mark.usefixtures("named_apart")
+def test_two_categories_can_swap_their_names(
+    applier: ProfileApplier,
+    repositories: Repositories,
+) -> None:
+    """A unique index is checked row by row, so a swap needs a free name in between."""
+    seed(repositories)
+    swapped = [
+        record.to_category().model_copy(update={"label": label})
+        for record, label in zip(CATEGORIES[:2], ("Investor", "Startup"), strict=True)
+    ]
+
+    changes = applier.replace_categories([*swapped, CATEGORIES[2].to_category()])
+
+    assert changes.renamed == ()
+    assert _row(repositories, "startup").label == "Investor"
+    assert _row(repositories, "vc").label == "Startup"
+
+
+def test_a_list_that_names_two_categories_alike_is_refused_before_anything_is_written(
+    applier: ProfileApplier,
+    repositories: Repositories,
+) -> None:
+    seed(repositories)
+    before = repositories.categories.list_all()
+    twin = CATEGORIES[0].to_category().model_copy(update={"key": "founder", "label": " startup"})
+
+    with pytest.raises(ValidationFailedError, match="Startup"):
+        applier.replace_categories([CATEGORIES[0].to_category(), twin])
+
+    assert repositories.categories.list_all() == before
+
+
+def test_a_refused_list_leaves_the_chosen_preset_unsaved(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """Otherwise the set-up would count its categories step as done."""
+    seed(repositories)
+    saver = ChoiceSaver(
+        repositories,
+        ProfileApplier(repositories, clock),
+        ProfileFiles(tmp_path / "profile.toml", GUIDE_TEMPLATE_FILE, tmp_path / "guide.md"),
+    )
+    investor = _preset("fundraising").suggestions()[0]
+    choice = Choice(
+        preset="fundraising",
+        profile=_preset("fundraising"),
+        categories=(investor, investor.model_copy(update={"key": "fund"}), UNKNOWN_CATEGORY),
+    )
+
+    with pytest.raises(ValidationFailedError):
+        saver.save(choice)
+
+    assert saver.chosen_preset() is None
 
 
 def test_a_change_made_on_the_dashboard_reaches_the_guide(
@@ -692,6 +813,69 @@ def test_a_bad_colour_is_asked_again(
     assert "That did not work" in result.output
     stored = build_repositories(as_client(database)).categories.active_keys()
     assert stored == {"supplier", UNKNOWN_CATEGORY_KEY}
+
+
+@pytest.mark.usefixtures("valid_environment")
+def test_profile_choose_says_which_hidden_category_was_renamed(
+    database: FakeSupabaseClient,
+    tmp_path: Path,
+) -> None:
+    database.unique_names["categories"] = ("label", "group_label")
+    seed(build_repositories(as_client(database)), people=[make_person(person_type="vc")])
+    answers = "\n".join(["y", "n", "y"])  # all of them, nothing of my own, save
+
+    result = CliRunner().invoke(
+        build_cli(),
+        ["profile", "choose", "--preset", "fundraising", "--guide", str(tmp_path / "g.md")],
+        input=answers + "\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "archived: vc · deleted: startup, network" in result.output
+    assert "renamed so no two categories share a name: vc is now Investor (2)" in result.output
+    stored = build_repositories(as_client(database))
+    assert stored.app_settings.read_preset() == "fundraising"
+
+
+@pytest.mark.usefixtures("valid_environment")
+@pytest.mark.parametrize("taken_group", ["startups", "Not known "])
+def test_a_group_name_the_list_already_has_is_asked_again(
+    database: FakeSupabaseClient,
+    tmp_path: Path,
+    taken_group: str,
+) -> None:
+    database.unique_names["categories"] = ("label", "group_label")
+    answers = "\n".join(
+        [
+            "3",  # Job search
+            "n",  # I will pick
+            "y",  # keep Startup
+            "n",  # drop Investor
+            "n",  # drop Network
+            "y",  # add one of my own
+            "Founder",
+            taken_group,
+            "Runs a company.",
+            "pink",
+            "Founder",
+            "",  # accept "Founders"
+            "Runs a company.",
+            "pink",
+            "n",  # no more
+            "y",  # save
+        ]
+    )
+
+    result = CliRunner().invoke(
+        build_cli(),
+        ["profile", "choose", "--guide", str(tmp_path / "g.md")],
+        input=answers + "\n",
+    )
+
+    assert result.exit_code == 0, result.output
+    assert f'already have a group called "{taken_group.strip()}"' in result.output
+    stored = build_repositories(as_client(database)).categories.active_keys()
+    assert stored == {"startup", "founder", UNKNOWN_CATEGORY_KEY}
 
 
 @pytest.mark.usefixtures("valid_environment")

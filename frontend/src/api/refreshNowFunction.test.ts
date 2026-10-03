@@ -284,15 +284,53 @@ describe('handleRefresh', () => {
     expect(JSON.stringify(vi.mocked(deps.log).mock.calls)).not.toContain(GITHUB_TOKEN);
   });
 
-  it('tells a press that lost the race to wait, without starting a second run', async () => {
-    const deps = ports({ claimRequest: () => Promise.resolve(null) });
+  it('tells a press that lost the race that a refresh is starting, not to wait ten minutes', async () => {
+    const deps = ports({
+      readActivity: vi
+        .fn<RefreshPorts['readActivity']>()
+        .mockResolvedValueOnce(QUIET)
+        .mockResolvedValue({ runningSince: null, lastRequestAt: NOW }),
+      claimRequest: vi.fn(() => Promise.resolve(null)),
+    });
     const response = await handleRefresh(post(), deps);
     const { status, body } = await answer(response);
-    expect([status, body.code, body.retry_after_seconds]).toEqual([
-      429,
-      'too_soon',
-      REFRESH_COOLDOWN_MINUTES * 60,
-    ]);
+    expect([status, body.code, body.retry_after_seconds]).toEqual([409, 'already_running', undefined]);
+    expect(response.headers.get('Retry-After')).toBeNull();
+    expect(deps.claimRequest).toHaveBeenCalledTimes(1);
+    expect(deps.send).not.toHaveBeenCalled();
+  });
+
+  it('lets a press that lost the race start the run once the winner gave the cool-down back', async () => {
+    const deps = ports({
+      claimRequest: vi
+        .fn<RefreshPorts['claimRequest']>()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValue(CLAIM),
+    });
+    const { status, body } = await answer(await handleRefresh(post(), deps));
+    expect([status, body.code]).toEqual([202, 'started']);
+    expect(deps.claimRequest).toHaveBeenCalledTimes(2);
+    expect(deps.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('says a refresh is starting when a third press takes the cool-down in between', async () => {
+    const deps = ports({ claimRequest: vi.fn(() => Promise.resolve(null)) });
+    const { status, body } = await answer(await handleRefresh(post(), deps));
+    expect([status, body.code]).toEqual([409, 'already_running']);
+    expect(deps.claimRequest).toHaveBeenCalledTimes(2);
+    expect(deps.send).not.toHaveBeenCalled();
+  });
+
+  it('explains a database failure while looking again after a lost race', async () => {
+    const deps = ports({
+      readActivity: vi
+        .fn<RefreshPorts['readActivity']>()
+        .mockResolvedValueOnce(QUIET)
+        .mockRejectedValue(new StoreError(RefreshCode.DatabaseUnavailable)),
+      claimRequest: vi.fn(() => Promise.resolve(null)),
+    });
+    const { status, body } = await answer(await handleRefresh(post(), deps));
+    expect([status, body.code]).toEqual([503, 'database_unavailable']);
     expect(deps.send).not.toHaveBeenCalled();
   });
 

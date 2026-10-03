@@ -2,20 +2,25 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchCategories } from '../api/categories';
 import { clearOverride, fetchOverride, markPersonAsNoise, saveOverride } from '../api/overrides';
+import { peopleQueryKey } from '../api/people';
 import { fetchPerson, fetchPersonConversations } from '../api/person';
 import { fetchStatusLabels } from '../api/statusLabels';
 import * as copy from '../copy/en';
 import { DataUnavailableError, NotSignedInError } from '../lib/errors';
+import { peopleListState } from '../lib/peopleListAddress';
 import { expectNoAxeViolations } from '../test/axe';
 import {
   sampleCategories,
   sampleConversations,
   sampleOverride,
+  samplePeople,
   samplePerson,
   sampleStatusLabels,
   withArchived,
 } from '../test/__fixtures__/sampleData';
 import { renderWithProviders } from '../test/renderWithProviders';
+import { scrollIntoViewCalls } from '../test/scrollIntoView';
+import type { PeopleOverviewRow } from '../types/database';
 import { PersonPage } from './PersonPage';
 
 vi.mock('../api/person', async (importOriginal) => ({
@@ -97,6 +102,36 @@ describe('PersonPage — the four states', () => {
       'href',
       '/',
     );
+  });
+
+  it('goes back to the list with the filters and order it was opened from', async () => {
+    renderWithProviders(<PersonPage />, {
+      route: `/people/${PERSON.person_id}`,
+      path: '/people/:personId',
+      state: peopleListState('?type=startup&sort=name'),
+    });
+    expect(
+      await screen.findByRole('link', { name: copy.person.backToPeople }),
+    ).toHaveAttribute('href', '/?type=startup&sort=name');
+  });
+
+  it('goes back to the whole list when opened some other way', async () => {
+    renderPerson();
+    expect(
+      await screen.findByRole('link', { name: copy.person.backToPeople }),
+    ).toHaveAttribute('href', '/');
+  });
+
+  it('keeps the filters on the way back from a person who is not there', async () => {
+    fetchPersonMock.mockResolvedValue(null);
+    renderWithProviders(<PersonPage />, {
+      route: '/people/missing',
+      path: '/people/:personId',
+      state: peopleListState('?type=startup'),
+    });
+    expect(
+      await screen.findByRole('link', { name: copy.person.backToPeople }),
+    ).toHaveAttribute('href', '/?type=startup');
   });
 
   it('offers a retry when the person cannot be loaded', async () => {
@@ -379,6 +414,38 @@ describe('PersonPage — not relevant', () => {
     expect(screen.queryByText(copy.person.notFound.title)).not.toBeInTheDocument();
   });
 
+  it('goes back to the list with the filters and order it was opened from', async () => {
+    const { user } = renderWithProviders(<PersonPage />, {
+      route: `/people/${PERSON.person_id}`,
+      path: '/people/:personId',
+      state: peopleListState('?type=startup&sort=name'),
+    });
+    await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
+    await user.click(screen.getByRole('button', { name: copy.person.markNoise.confirm }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent('/?type=startup&sort=name');
+    });
+  });
+
+  it('takes the person off the kept list at once, before it is fetched again', async () => {
+    const { user, queryClient } = renderPerson();
+    // The list the People page showed, still kept from that visit.
+    queryClient.setQueryDefaults(peopleQueryKey, { gcTime: Infinity });
+    queryClient.setQueryData(peopleQueryKey, samplePeople);
+
+    await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
+    await user.click(screen.getByRole('button', { name: copy.person.markNoise.confirm }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(/^\/$/);
+    });
+    const kept = queryClient.getQueryData<PeopleOverviewRow[]>(peopleQueryKey) ?? [];
+    expect(kept.map((person) => person.person_id)).toEqual(
+      samplePeople.filter((person) => person.person_id !== PERSON.person_id).map((p) => p.person_id),
+    );
+  });
+
   it('stays on the page and says so when hiding fails', async () => {
     markNoiseMock.mockRejectedValue(new DataUnavailableError('person.mark_noise'));
     const { user } = renderPerson();
@@ -387,6 +454,18 @@ describe('PersonPage — not relevant', () => {
 
     expect(await screen.findByText(copy.person.markNoise.failed)).toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent(`/people/${PERSON.person_id}`);
+  });
+
+  it('gives the keyboard to the message when hiding fails, and brings it on screen', async () => {
+    markNoiseMock.mockRejectedValue(new DataUnavailableError('person.mark_noise'));
+    const { user } = renderPerson();
+    await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
+    await user.click(screen.getByRole('button', { name: copy.person.markNoise.confirm }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(copy.person.markNoise.failed);
+    expect(alert).toHaveFocus();
+    expect(scrollIntoViewCalls(alert)).toHaveLength(1);
   });
 
   it('can be backed out of', async () => {

@@ -30,7 +30,7 @@ from tracker.domain.models import Organisation, Person, PersonIdentity, ReviewIt
 from tracker.domain.relay import is_relay_identity
 from tracker.domain.rules import RulePack
 from tracker.repositories import Repositories
-from tracker.services.identity.matcher import SAME_PERSON_QUESTION, read_every
+from tracker.services.identity.matcher import SAME_PERSON_QUESTION
 from tracker.services.identity.merge import PersonMerger
 from tracker.shared.constants.linking import MAX_QUESTIONS_PER_ADDRESS
 from tracker.shared.logging import get_logger
@@ -92,11 +92,11 @@ class PeopleLinker:
         """
         people = [
             person
-            for person in read_every(self._repositories.people.list)
+            for person in self._repositories.people.list_every()
             if person.relevance is not Relevance.NOISE
         ]
-        identities = read_every(self._repositories.person_identities.list)
-        organisations = read_every(self._repositories.organisations.list)
+        identities = self._repositories.person_identities.list_every()
+        organisations = self._repositories.organisations.list_every()
         candidates = link_candidates(people, identities, organisations, self._rules)
         joined, ambiguous = self._join_company_records(candidates, people)
         if joined:
@@ -147,7 +147,7 @@ class PeopleLinker:
         """List, per kept e-mail conversation, the people who took part in it."""
         threads = [
             thread
-            for thread in read_every(self._repositories.conversations.list)
+            for thread in self._repositories.conversations.list_every()
             if thread.channel is Channel.EMAIL and thread.relevance is not Relevance.NOISE
         ]
         owner_of = {

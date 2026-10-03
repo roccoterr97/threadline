@@ -47,6 +47,9 @@ def _say_saved(ctx: SetupContext, saved: SavedChoice) -> None:
     io.say(f"Saved {len(saved.changes.saved)} categories, 'Not known' included.")
     if saved.changes.archived:
         io.say(f"Hidden, because people still have them: {', '.join(saved.changes.archived)}.")
+    if saved.changes.renamed:
+        names = ", ".join(f"'{category.label}'" for category in saved.changes.renamed)
+        io.say(f"Renamed while hidden, so no two categories share a name: {names}.")
     if saved.profile_file_wins:
         io.say("Note: your own profile/profile.toml file exists, so its wording is still")
         io.say("used. Remove it to use the wording of the list you chose.")

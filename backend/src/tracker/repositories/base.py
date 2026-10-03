@@ -15,7 +15,7 @@ from typing import Any, ClassVar, cast
 from uuid import UUID
 
 import httpx
-from postgrest import APIError
+from postgrest import APIError, CountMethod
 from postgrest.base_request_builder import APIResponse
 from pydantic import BaseModel
 from supabase import Client, SupabaseException
@@ -75,6 +75,40 @@ class SupabaseReader[RowT: BaseModel]:
             lambda: self._table().select(ALL_COLUMNS), limit=limit, offset=offset
         )
 
+    def list_every(self) -> list[RowT]:
+        """Fetch every row, in the order :meth:`list` returns them.
+
+        Returns:
+            Every row of the table or view.
+        """
+        return self._list_every(lambda query: query, "list_every")
+
+    def _list_every(self, narrow: Callable[[Any], Any], operation: str) -> list[RowT]:
+        """Read every row a filter keeps, in the order :meth:`list` returns them.
+
+        The pages are sorted exactly as :meth:`_select_page` sorts them, so a
+        caller that walked the pages itself sees the same rows in the same
+        order. That sort column can hold the same value on many rows, and the
+        database does not promise to order such rows the same way in two
+        requests; a read longer than one page inherits that from the paged
+        read it replaces. Sorting on the primary key as well would settle it,
+        but would also change which of two such rows comes first.
+
+        Args:
+            narrow: Adds the filters to a select, and returns it.
+            operation: The name used in the log line if a request fails.
+
+        Returns:
+            Every matching row.
+        """
+        rows = self._read_pages(
+            lambda count: narrow(self._table().select(ALL_COLUMNS, count=count)).order(
+                self.order_column, desc=self.order_descending
+            ),
+            operation,
+        )
+        return self._to_models(rows)
+
     def _select_page(
         self,
         build_query: Callable[[], Any],
@@ -128,7 +162,7 @@ class SupabaseReader[RowT: BaseModel]:
         for batch in batched(values, DATABASE_BATCH_SIZE):
             wanted = [str(item) for item in batch]
             rows = self._select_every(
-                lambda w=wanted: self._table().select(ALL_COLUMNS).in_(column, w),
+                lambda query, w=wanted: query.in_(column, w),
                 operation,
             )
             found.extend(self._to_models(rows))
@@ -136,41 +170,97 @@ class SupabaseReader[RowT: BaseModel]:
 
     def _select_every(
         self,
-        build: Callable[[], Any],
+        narrow: Callable[[Any], Any],
         operation: str,
+        *,
+        columns: str = ALL_COLUMNS,
     ) -> list[dict[str, Any]]:
-        """Read every row a query matches, one server page at a time.
-
-        Supabase answers at most a fixed number of rows however large a range
-        is asked for, and says nothing when it truncates. Asking for "all of
-        them" in one request therefore returns a plausible, wrong answer. This
-        walks the pages until one comes back empty — not merely short, because
-        a short page is also what a lowered server cap looks like.
+        """Read every row a filter keeps, in no order a caller may rely on.
 
         Rows are ordered by primary key so that paging cannot repeat or skip a
         row; callers that need another order sort the joined result themselves.
 
         Args:
-            build: Makes a fresh query builder each time it is called.
+            narrow: Adds the filters to a select, and returns it.
+            operation: The name used in the log line if a request fails.
+            columns: The columns to read.
+
+        Returns:
+            Every matching row.
+        """
+        return self._read_pages(
+            lambda count: narrow(self._table().select(columns, count=count)).order("id"),
+            operation,
+        )
+
+    def _read_pages(
+        self,
+        build: Callable[[CountMethod | None], Any],
+        operation: str,
+    ) -> list[dict[str, Any]]:
+        """Read every row a sorted query matches, one server page at a time.
+
+        Supabase answers at most a fixed number of rows however large a range
+        is asked for, and says nothing when it truncates. Asking for "all of
+        them" in one request therefore returns a plausible, wrong answer, and
+        a short page proves nothing: it is also what a lowered server cap
+        looks like.
+
+        So the first request also asks how many rows match, and the reading
+        stops once that many are in hand. A read that fits in one page costs
+        one request. When the answer carries no total, the pages are walked
+        until one comes back empty, which costs one request more. An empty
+        page always ends the reading, so rows deleted meanwhile cannot keep it
+        going.
+
+        Args:
+            build: Makes a fresh, filtered and sorted query each time it is
+                called, asking for the total when it is given a count method.
             operation: The name used in the log line if a request fails.
 
         Returns:
             Every matching row.
         """
-        collected: list[dict[str, Any]] = []
-        offset = 0
-        while True:
-            rows = self._run(
-                lambda start=offset: build()
-                .order("id")
-                .range(start, start + MAX_PAGE_SIZE - 1)
-                .execute(),
-                operation,
-            )
+        first = self._first_page(build, operation)
+        total = first.count
+        collected = list(_rows_of(first))
+        page_length = len(collected)
+        while page_length and (total is None or len(collected) < total):
+            offset = len(collected)
+            rows = self._run(lambda start=offset: _page(build(None), start), operation)
             collected.extend(rows)
-            if not rows:
-                return collected
-            offset += len(rows)
+            page_length = len(rows)
+        return collected
+
+    def _first_page(
+        self,
+        build: Callable[[CountMethod | None], Any],
+        operation: str,
+    ) -> APIResponse:
+        """Ask for the first page, and for how many rows match in all.
+
+        Only this request asks for the total: counting is extra work for the
+        database, and one total is enough.
+
+        The client reads the total from the answer's ``Content-Range`` header
+        and raises :class:`ValueError` when the server wrote ``*`` there, which
+        is how PostgREST says "not counted". Such an answer carries no total,
+        so the page is asked for again without one, rather than failing a read
+        that worked before totals were asked for.
+
+        Args:
+            build: Makes a fresh, filtered and sorted query each time it is
+                called, asking for the total when it is given a count method.
+            operation: The name used in the log line if a request fails.
+
+        Returns:
+            The database's answer, with the total when the server gave one.
+        """
+        try:
+            return self._respond(lambda: _page(build(CountMethod.exact), 0), operation)
+        except ValueError:
+            _log.warning("database_total_unreadable", table=self.table_name, operation=operation)
+            return self._respond(lambda: _page(build(None), 0), operation)
 
     def _table(self) -> Any:  # noqa: ANN401 - the builder type changes along the call chain
         """Return a fresh query builder for this table or view."""
@@ -206,7 +296,7 @@ class SupabaseReader[RowT: BaseModel]:
         return DatabaseUnavailableError(message)
 
     def _run(self, action: Callable[[], APIResponse], operation: str) -> list[dict[str, Any]]:
-        """Execute a query and map any transport failure to a typed error.
+        """Execute a query and return its rows.
 
         Args:
             action: Thunk that performs the request.
@@ -214,6 +304,22 @@ class SupabaseReader[RowT: BaseModel]:
 
         Returns:
             The rows the database returned.
+
+        Raises:
+            DatabaseUnavailableError: If the database could not be reached or
+                refused the request.
+        """
+        return _rows_of(self._respond(action, operation))
+
+    def _respond(self, action: Callable[[], APIResponse], operation: str) -> APIResponse:
+        """Execute a query and map any transport failure to a typed error.
+
+        Args:
+            action: Thunk that performs the request.
+            operation: Name of the repository method, used in the log line.
+
+        Returns:
+            The database's answer: the rows, and the total when it was asked for.
 
         Raises:
             DatabaseUnavailableError: If the database could not be reached or
@@ -242,9 +348,7 @@ class SupabaseReader[RowT: BaseModel]:
                 # get the same refusal.
                 raise self._unavailable(operation, error) from error
             else:
-                # PostgREST types its payload as generic JSON; every table we
-                # read returns objects, and the model validation proves it.
-                return cast("list[dict[str, Any]]", response.data)
+                return response
         message = "retry loop ended without an answer"  # pragma: no cover
         raise DatabaseUnavailableError(message)  # pragma: no cover
 
@@ -261,6 +365,28 @@ class SupabaseReader[RowT: BaseModel]:
         if offset < 0:
             message = "page offset cannot be negative"
             raise ValidationFailedError(message)
+
+
+def _page(query: Any, start: int) -> APIResponse:  # noqa: ANN401 - the builder type changes along the call chain
+    """Ask for the page of a sorted query that starts at one position.
+
+    Args:
+        query: The filtered and sorted query.
+        start: How many rows to skip.
+
+    Returns:
+        The database's answer.
+    """
+    return query.range(start, start + MAX_PAGE_SIZE - 1).execute()
+
+
+def _rows_of(response: APIResponse) -> list[dict[str, Any]]:
+    """Return the rows of an answer.
+
+    PostgREST types its payload as generic JSON; every table we read returns
+    objects, and the model validation proves it.
+    """
+    return cast("list[dict[str, Any]]", response.data)
 
 
 class SupabaseRepository[ModelT: Record](SupabaseReader[ModelT]):

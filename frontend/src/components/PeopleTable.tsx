@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import * as copy from '../copy/en';
 import type { Clock } from '../lib/clock';
 import { categoryFor } from '../domain/categories';
@@ -7,6 +6,7 @@ import { formatDate, formatRelative, formatRoleLine } from '../lib/format';
 import type { PeopleOverviewRow } from '../types/database';
 import { FollowUpBadge } from './FollowUpBadge';
 import { PersonCard } from './PersonCard';
+import { PersonLink } from './PersonLink';
 import { PersonTypeBadge } from './PersonTypeBadge';
 import { SignalBadge } from './SignalBadge';
 import { StatusBadge } from './StatusBadge';
@@ -75,12 +75,12 @@ export function PeopleTable({ people, clock, vocabulary }: PeopleTableProps) {
             {people.map((person) => (
               <tr key={person.person_id} className="border-b border-line last:border-b-0">
                 <th scope="row" className={`${CELL} font-normal`}>
-                  <Link
-                    to={`/people/${person.person_id}`}
+                  <PersonLink
+                    personId={person.person_id}
                     className="font-medium text-accent underline underline-offset-2"
                   >
                     {person.full_name}
-                  </Link>
+                  </PersonLink>
                   <span className="block text-ink-muted">
                     {formatRoleLine(person.role_title, person.organisation_name)}
                   </span>

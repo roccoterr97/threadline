@@ -93,7 +93,13 @@ def register(cli: typer.Typer) -> None:
 **A schema change.** A new file under `supabase/migrations/`, never an edit to
 an existing one. New tables get their grants explicitly: `0002_access_rules.sql`
 removes the blanket permissions Supabase gives the `anon` and `authenticated`
-roles, including for tables created later.
+roles, including for tables created later. Register the file in
+`KNOWN_MIGRATIONS` (`services/database_structure.py`) with the mark it leaves
+that the data API can see: a table, a column, an enum value or a row only that
+file changes. A file with no visible mark is applied again whenever no later
+file shows, so it must be safe to run twice, and the newest file must always
+have a mark (a test checks it), or a database that has it would be offered it
+on every run of `tracker setup database`.
 
 **Tuning values.** A module under `tracker/shared/constants/`, one per concern.
 Not `.env`, which is only for secrets and deployment values.
@@ -192,6 +198,20 @@ other than the owner are stored, and never an invitation's own description.
 `--since` overrides both. A thread with at least one message inside the window is
 stored **whole**, because a status cannot be judged from half a conversation.
 
+An IMAP folder with more than `IMAP_MAX_MESSAGES_PER_FOLDER` (10,000) messages
+in the window gives its newest 10,000 only. The reader says so
+(`window_capped`); the collector stores everything it read and hands the
+problem back on its report rather than raising it. `collect all --record` then
+counts the mailbox as collected, so what was stored is tidied and assessed the
+same run, and records `collect_email` as failed with `mailbox_window_capped`
+(with its counts), so the run closes `partial` and the summary and the run page
+tell the owner in plain English. One of several mailboxes failing outright is
+handed back the same way, under that mailbox's code. A capped read still counts
+as the last mailbox read for the next window: the reader always takes the newest mail, so
+starting further back would never reach the skipped part and would only make
+every later read hit the cap again. A skipped conversation is read whole as
+soon as somebody writes in it again.
+
 **The obvious-noise rules** (`domain/prefilter.py`) are pure functions and say
 only "obviously machine traffic" or "no opinion" — judging whether a human
 conversation matters to the owner belongs to the assessment. Two rules
@@ -269,7 +289,10 @@ With `--record`, the two commands record the `assess` step of the run
 themselves (`services/assessment/run_step.py`): the export when there is nobody
 to assess, the import with the people it assessed and how many it sent to
 review. A second import in the same run — a rejected file answered again —
-adds to the step instead of replacing it.
+adds to the step instead of replacing it. The import saves the verdicts before
+it looks for the run: when the run can no longer be recorded into (closed by
+something else, or more than three hours old), it still saves them and prints
+`verdicts saved, step not recorded · <reason> · code=…` instead of `step recorded`.
 
 **Rules before the AI** (`domain/relevance.py`, pure functions): a thread already
 marked noise stays noise; a thread the owner answered `yes` or `no` about is
@@ -324,6 +347,13 @@ edit change a key); `0009_categories.sql` also enforces the key format, the
 palette, a fixed `unknown` and at most eight categories in use. A category
 somebody still has cannot be deleted — the foreign keys refuse — so it is
 archived instead: it keeps labelling those people and is no longer offered.
+`0015_category_names.sql` keeps names and group names unique, archived
+categories included, since an archived one still shows as a column while
+somebody has it. So `ProfileApplier.replace_categories` first gives any row
+holding a name the new list hands another category a free one ("Investor (2)",
+the rule 0015 itself uses), refuses a list that names two categories alike
+before writing anything, and the chosen preset is remembered only after the
+categories are in.
 
 **The profile supplies what the dashboard does not edit** (`services/profile/`,
 `domain/profile.py`): the wording, a label and a description for each of the six
@@ -369,8 +399,11 @@ it does, so the small commands are folded into their neighbours
 own, and one that fails is printed with its code while the rest still runs:
 `run start --prepare` ends with `ready: yes` or `ready: no` (the health check's
 verdict, which the recipe branches on), `people tidy` runs the link after a
-failed merge, and `run finish --clean` removes the work files even when the run
-could not be closed. The separate commands still work by hand.
+failed merge, and `run finish --clean` removes the work files once the run is
+closed. When the run cannot be closed it keeps them instead (`work files kept`):
+such a run may also have refused an import, and verdict files must never be
+thrown away unimported; the next run that closes cleans up. The separate
+commands still work by hand.
 
 **GitHub Actions, on the owner's subscription.** The workflow runs on a
 `schedule` (a daily `cron` with a `timezone`, written by `tracker setup
@@ -383,14 +416,21 @@ secret, which Threadline itself never stores) and the permissions in
 bare `claude -p` call because the action installs a pinned Claude Code, fails
 the step when the session fails, and passes GitHub's own token, so no Claude
 GitHub App is needed. Other fixed points: `permissions: contents: read` and
-`actions: read`, a job timeout, and two `concurrency` groups, one for daily
-runs and one for refreshes, so two daily runs or two refreshes never overlap
-and a refresh pressed while another is going can never push a waiting daily
-run out of the queue. Across the two groups, a gate step (the reason for
+`actions: read`, a 45-minute limit on the recipe step, a job timeout (50
+minutes for a refresh, 120 for a daily run), and two `concurrency` groups, one
+for daily runs and one for refreshes, so two daily runs or two refreshes never
+overlap and a refresh pressed while another is going can never push a waiting
+daily run out of the queue. Across the two groups, a gate step (the reason for
 `actions: read`: it lists the runs that are going) makes them take turns: a
-daily run waits for a refresh in progress to finish, and a refresh that finds
-a daily run going steps aside, since the daily run reads everything new
-anyway. There is also a first step
+daily run waits for a refresh in progress to finish — up to 55 minutes, by
+which time GitHub has stopped any refresh — and a refresh that finds a daily
+run going steps aside, since the daily run reads everything new anyway. The
+gate asks GitHub up to three times, each look cut off after 30 seconds, and
+counts its wait in real time, lookups included; an error, a hang or an answer
+that is not a number is never read as "nothing is going". If GitHub still
+cannot say, a refresh steps aside, and the daily run keeps asking and goes
+ahead with a warning on the run page once its 55 minutes are up: a refresh can
+be pressed again, a skipped morning cannot. There is also a first step
 that finishes green, doing nothing, when a required secret is missing (the
 public template, an unconfigured copy). Every setting reaches the Claude step
 only, each read from the Actions secret or variable that
@@ -408,6 +448,16 @@ already skips everybody else), and no summary is built or sent. The next
 morning's "replied since" ignores refresh runs, so nothing a refresh saw goes
 unreported.
 
+A refresh and a daily run can be open at the same time (the gate keeps them
+apart on GitHub, but not across routes, and not when GitHub cannot say what is
+going). Each keeps to its own run: without `--run`, a command acts on the
+newest open run of its own kind — a refresh when it is given `--refresh`
+(`collect all --record --refresh`, `ai export|import --record --refresh`,
+`run step|finish --refresh`), the newest daily run otherwise, and `summary
+build` and `summary send` only ever take a daily run. So a refresh can never
+record into, or close, the morning's run, and the morning's e-mail is never
+left without a run to send it for.
+
 **Two ways to send the summary** (`SUMMARY_DELIVERY`). `smtp` — the default
 whenever an IMAP mailbox is read — has Python send it: `tracker summary send`
 reads the file, refuses it unless its recipient and subject prefix match the
@@ -420,6 +470,22 @@ connector, which only exists in a Claude cloud routine: the token from
 `claude setup-token` cannot use claude.ai connectors. Outlook.com accepts only
 OAuth2 for SMTP, so an Outlook-only owner needs an IMAP mailbox too, or the
 routine.
+
+**A run's summary goes out once** (`services/summary/send_once.py`). Two
+records say it went: the run's successful `summary_email` step, and a marker
+file beside the summary file, written the moment the mail server accepted it
+and removed with the work files. `summary send` refuses when either says so;
+when the mail went but the step could not be recorded it still reports
+`summary sent`, then `step not recorded · code=…`, so nothing reads as a failure
+worth retrying. `summary build` refuses for a run still open whose summary
+went, and removes the copy it built before, so on the connector route, where
+the session sends, there is no file left to send twice. The one doubt left —
+a send cut off before it could tell whether the server took the mail — is
+settled towards sending: a second copy is a nuisance, a missing summary a lost
+morning. For the same reason the connector route keeps one gap: the session
+sends before anything is recorded, so if its `run step` then fails, a later
+build in the same run is not stopped. Closing it would mean a claim recorded
+before the send, which turns a cut-off send into a missing summary.
 
 **The steps are independent and each is recorded.** `run_logs` holds one row per
 morning, `run_step_logs` one row per step, with counts and an error code only —
@@ -471,8 +537,8 @@ your attention" section and on the dashboard's run page, in plain English.
 Switching to the Mac route is the owner's decision, written up in
 `docs/operations.md`.
 
-Commands: `tracker run start [--prepare]`, `tracker run step`,
-`tracker run finish [--clean]`, `tracker summary build [--out PATH]`,
+Commands: `tracker run start [--prepare]`, `tracker run step [--refresh]`,
+`tracker run finish [--clean] [--refresh]`, `tracker summary build [--out PATH]`,
 `tracker summary send [--file PATH]`, `tracker setup schedule|github|cloud`.
 
 ## The database contract

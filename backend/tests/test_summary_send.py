@@ -6,18 +6,21 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import SecretStr
 
 from tests.conftest import FakeSupabaseClient, as_client
 from tests.summary_world import NOW, TODAYS_RUN, sample_client
-from tracker.domain.enums import RunStatus, RunStep
+from tracker.domain.enums import RunStatus, RunStep, RunTrigger
+from tracker.domain.models import RunStepLog
 from tracker.infrastructure.smtp import SmtpAccount, SmtpMailer
 from tracker.repositories import build_repositories
 from tracker.schemas.summary import SummaryEmail
-from tracker.services.runs.run_recorder import RunRecorder
+from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
 from tracker.services.summary.builder import SummaryBuilder
+from tracker.services.summary.send_once import sent_marker
 from tracker.services.summary.sender import SummarySender, smtp_account
 from tracker.shared import config
 from tracker.shared.clock import FixedClock
@@ -26,6 +29,7 @@ from tracker.shared.constants.mailbox import DeliveryRoute
 from tracker.shared.constants.retry import SOURCE_REQUEST_ATTEMPTS
 from tracker.shared.errors import (
     ConfigurationError,
+    DatabaseUnavailableError,
     MailboxPasswordError,
     SourceUnavailableError,
     ValidationFailedError,
@@ -130,6 +134,64 @@ def test_a_summary_already_sent_for_this_run_is_not_sent_again(
     assert summary_step(client)["status"] == RunStatus.SUCCESS.value
 
 
+def test_a_refresh_going_at_the_same_time_never_takes_the_summarys_run(
+    imap_settings: Settings, tmp_path: Path
+) -> None:
+    """A refresh opened after the morning's run must not leave the summary with no run."""
+    client = sample_client()
+    path = written_summary(imap_settings, tmp_path, client)
+    server = FakeSmtp()
+    sender = sender_for(imap_settings, client, mailer_on(server))
+    RunRecorder(build_repositories(as_client(client)), FixedClock(NOW)).start(RunTrigger.REFRESH)
+
+    sender.send(path)
+
+    assert len(server.sent) == 1
+    assert summary_step(client)["status"] == RunStatus.SUCCESS.value
+
+
+class LostAfterSending(RunRecorder):
+    """A run log the database stops answering for just after the mail went."""
+
+    def record_step(self, run_id: UUID, outcome: StepOutcome) -> RunStepLog | None:
+        if outcome.result is StepResult.SUCCESS:
+            message = "the database did not answer"
+            raise DatabaseUnavailableError(message)
+        return super().record_step(run_id, outcome)
+
+
+def test_a_summary_sent_but_not_recorded_is_reported_and_never_sent_twice(
+    imap_settings: Settings, tmp_path: Path
+) -> None:
+    client = sample_client()
+    path = written_summary(imap_settings, tmp_path, client)
+    reopen_todays_run(client)
+    server = FakeSmtp()
+    lost = LostAfterSending(build_repositories(as_client(client)), FixedClock(NOW))
+
+    sent = SummarySender(imap_settings, lambda: mailer_on(server), lost).send(path)
+    with pytest.raises(ValidationFailedError, match="already sent"):
+        sender_for(imap_settings, client, mailer_on(server)).send(path)
+
+    assert sent.step_error_code == "database_unavailable"
+    assert len(server.sent) == 1
+    assert sent_marker(path).read_text(encoding="utf-8") == str(TODAYS_RUN)
+
+
+def test_a_sent_marker_for_another_run_stops_nothing(
+    imap_settings: Settings, tmp_path: Path
+) -> None:
+    client = sample_client()
+    path = written_summary(imap_settings, tmp_path, client)
+    sent_marker(path).write_text(str(uuid4()), encoding="utf-8")
+    server = FakeSmtp()
+
+    sent = sender_for(imap_settings, client, mailer_on(server)).send(path)
+
+    assert sent.step_error_code is None
+    assert len(server.sent) == 1
+
+
 def test_a_summary_that_failed_can_be_sent_again(imap_settings: Settings, tmp_path: Path) -> None:
     client = sample_client()
     path = written_summary(imap_settings, tmp_path, client)
@@ -137,6 +199,7 @@ def test_a_summary_that_failed_can_be_sent_again(imap_settings: Settings, tmp_pa
     with pytest.raises(SourceUnavailableError):
         refused.send(path)
     server = FakeSmtp()
+    assert not sent_marker(path).exists()
 
     sender_for(imap_settings, client, mailer_on(server)).send(path)
 

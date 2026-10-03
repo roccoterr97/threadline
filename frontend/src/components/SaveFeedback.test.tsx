@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { scrollIntoViewCalls } from '../test/scrollIntoView';
 import { SaveFeedback } from './SaveFeedback';
 
 const SAVED = 'Your correction was saved.';
@@ -25,7 +26,7 @@ describe('SaveFeedback', () => {
 
     const banner = screen.getByRole('alert');
     expect(banner).toHaveFocus();
-    expect(banner.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'nearest' });
+    expect(scrollIntoViewCalls(banner)).toEqual([[{ behavior: 'smooth', block: 'nearest' }]]);
   });
 
   it('leaves the keyboard alone when asked to, but still speaks', () => {
@@ -34,7 +35,7 @@ describe('SaveFeedback', () => {
     const banner = screen.getByRole('status');
     expect(banner).toHaveTextContent(SAVED);
     expect(banner).not.toHaveFocus();
-    expect(banner.scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollIntoViewCalls(banner)).toEqual([]);
   });
 
   it('does not animate the scroll for someone who asked for less motion', () => {
@@ -45,17 +46,17 @@ describe('SaveFeedback', () => {
 
     render(<SaveFeedback outcome={{ tone: 'success', text: SAVED }} />);
 
-    expect(screen.getByRole('status').scrollIntoView).toHaveBeenCalledWith({
-      behavior: 'auto',
-      block: 'nearest',
-    });
+    expect(scrollIntoViewCalls(screen.getByRole('status'))).toEqual([
+      [{ behavior: 'auto', block: 'nearest' }],
+    ]);
   });
 
   it('comes back on screen when the outcome changes', () => {
     const { rerender } = render(<SaveFeedback outcome={{ tone: 'success', text: SAVED }} />);
     rerender(<SaveFeedback outcome={{ tone: 'error', text: FAILED }} />);
 
-    expect(screen.getByRole('alert')).toHaveFocus();
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(2);
+    const banner = screen.getByRole('alert');
+    expect(banner).toHaveFocus();
+    expect(scrollIntoViewCalls(banner)).toHaveLength(2);
   });
 });

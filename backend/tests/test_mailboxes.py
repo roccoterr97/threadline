@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 from pydantic import SecretStr
+from typer.testing import CliRunner
 
 from tests.conftest import JOB_SEARCH_RULES, TEST_ENCRYPTION_KEY, FakeSupabaseClient, as_client
 from tests.imap_world import (
@@ -31,24 +32,37 @@ from tests.imap_world import (
 )
 from tests.test_collectors import collect_email, rows_of
 from tests.test_summary_send import FakeSmtp
-from tracker.domain.enums import Channel, RunStep
+from tracker.cli.main import build_cli
+from tracker.domain.enums import Channel, RunStatus, RunStep, RunTrigger
 from tracker.domain.mail import MailMessage
+from tracker.domain.models import RunLog, RunStepLog
 from tracker.infrastructure.imap.connection import ImapConnection, StoreAccess
 from tracker.infrastructure.imap.reader import ImapMailbox
 from tracker.infrastructure.secret_store import SecretStore, imap_password_name
 from tracker.infrastructure.smtp import SmtpAccount
 from tracker.repositories import Repositories, build_repositories
+from tracker.services.collection.all_sources import AllSourcesCollector, Source, record_outcomes
 from tracker.services.collection.calendar_collector import CalendarCollector
 from tracker.services.collection.email_collector import EmailCollector
 from tracker.services.collection.mailbox import MailboxReader, MailboxSource
 from tracker.services.collection.mailboxes import configured_mailboxes, imap_account
-from tracker.services.runs.run_recorder import unconfigured_steps
+from tracker.services.collection.window import last_collected_at
+from tracker.services.runs.run_recorder import (
+    RunRecorder,
+    StepOutcome,
+    StepResult,
+    unconfigured_steps,
+)
 from tracker.services.summary.problem_messages import explain
 from tracker.shared import config
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
 from tracker.shared.constants.mailbox import ImapProvider, MailSource
-from tracker.shared.errors import ConfigurationError, MailboxPasswordError
+from tracker.shared.errors import (
+    ConfigurationError,
+    MailboxPasswordError,
+    MailboxWindowCappedError,
+)
 
 OWNER = "sam.rivera@mailbox.example"
 SENT = "Sent Messages"
@@ -358,6 +372,7 @@ class _SlowEmptyMailbox:
     def __init__(self, name: str, diary: list[str]) -> None:
         self._name = name
         self._diary = diary
+        self.window_capped = False
 
     async def list_messages_since(self, since: datetime) -> list[MailMessage]:
         self._diary.append(f"{self._name} started")
@@ -373,6 +388,184 @@ class _SlowEmptyMailbox:
 
     async def fetch_bodies(self, message_ids: Sequence[str]) -> list[str]:
         return ["" for _ in message_ids]
+
+
+# --- A mailbox read only in part ----------------------------------------------
+
+
+@pytest.fixture
+def small_cap(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A cap of one message a folder, so the test mailbox overflows it."""
+    monkeypatch.setattr("tracker.infrastructure.imap.reader.IMAP_MAX_MESSAGES_PER_FOLDER", 1)
+
+
+@pytest.mark.usefixtures("small_cap")
+def test_a_mailbox_read_in_part_stores_what_it_read_and_says_so(
+    repositories: Repositories,
+    settings: Settings,
+    clock: FixedClock,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    collector = EmailCollector(
+        repositories, settings, clock, JOB_SEARCH_RULES, [imap_source(outlook_twin())]
+    )
+
+    with pytest.raises(MailboxWindowCappedError):
+        collector.collect()
+
+    assert rows_of(fake_client, "conversations")
+
+
+@pytest.mark.usefixtures("small_cap")
+def test_a_mailbox_that_failed_outranks_one_read_in_part(
+    repositories: Repositories, settings: Settings, clock: FixedClock
+) -> None:
+    @asynccontextmanager
+    async def refused() -> AsyncIterator[MailboxReader]:
+        message = "Google refused the app password"
+        raise MailboxPasswordError(message)
+        yield  # pragma: no cover - makes this a generator
+
+    sources = [imap_source(outlook_twin()), MailboxSource(MailSource.IMAP, refused)]
+
+    with pytest.raises(MailboxPasswordError):
+        EmailCollector(repositories, settings, clock, JOB_SEARCH_RULES, sources).collect()
+
+
+@pytest.mark.usefixtures("small_cap")
+def test_a_mailbox_read_in_part_is_recorded_as_a_failed_step_the_owner_reads(
+    repositories: Repositories, settings: Settings, clock: FixedClock
+) -> None:
+    source = imap_source(outlook_twin())
+    collector = EmailCollector(repositories, settings, clock, JOB_SEARCH_RULES, [source])
+    recorder = RunRecorder(repositories, clock)
+    run = recorder.start(RunTrigger.GITHUB)
+    email = Source(Channel.EMAIL, RunStep.COLLECT_EMAIL, collector.read)
+    outcome = AllSourcesCollector([[email]]).collect()
+
+    record_outcomes(recorder, run.id, outcome)
+
+    step = recorder.find_step(run.id, RunStep.COLLECT_EMAIL)
+    assert step is not None
+    assert (step.status, step.error_code) == (RunStatus.FAILED, "mailbox_window_capped")
+    assert (step.items_found, step.items_new) == (1, 1)
+    problem = explain(RunStep.COLLECT_EMAIL, step.error_code)
+    assert "newest 10,000 messages" in problem.what_happened
+    assert "mailbox_window_capped" not in problem.what_happened + problem.what_to_do
+
+
+@pytest.fixture
+def only_a_capped_mailbox(
+    monkeypatch: pytest.MonkeyPatch,
+    small_cap: None,  # noqa: ARG001 - a fixture used for its effect
+    repositories: Repositories,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """Point ``tracker collect all`` at one IMAP mailbox that overflows the cap, alone."""
+    collector = EmailCollector(
+        repositories, settings, clock, JOB_SEARCH_RULES, [imap_source(outlook_twin())]
+    )
+    only_the_mailbox = ((Source(Channel.EMAIL, RunStep.COLLECT_EMAIL, collector.read),),)
+    monkeypatch.setattr("tracker.cli.commands.collect._wiring", lambda: (settings, repositories))
+    monkeypatch.setattr("tracker.cli.commands.collect._rules", lambda _repos: JOB_SEARCH_RULES)
+    monkeypatch.setattr("tracker.cli.commands.collect.SystemClock", lambda _zone: clock)
+    monkeypatch.setattr("tracker.cli.commands.collect._sources", lambda *_: only_the_mailbox)
+
+
+@pytest.mark.usefixtures("only_a_capped_mailbox")
+def test_a_mailbox_read_in_part_alone_still_counts_as_collected_so_the_run_assesses_it(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    clock: FixedClock,
+) -> None:
+    """The common Gmail-only set-up: what was stored must be tidied and assessed the same run."""
+    recorder = RunRecorder(repositories, clock)
+    run = recorder.start(RunTrigger.GITHUB)
+
+    result = CliRunner().invoke(build_cli(), ["collect", "all", "--record"])
+
+    assert result.exit_code == 0
+    lines = result.output.splitlines()
+    counts = lines.index("conversations found: 1 (new: 1, noise: 0)")
+    assert lines[counts - 1] == "channel: email"
+    assert lines[counts + 4] == "read in part · code=mailbox_window_capped"
+    assert "sources collected: 1" in lines
+    assert lines[-1] == "steps recorded"
+    assert rows_of(fake_client, "conversations")
+    recorder.record_step(run.id, StepOutcome(RunStep.ASSESS, StepResult.SUCCESS))
+    assert recorder.finish(run.id).status is RunStatus.PARTIAL
+
+
+@pytest.mark.usefixtures("only_a_capped_mailbox")
+def test_by_hand_a_mailbox_read_in_part_prints_its_counts_and_ends_as_a_failure(
+    fake_client: FakeSupabaseClient,
+) -> None:
+    result = CliRunner().invoke(build_cli(), ["collect", "all"])
+
+    assert result.exit_code != 0
+    assert "read in part · code=mailbox_window_capped" in result.output.splitlines()
+    assert rows_of(fake_client, "conversations")
+    assert rows_of(fake_client, "run_step_logs") == []
+
+
+def test_the_next_window_starts_from_a_read_that_hit_the_cap(
+    repositories: Repositories,
+) -> None:
+    """The reader takes the newest mail, so staying further back would never reach the rest."""
+    earlier = RunLog(
+        started_at=datetime(2026, 9, 10, 7, 0, tzinfo=UTC),
+        status=RunStatus.SUCCESS,
+        trigger=RunTrigger.GITHUB,
+    )
+    capped = RunLog(
+        started_at=datetime(2026, 9, 17, 7, 0, tzinfo=UTC),
+        status=RunStatus.PARTIAL,
+        trigger=RunTrigger.GITHUB,
+    )
+    repositories.run_logs.bulk_upsert([earlier, capped])
+    repositories.run_step_logs.bulk_upsert(
+        [
+            RunStepLog(run_id=earlier.id, step=RunStep.COLLECT_EMAIL, status=RunStatus.SUCCESS),
+            RunStepLog(
+                run_id=capped.id,
+                step=RunStep.COLLECT_EMAIL,
+                status=RunStatus.FAILED,
+                error_code="mailbox_window_capped",
+            ),
+        ]
+    )
+
+    assert last_collected_at(repositories, RunStep.COLLECT_EMAIL) == capped.started_at
+
+
+def test_a_mailbox_that_failed_outright_does_not_move_the_window(
+    repositories: Repositories,
+) -> None:
+    earlier = RunLog(
+        started_at=datetime(2026, 9, 10, 7, 0, tzinfo=UTC),
+        status=RunStatus.SUCCESS,
+        trigger=RunTrigger.GITHUB,
+    )
+    failed = RunLog(
+        started_at=datetime(2026, 9, 17, 7, 0, tzinfo=UTC),
+        status=RunStatus.FAILED,
+        trigger=RunTrigger.GITHUB,
+    )
+    repositories.run_logs.bulk_upsert([earlier, failed])
+    repositories.run_step_logs.bulk_upsert(
+        [
+            RunStepLog(run_id=earlier.id, step=RunStep.COLLECT_EMAIL, status=RunStatus.SUCCESS),
+            RunStepLog(
+                run_id=failed.id,
+                step=RunStep.COLLECT_EMAIL,
+                status=RunStatus.FAILED,
+                error_code="source_unavailable",
+            ),
+        ]
+    )
+
+    assert last_collected_at(repositories, RunStep.COLLECT_EMAIL) == earlier.started_at
 
 
 def test_two_mailboxes_are_read_at_the_same_time(

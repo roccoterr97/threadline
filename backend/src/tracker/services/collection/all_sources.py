@@ -8,7 +8,10 @@ collector filed an invitation under — so what was read is stored in a fixed
 order, one source at a time.
 
 A source that fails never stops the others: its failure is kept next to the
-others' results, and the run records it as that step's outcome.
+others' results, and the run records it as that step's outcome. A source that
+was stored but read only in part counts as collected — what it stored is
+tidied and assessed in the same run — and its step is still recorded as failed
+with the reason, so the owner is told.
 """
 
 from __future__ import annotations
@@ -60,8 +63,15 @@ class SourceOutcome:
 
     @property
     def succeeded(self) -> bool:
-        """Whether the source is set up and was read and stored."""
+        """Whether the source is set up and was read and stored, in full or in part."""
         return self.report is not None and not self.report.not_configured
+
+    @property
+    def problem(self) -> TrackerError | None:
+        """Why the source, or part of it, was not read; ``None`` when all of it was."""
+        if self.failure is not None:
+            return self.failure
+        return self.report.problem if self.report is not None else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,9 +165,11 @@ def _step_outcome(outcome: SourceOutcome) -> StepOutcome | None:
     report = outcome.report
     if report is None or report.not_configured:
         return None
+    problem = report.problem
     return StepOutcome(
         step=outcome.source.step,
-        result=StepResult.SUCCESS,
+        result=StepResult.SUCCESS if problem is None else StepResult.FAILED,
         items_found=report.conversations_found,
         items_new=report.conversations_new,
+        error_code=problem.code if problem is not None else None,
     )

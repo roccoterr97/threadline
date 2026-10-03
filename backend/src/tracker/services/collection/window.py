@@ -22,6 +22,7 @@ from tracker.shared.constants.collection import (
     OVERLAP_DAYS,
     REFRESH_OVERLAP_HOURS,
 )
+from tracker.shared.errors import MailboxWindowCappedError
 
 
 def window_start(
@@ -71,6 +72,12 @@ def last_collected_at(repositories: Repositories, step: RunStep) -> datetime | N
     still counts, so one failing source does not widen this one's window day
     after day.
 
+    A mailbox read that hit the reader's cap counts as a read too, although its
+    step is recorded as failed so that the owner is told. The reader always
+    takes the newest mail, so starting the next window from further back would
+    never reach the part left unread; it would only make every later read hit
+    the cap again and every later morning report it.
+
     Args:
         repositories: The repository container.
         step: The source's collection step, such as ``collect_email``.
@@ -79,11 +86,17 @@ def last_collected_at(repositories: Repositories, step: RunStep) -> datetime | N
         That run's start, or ``None`` when the source was never read
         successfully — which makes the next read a first read.
     """
-    collected = repositories.run_step_logs.find_latest_successful(step)
-    if collected is None:
-        return None
-    run = repositories.run_logs.get(collected.run_id)
-    return run.started_at if run is not None else None
+    steps = repositories.run_step_logs
+    candidates = [steps.find_latest_successful(step)]
+    if step is RunStep.COLLECT_EMAIL:
+        candidates.append(steps.find_latest_failed_with(step, MailboxWindowCappedError.code))
+    starts = [
+        run.started_at
+        for collected in candidates
+        if collected is not None
+        and (run := repositories.run_logs.get(collected.run_id)) is not None
+    ]
+    return max(starts, default=None)
 
 
 def refresh_since(repositories: Repositories, step: RunStep) -> datetime | None:

@@ -63,5 +63,18 @@ export const REFRESH_RUN_MATCH_SLACK_MS = 60_000;
  */
 export const REFRESH_DONE_SHOWN_MS = 10_000;
 
+/**
+ * How long Back keeps trying to reach the place it remembers while the page
+ * is still too short, because its list is being fetched again (after a
+ * reload, or a long time away). Scrolling by hand stops it sooner.
+ */
+export const SCROLL_RESTORE_WAIT_MS = 5_000;
+
+/**
+ * How many pages' scroll places a tab keeps for Back. The oldest go first;
+ * nobody goes back further than this.
+ */
+export const SCROLL_PLACES_KEPT = 200;
+
 /** How long the demo's pretend refresh takes before it finishes. */
 export const DEMO_REFRESH_SECONDS = 4;

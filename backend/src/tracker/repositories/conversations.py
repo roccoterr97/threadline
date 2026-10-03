@@ -67,14 +67,24 @@ class ConversationRepository(SupabaseRepository[Conversation]):
         found: list[Conversation] = []
         for batch in batched(source_conversation_ids, DATABASE_BATCH_SIZE):
             rows = self._select_every(
-                lambda values=list(batch): self._table()
-                .select(ALL_COLUMNS)
-                .eq("channel", channel.value)
-                .in_("source_conversation_id", values),
+                lambda query, values=list(batch): query.eq("channel", channel.value).in_(
+                    "source_conversation_id", values
+                ),
                 "list_by_sources",
             )
             found.extend(self._to_models(rows))
         return found
+
+    def list_by_ids(self, conversation_ids: Sequence[UUID]) -> list[Conversation]:
+        """Fetch several threads in one request, avoiding a row-by-row loop.
+
+        Args:
+            conversation_ids: The identifiers to fetch. An empty sequence is a no-op.
+
+        Returns:
+            The threads found, in database order.
+        """
+        return self._select_in("id", conversation_ids, "list_by_ids")
 
     def list_for_people(self, person_ids: Sequence[UUID]) -> list[Conversation]:
         """Fetch the threads of several people in one request.
@@ -107,7 +117,7 @@ class ConversationRepository(SupabaseRepository[Conversation]):
             The person's conversations, most recently active first.
         """
         rows = self._select_every(
-            lambda: self._table().select(ALL_COLUMNS).eq("person_id", str(person_id)),
+            lambda query: query.eq("person_id", str(person_id)),
             "list_for_person",
         )
         found = self._to_models(rows)

@@ -10,6 +10,7 @@ the website, and stops.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Final
 
 from tracker.services.setup import values
@@ -22,6 +23,46 @@ from tracker.shared.errors import ValidationFailedError
 _GITHUB_ORIGIN: Final[re.Pattern[str]] = re.compile(
     r"github\.com[:/]([A-Za-z0-9-]+)/([A-Za-z0-9._-]+?)(?:\.git)?/?$"
 )
+
+
+@dataclass(frozen=True, slots=True)
+class LinkedCopy:
+    """The owner's copy on GitHub that this folder is linked to.
+
+    Attributes:
+        name: The copy, as ``owner/name``.
+        confirmed: ``True`` when the GitHub CLI showed it is a private
+            repository the owner administers; ``False`` when, without the CLI,
+            only the link could be read.
+    """
+
+    name: str
+    confirmed: bool
+
+
+def linked_copy(ctx: SetupContext) -> LinkedCopy | None:
+    """Name the owner's copy this folder is linked to, without creating one.
+
+    With the GitHub CLI signed in, only a private repository the owner
+    administers counts, as in the GitHub step — never the public template.
+    Without it, the GitHub link is all that can be seen.
+
+    Args:
+        ctx: The set-up's context.
+
+    Returns:
+        The copy, or ``None`` when there is none to be seen.
+    """
+    origin = ctx.gateways.git.origin_url()
+    if origin is None:
+        return None
+    if not ctx.gateways.github.ready():
+        name = repository_from_origin(origin)
+        return LinkedCopy(name, confirmed=False) if name else None
+    linked = ctx.gateways.github.repository()
+    if linked is None or not linked.is_own_private_copy:
+        return None
+    return LinkedCopy(linked.name, confirmed=True)
 
 
 def find_or_create_copy(ctx: SetupContext) -> str | None:

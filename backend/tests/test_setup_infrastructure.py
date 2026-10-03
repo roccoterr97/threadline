@@ -352,6 +352,41 @@ def test_an_outage_during_the_enum_probe_is_typed() -> None:
         admin.is_enum_column("run_logs", "trigger")
 
 
+RESERVED_ROW = {"key": "unknown", "group_label": "Not known"}
+
+
+def test_a_row_with_every_value_is_found() -> None:
+    fake = FakeSupabaseClient({"categories": [{"key": "unknown", "group_label": "Not known"}]})
+
+    assert SupabaseAdmin(as_client(fake)).has_row("categories", RESERVED_ROW) is True
+
+
+def test_a_row_with_only_some_of_the_values_is_not_found() -> None:
+    fake = FakeSupabaseClient({"categories": [{"key": "unknown", "group_label": "Unknown"}]})
+
+    assert SupabaseAdmin(as_client(fake)).has_row("categories", RESERVED_ROW) is False
+
+
+def _row_probe_with(error: APIError) -> SupabaseAdmin:
+    client = MagicMock()
+    query = client.table.return_value.select.return_value.eq.return_value.eq.return_value
+    query.limit.return_value.execute.side_effect = error
+    return SupabaseAdmin(client)
+
+
+def test_a_row_in_a_missing_table_is_not_found() -> None:
+    admin = _row_probe_with(APIError({"code": "PGRST205", "message": "not found"}))
+
+    assert admin.has_row("categories", RESERVED_ROW) is False
+
+
+def test_an_outage_during_the_row_probe_is_typed() -> None:
+    admin = _row_probe_with(APIError({"code": "57014", "message": "timeout"}))
+
+    with pytest.raises(DatabaseUnavailableError):
+        admin.has_row("categories", RESERVED_ROW)
+
+
 def test_owner_is_recorded_once_and_listed() -> None:
     fake = FakeSupabaseClient()
     fake.conflict_columns["app_owner"] = "user_id"

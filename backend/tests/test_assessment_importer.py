@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -31,7 +32,7 @@ from tracker.domain.enums import (
     ReviewKind,
     WaitingOn,
 )
-from tracker.domain.models import Person
+from tracker.domain.models import Organisation, Person
 from tracker.repositories import Repositories
 from tracker.schemas.assessment import parse_batch
 from tracker.services.assessment.exporter import AssessmentExporter
@@ -631,3 +632,187 @@ def test_a_partly_failed_import_keeps_only_the_failed_files(
     assert len(outcome.rejected) == 1
     assert [path.name for path in batches.iterdir()] == [f"{refused.batch_id}.json"]
     assert [path.name for path in results.iterdir()] == [f"{refused.batch_id}.json"]
+
+
+# --- how often the database is asked ------------------------------------------------
+
+
+def _one_file_per_person(
+    repositories: Repositories, clock: FixedClock, tmp_path: Path, people: list[Person]
+) -> tuple[AssessmentImporter, dict[UUID, Path]]:
+    """Export each person into a batch of their own; return where each answer goes."""
+    batches, results = tmp_path / "batches", tmp_path / "results"
+    results.mkdir(parents=True, exist_ok=True)
+    export = AssessmentExporter(repositories, clock, batches).export()
+    answers: dict[UUID, Path] = {}
+    for path in export.batch_paths:
+        batch = parse_batch(path.read_text(encoding="utf-8"))
+        answers[batch.people[0].person_id] = results / f"{batch.batch_id}.json"
+    assert len(answers) == len(people)
+    importer = AssessmentImporter(
+        repositories, clock, DEFAULT_WEEKEND_DAYS, batches, results, wording=WORDING
+    )
+    return importer, answers
+
+
+def _stored_organisation(name: str, day: int) -> Organisation:
+    """An organisation the database stored on one day of September 2026."""
+    return Organisation(name=name, created_at=moment(day))
+
+
+def _reads(client: FakeSupabaseClient, table: str) -> int:
+    """How many times one table was read."""
+    return client.executed.count((table, "select"))
+
+
+def test_the_organisations_of_one_file_are_looked_up_together(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """Three verdicts naming two stored organisations and a new one cost one read."""
+    people = [
+        talkative_person(repositories, name, source=f"thread-{index}")
+        for index, name in enumerate(["Anna Vermeer", "Bram Peeters", "Cleo Dubois", "Dan Ito"])
+    ]
+    northwind, harbour = _stored_organisation("Northwind", 1), _stored_organisation("Harbour", 2)
+    repositories.organisations.bulk_upsert([northwind, harbour])
+    chain = build_chain(repositories, clock, tmp_path, people)
+    names = ["Northwind", "Harbour", "Northwind", "Brand New"]
+    chain.answer(
+        *(
+            verdict_payload(person.id, organisation_name=name)
+            for person, name in zip(people, names, strict=True)
+        )
+    )
+    fake_client.executed.clear()
+
+    outcome = chain.importer.import_all()
+
+    assert outcome.assessed == 4
+    assert _reads(fake_client, "organisations") == 1
+    linked = [repositories.people.get(person.id) for person in people]
+    assert [person.organisation_id for person in linked if person][:3] == [
+        northwind.id,
+        harbour.id,
+        northwind.id,
+    ]
+    assert [row["name"] for row in fake_client.tables["organisations"]] == [
+        "Northwind",
+        "Harbour",
+        "Brand New",
+    ]
+
+
+def test_the_categories_are_read_once_for_every_file_of_an_import(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+    fake_client: FakeSupabaseClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("tracker.services.assessment.exporter.BATCH_SIZE", 1)
+    people = [
+        talkative_person(repositories, name, source=f"thread-{index}")
+        for index, name in enumerate(["Anna Vermeer", "Bram Peeters", "Cleo Dubois"])
+    ]
+    importer, answers = _one_file_per_person(repositories, clock, tmp_path, people)
+    for person_id, path in answers.items():
+        path.write_text(verdict_file(path.stem, verdict_payload(person_id)), encoding="utf-8")
+    fake_client.executed.clear()
+
+    outcome = importer.import_all()
+
+    assert outcome.assessed == 3
+    assert _reads(fake_client, "categories") == 1
+    # One read per file, never one for all of them: the first file stores the
+    # organisation and the two after it find it there.
+    assert _reads(fake_client, "organisations") == 3
+    assert [row["name"] for row in fake_client.tables["organisations"]] == ["Northwind Robotics"]
+
+
+def test_files_that_cannot_be_read_ask_the_database_nothing(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    chain.answer_raw("{ not json at all")
+    fake_client.executed.clear()
+
+    outcome = chain.importer.import_all()
+
+    assert len(outcome.rejected) == 1
+    assert fake_client.executed == []
+
+
+def test_a_file_of_noise_looks_no_organisation_up(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """Nobody judged to be noise is linked to an organisation, so none is asked for."""
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    chain.answer(verdict_payload(person.id, relevance="noise"))
+    fake_client.executed.clear()
+
+    outcome = chain.importer.import_all()
+
+    assert outcome.marked_noise == 1
+    assert _reads(fake_client, "organisations") == 0
+    assert fake_client.tables.get("organisations", []) == []
+
+
+@pytest.mark.parametrize("older_has_the_lower_identifier", [True, False])
+def test_of_two_organisations_with_one_name_the_one_stored_first_is_linked(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+    fake_client: FakeSupabaseClient,
+    older_has_the_lower_identifier: bool,  # noqa: FBT001 - a parametrised case
+) -> None:
+    """The same row a single look-up by name answers with, whatever its identifier."""
+    low, high = sorted([uuid4(), uuid4()], key=str)
+    older_id, newer_id = (low, high) if older_has_the_lower_identifier else (high, low)
+    older = Organisation(id=older_id, name="Northwind Robotics", created_at=moment(1))
+    newer = Organisation(id=newer_id, name="Northwind Robotics", created_at=moment(5))
+    repositories.organisations.bulk_upsert([older, newer])
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    chain.answer(verdict_payload(person.id))
+    asked_alone = repositories.organisations.find_by_name("Northwind Robotics")
+    before = copy.deepcopy(fake_client.tables["organisations"])
+
+    chain.importer.import_all()
+
+    stored = repositories.people.get(person.id)
+    assert asked_alone is not None
+    assert stored is not None
+    assert stored.organisation_id == asked_alone.id == older.id
+    assert fake_client.tables["organisations"] == before
+
+
+def test_a_name_with_a_quotation_mark_still_finds_its_organisation(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """Such a name cannot travel in a list, so it is asked for by itself as before."""
+    awkward = _stored_organisation('Acme "Labs", Inc.', 1)
+    repositories.organisations.bulk_upsert([awkward])
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    chain.answer(verdict_payload(person.id, organisation_name=awkward.name))
+
+    chain.importer.import_all()
+
+    stored = repositories.people.get(person.id)
+    assert stored is not None
+    assert stored.organisation_id == awkward.id
+    assert len(fake_client.tables["organisations"]) == 1

@@ -36,7 +36,7 @@ class ReviewItemRepository(SupabaseRepository[ReviewItem]):
             The review items of that kind.
         """
         rows = self._select_every(
-            lambda: self._table().select(ALL_COLUMNS).eq("kind", kind.value),
+            lambda query: query.eq("kind", kind.value),
             "list_by_kind",
         )
         return self._to_models(rows)
@@ -73,3 +73,12 @@ class ReviewItemRepository(SupabaseRepository[ReviewItem]):
             limit=limit,
             offset=offset,
         )
+
+    def list_every_unanswered(self) -> list[ReviewItem]:
+        """Fetch every question the owner has not answered yet.
+
+        Returns:
+            The unanswered review items, in the order :meth:`list_unanswered`
+            pages them: oldest question last.
+        """
+        return self._list_every(lambda query: query.is_("answer", None), "list_every_unanswered")
