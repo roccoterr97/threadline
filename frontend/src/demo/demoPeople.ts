@@ -349,7 +349,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     id: 'demo-p13',
     fullName: 'Grace Oyelaran',
     role: 'Chief Operating Officer',
-    organisation: 'Northgate Print',
+    organisation: 'Bellwether Clinics',
     type: 'prospect',
     status: 'closed',
     waitingOn: 'nobody',

@@ -28,3 +28,14 @@ export function readHiddenPerson(state: unknown): HiddenPerson | null {
   const { id, name } = state.hiddenPerson;
   return typeof id === 'string' && typeof name === 'string' ? { id, name } : null;
 }
+
+/**
+ * The same location state without the "just hidden" note, so clearing the
+ * note keeps whatever else the page was opened with (an organisation page
+ * remembers its way back there). Null when nothing else is left.
+ */
+export function withoutHiddenPerson(state: unknown): Record<string, unknown> | null {
+  if (!isRecord(state)) return null;
+  const { hiddenPerson: _note, ...rest } = state;
+  return Object.keys(rest).length === 0 ? null : rest;
+}

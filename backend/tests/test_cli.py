@@ -9,7 +9,7 @@ from typer.testing import CliRunner
 from tracker.cli.discovery import command_module_names, register_commands
 from tracker.cli.main import build_cli, main
 from tracker.shared.config import DEFAULT_PRODUCT_NAME, reset_settings_cache
-from tracker.shared.errors import ConfigurationError
+from tracker.shared.errors import ConfigurationError, ValidationFailedError
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ def test_sample_group_offers_load_and_clear(runner: CliRunner) -> None:
     assert "clear" in result.output
 
 
-def test_healthcheck_without_configuration_fails_on_one_line(
+def test_healthcheck_without_configuration_fails_on_one_line_and_says_what_to_do(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -85,7 +85,31 @@ def test_healthcheck_without_configuration_fails_on_one_line(
         main()
 
     assert raised.value.code == 1
-    errors = capsys.readouterr().err.strip().splitlines()
+    captured = capsys.readouterr()
+    errors = captured.err.strip().splitlines()
     assert len(errors) == 1
     assert "configuration_invalid" in errors[0]
     assert "Traceback" not in errors[0]
+    assert captured.out.strip().splitlines() == [
+        "PROBLEM  A setting is missing or wrong. Fix: run 'uv run tracker setup'; "
+        "on GitHub, add the missing secrets with 'uv run tracker setup github'."
+    ]
+
+
+def test_another_failure_adds_no_fix_line(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def refuse() -> None:
+        message = "no run is open"
+        raise ValidationFailedError(message)
+
+    monkeypatch.setattr("sys.argv", ["tracker", "healthcheck"])
+    monkeypatch.setattr("tracker.cli.commands.system.healthcheck", refuse)
+
+    with pytest.raises(SystemExit):
+        main()
+
+    captured = capsys.readouterr()
+    assert "validation_failed" in captured.err
+    assert captured.out == ""

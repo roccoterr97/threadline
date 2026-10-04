@@ -23,7 +23,7 @@ function MeetingDetails({ meeting }: { meeting: UpcomingMeetingRow }) {
         {meeting.people?.full_name ?? copy.home.comingUp.unknownPerson}
       </span>
       {organisation !== null && <span className="text-ink-muted">{organisation}</span>}
-      <span className="mt-1 truncate text-ink-muted">
+      <span className="mt-1 break-words text-ink-muted">
         {meeting.subject ?? copy.home.comingUp.untitled}
       </span>
     </>
@@ -53,7 +53,9 @@ function MeetingItem({ meeting }: { meeting: UpcomingMeetingRow }) {
  * The strip of meetings in the coming week, shown under the run banner.
  *
  * It hides itself when there is nothing coming up. On a phone the cards scroll
- * sideways inside the strip, never the page; on wider screens they wrap.
+ * sideways inside the strip, never the page, and a long title wraps inside
+ * its card; on wider screens the cards wrap, and a card widens for a long
+ * title before the title wraps.
  */
 export function ComingUp({ meetings }: ComingUpProps) {
   const headingId = useId();
@@ -66,7 +68,7 @@ export function ComingUp({ meetings }: ComingUpProps) {
       </h2>
       <ol className="mt-2 flex list-none gap-3 overflow-x-auto p-0 pb-1 sm:flex-wrap sm:overflow-visible">
         {meetings.map((meeting) => (
-          <li key={meeting.id} className="w-60 shrink-0">
+          <li key={meeting.id} className="w-60 shrink-0 sm:w-auto sm:min-w-60 sm:max-w-sm">
             <MeetingItem meeting={meeting} />
           </li>
         ))}

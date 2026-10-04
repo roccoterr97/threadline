@@ -11,6 +11,7 @@ import type { Clock } from '../lib/clock';
 import type { Category } from '../types/database';
 import { localDate } from './demoCalendar';
 import type { DemoTables } from './demoData';
+import { changeNotes, checkNoteChanges, checkNoteInsert, newNoteRow } from './demoNotes';
 import { refreshIsRunning, settledRun, startedRefreshRun } from './demoRefresh';
 import { conversationsWithPeople, peopleOverview } from './demoViews';
 
@@ -18,7 +19,8 @@ import { conversationsWithPeople, peopleOverview } from './demoViews';
  * The demo's in-memory database. It answers the same tables the real one
  * does, keeps its rules (a category in use cannot be deleted, keys are
  * unique, two categories never share a name or group name whatever the case,
- * text has length limits) and forgets everything on reload.
+ * a note is never blank and names a person who exists, text has length
+ * limits) and forgets everything on reload.
  */
 
 /** Chooses the rows a filter applies to. Rows are plain objects. */
@@ -128,6 +130,8 @@ export class DemoDatabase {
         return tables.statusLabels;
       case 'person_overrides':
         return tables.overrides;
+      case 'person_notes':
+        return tables.notes;
       case 'review_items':
         return tables.reviewItems;
       case 'run_logs':
@@ -137,8 +141,9 @@ export class DemoDatabase {
     }
   }
 
-  /** Adds a row. Only the settings page adds anything: a category. */
+  /** Adds a row: a category from the settings page, or a note from a person's page. */
   insert(table: string, values: unknown): SupabaseResult {
+    if (table === 'person_notes') return this.insertNote(values);
     if (table !== 'categories') return NO_SUCH_TABLE;
     const parsed = categoryInsertSchema.safeParse(values);
     if (!parsed.success) return failure(PostgresCode.Check, BAD_REQUEST_STATUS);
@@ -173,7 +178,28 @@ export class DemoDatabase {
       tables.reviewItems = patch(tables.reviewItems, match, parsed.data);
       return success();
     }
+    if (table === 'person_notes') {
+      const checked = checkNoteChanges(changes);
+      if ('reason' in checked) return failure(PostgresCode.Check, BAD_REQUEST_STATUS);
+      const stamp = this.clock.now().toISOString();
+      tables.notes = changeNotes(tables.notes, match, checked.body, stamp);
+      return success();
+    }
     return NO_SUCH_TABLE;
+  }
+
+  /** Adds a note, refusing one on nobody or one that breaks the text rules. */
+  private insertNote(values: unknown): SupabaseResult {
+    const people = new Set(this.tables.people.map((person) => person.id));
+    const checked = checkNoteInsert(values, people);
+    if ('reason' in checked) {
+      return checked.reason === 'no_such_person'
+        ? failure(PostgresCode.ForeignKey)
+        : failure(PostgresCode.Check, BAD_REQUEST_STATUS);
+    }
+    const stamp = this.clock.now().toISOString();
+    this.tables.notes.push(newNoteRow(this.nextId('note'), checked.note, stamp));
+    return success();
   }
 
   /** Creates or replaces a person's correction. */
@@ -201,6 +227,10 @@ export class DemoDatabase {
     const tables = this.tables;
     if (table === 'person_overrides') {
       tables.overrides = tables.overrides.filter((row) => !match(row));
+      return success();
+    }
+    if (table === 'person_notes') {
+      tables.notes = tables.notes.filter((row) => !match(row));
       return success();
     }
     if (table !== 'categories') return NO_SUCH_TABLE;

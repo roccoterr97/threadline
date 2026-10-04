@@ -37,7 +37,9 @@ class SupabaseStep:
         io.open_page(SUPABASE_PROJECTS_PAGE)
         url = ctx.ask_until_valid(
             lambda: io.ask(
-                "Project address (https://<project-id>.supabase.co)", default=ctx.env.get(URL)
+                "Project address or Project ID (https://<project-id>.supabase.co, or just "
+                "<project-id>)",
+                default=ctx.env.get(URL),
             ),
             values.supabase_url,
         )

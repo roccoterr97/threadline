@@ -48,7 +48,7 @@ from tracker.services.summary.builder import SummaryBuilder
 from tracker.services.summary.send_once import SendOnce
 from tracker.services.summary.sender import SummarySender, smtp_account
 from tracker.shared.clock import SystemClock
-from tracker.shared.config import Settings, get_settings
+from tracker.shared.config import Settings, get_settings, in_project
 from tracker.shared.constants.summary import SUMMARY_FILE
 from tracker.shared.errors import DatabaseUnavailableError, TrackerError
 
@@ -137,12 +137,20 @@ ReportedRunOption = Annotated[
 
 OutOption = Annotated[
     Path,
-    typer.Option("--out", help="Where to write the summary."),
+    typer.Option(
+        "--out",
+        help=f"Where to write the summary (default: {in_project(SUMMARY_FILE)}).",
+        show_default=False,
+    ),
 ]
 
 FileOption = Annotated[
     Path,
-    typer.Option("--file", help="The summary file 'summary build' wrote."),
+    typer.Option(
+        "--file",
+        help=f"The summary file 'summary build' wrote (default: {in_project(SUMMARY_FILE)}).",
+        show_default=False,
+    ),
 ]
 
 

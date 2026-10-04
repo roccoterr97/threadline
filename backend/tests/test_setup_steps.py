@@ -14,6 +14,7 @@ from tests.setup_world import (
     OWNER_EMAIL,
     PROJECT_REF,
     PROJECT_URL,
+    World,
     configured_env,
     make_world,
 )
@@ -763,6 +764,28 @@ async def test_dashboard_behind_a_vercel_login_is_refused() -> None:
     assert "Vercel login" in world.io.text()
 
 
+async def test_dashboard_not_published_stops_the_step_and_saves_nothing() -> None:
+    world = make_world([False], configured_env())
+
+    with pytest.raises(ValidationFailedError, match="part 7 of the guide"):
+        await DashboardStep().run(world.context())
+
+    assert "DASHBOARD_BASE_URL" not in world.env.values
+    assert world.io.opened == []
+
+
+async def test_dashboard_not_published_as_one_step_names_that_step() -> None:
+    world = make_world([False], configured_env())
+    wizard = SetupWizard(world.context(), default_steps())
+
+    finished = await wizard.run_one(StepName.DASHBOARD)
+
+    assert not finished
+    assert world.io.said[-1] == (
+        "Fix that, then run 'uv run tracker setup dashboard' - finished steps are kept."
+    )
+
+
 # --- Cloud ---------------------------------------------------------------------
 
 
@@ -808,8 +831,61 @@ async def test_a_second_run_skips_finished_steps_and_stops_cleanly() -> None:
     text = world.io.text()
     assert "Already done. To redo it: uv run tracker setup supabase" in text
     assert "Stopped: Microsoft sign-in was not completed in time" in text
-    assert "run 'uv run tracker setup microsoft'" in text
+    assert "run 'uv run tracker setup' again: finished steps are kept" in text
     assert "Step 6 of 14: Your time zone" in text
+
+
+def _finished_up_to_the_dashboard(answers: list[str | bool]) -> World:
+    """A world where every step before the dashboard is done, Outlook as the mailbox."""
+    env = configured_env() | {
+        "TOKEN_ENCRYPTION_KEY": _fernet_key(),
+        "OWNER_TIME_ZONE": "UTC",
+        "MAIL_SOURCES": "outlook",
+        "LINKEDIN_ACCESS_TOKEN": GOOD_LINKEDIN,
+        "LINKEDIN_TOKEN_EXPIRES_ON": "2027-09-24",
+    }
+    world = make_world(answers, env)
+    world.admin.owners = ["user-1"]
+    world.choices.preset = "job_search"
+    world.microsoft.signed_in = True
+    return world
+
+
+async def test_a_full_run_stops_at_a_dashboard_that_is_not_published_yet() -> None:
+    world = _finished_up_to_the_dashboard([False])
+    wizard = SetupWizard(world.context(), default_steps())
+
+    finished = await wizard.run_all()
+
+    assert not finished
+    text = world.io.text()
+    assert "Step 10 of 14: Dashboard address" in text
+    assert (
+        "Stopped: the dashboard is not published yet - publish it first (part 7 of the guide)."
+        in text
+    )
+    assert world.io.said[-1] == (
+        "Fix that, then run 'uv run tracker setup' again: finished steps are kept "
+        "and it carries on from here."
+    )
+    assert "Step 11 of 14" not in text
+    assert "DASHBOARD_BASE_URL" not in world.env.values
+
+
+async def test_the_next_full_run_skips_to_the_dashboard_and_carries_on() -> None:
+    # Yes, it is published; its address; Enter keeps the daily time already set.
+    world = _finished_up_to_the_dashboard([True, "https://you.vercel.app", ""])
+    world.statuses["https://you.vercel.app"] = 200
+    wizard = SetupWizard(world.context(), default_steps())
+
+    await wizard.run_all()
+
+    text = world.io.text()
+    for step in ("supabase", "login", "categories", "timezone", "mailbox", "microsoft", "linkedin"):
+        assert f"Already done. To redo it: uv run tracker setup {step}" in text
+    assert "Saved DASHBOARD_BASE_URL in .env." in text
+    assert "Step 11 of 14: The daily time" in text
+    assert "The daily run already starts at 07:00 (UTC). Nothing to change." in text
 
 
 async def test_categories_come_right_after_the_login() -> None:

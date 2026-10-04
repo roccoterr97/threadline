@@ -81,7 +81,7 @@ export const DUE_PARAM = 'due';
 export const SORT_PARAM = 'sort';
 
 /** Reads one closed-list parameter, or returns `fallback` for missing or junk input. */
-function readChoice<T extends string>(
+export function readChoice<T extends string>(
   params: URLSearchParams,
   name: string,
   options: readonly T[],
@@ -92,23 +92,48 @@ function readChoice<T extends string>(
 }
 
 /**
- * Reads the view out of the URL, falling back to the defaults for junk input.
+ * Reads the four filters out of the URL, falling back to "any" for junk input.
  *
  * @param typeKeys The category keys the type filter may take right now. Any
  *   other `type` in the address — a category that no longer exists, or one
  *   not loaded yet — is ignored and every type is shown.
+ */
+export function readPeopleFilters(
+  params: URLSearchParams,
+  typeKeys: readonly CategoryKey[],
+): PeopleFilters {
+  return {
+    type: readChoice(params, TYPE_PARAM, [ANY, ...typeKeys], ANY),
+    status: readChoice(params, STATUS_PARAM, STATUS_FILTERS, ANY),
+    waiting: readChoice(params, WAITING_PARAM, WAITING_FILTERS, ANY),
+    due: readChoice(params, DUE_PARAM, DUE_FILTERS, ANY),
+  };
+}
+
+/**
+ * Reads the view out of the URL, falling back to the defaults for junk input.
+ *
+ * @param typeKeys The category keys the type filter may take right now, as
+ *   `readPeopleFilters` takes them.
  */
 export function readPeopleView(
   params: URLSearchParams,
   typeKeys: readonly CategoryKey[],
 ): PeopleView {
   return {
-    type: readChoice(params, TYPE_PARAM, [ANY, ...typeKeys], ANY),
-    status: readChoice(params, STATUS_PARAM, STATUS_FILTERS, ANY),
-    waiting: readChoice(params, WAITING_PARAM, WAITING_FILTERS, ANY),
-    due: readChoice(params, DUE_PARAM, DUE_FILTERS, ANY),
+    ...readPeopleFilters(params, typeKeys),
     sort: readChoice(params, SORT_PARAM, PEOPLE_SORTS, DEFAULT_SORT),
   };
+}
+
+/** Writes the filters into a fresh URL query. Filters that narrow nothing are left out. */
+export function writePeopleFilters(filters: PeopleFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.type !== ANY) params.set(TYPE_PARAM, filters.type);
+  if (filters.status !== ANY) params.set(STATUS_PARAM, filters.status);
+  if (filters.waiting !== ANY) params.set(WAITING_PARAM, filters.waiting);
+  if (filters.due !== ANY) params.set(DUE_PARAM, filters.due);
+  return params;
 }
 
 /**
@@ -116,11 +141,7 @@ export function readPeopleView(
  * stays clean and shareable.
  */
 export function writePeopleView(view: PeopleView): URLSearchParams {
-  const params = new URLSearchParams();
-  if (view.type !== ANY) params.set(TYPE_PARAM, view.type);
-  if (view.status !== ANY) params.set(STATUS_PARAM, view.status);
-  if (view.waiting !== ANY) params.set(WAITING_PARAM, view.waiting);
-  if (view.due !== ANY) params.set(DUE_PARAM, view.due);
+  const params = writePeopleFilters(view);
   if (view.sort !== DEFAULT_SORT) params.set(SORT_PARAM, view.sort);
   return params;
 }
@@ -152,7 +173,8 @@ function matchesStatus(row: PeopleOverviewRow, status: StatusFilter): boolean {
   return statusKeyOf(row) === status;
 }
 
-function matchesFilters(row: PeopleOverviewRow, filters: PeopleFilters): boolean {
+/** True when the row passes every filter. */
+export function matchesFilters(row: PeopleOverviewRow, filters: PeopleFilters): boolean {
   if (filters.type !== ANY && row.person_type !== filters.type) return false;
   if (!matchesStatus(row, filters.status)) return false;
   if (filters.waiting !== ANY && row.waiting_on !== filters.waiting) return false;

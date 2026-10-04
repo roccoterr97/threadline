@@ -32,6 +32,7 @@ export const app = {
 
 export const nav = {
   home: 'People',
+  organisations: 'Organisations',
   review: 'To review',
   runs: 'Daily runs',
   settings: 'Settings',
@@ -106,8 +107,46 @@ export const home = {
     caption: 'How many people in each category have each status',
     statusColumn: 'Status',
     total: 'Total',
+    scrollHint: 'Scroll sideways to see every category.',
     cellLabel: (count: number, typeText: string, statusText: string) =>
       `${count}: ${typeText}, ${statusText}`,
+  },
+} as const;
+
+export const organisations = {
+  title: 'Organisations',
+  subtitle: 'The same people, grouped by organisation: where you stand with each one as a whole.',
+  loading: 'Loading your organisations…',
+  switchLabel: 'See your list by person or by organisation',
+  filterHint:
+    'An organisation is shown when at least one person there fits everything you pick. Its numbers always count everyone there.',
+  tableCaption: 'Organisations you are in contact with',
+  columns: {
+    people: 'People',
+    state: 'Where things stand',
+  },
+  sortLabels: {
+    attention: 'Needs you first',
+    people: 'Most people',
+  },
+  noOrganisation: 'No organisation',
+  noOrganisationHint: 'People with no organisation on record.',
+  peopleCount: (count: number) => (count === 1 ? '1 person' : `${count} people`),
+  inTouch: (count: number) =>
+    count === 1 ? '1 person you are in touch with here.' : `${count} people you are in touch with here.`,
+  /** One number of the picture, such as "Your turn: 2". */
+  stateCount: (label: string, count: number) => `${label}: ${count}`,
+  stateGroupLabel: 'Where things stand here',
+  emptyFiltered: {
+    title: 'Nothing matches these filters',
+    body: 'No organisation has someone who fits everything you picked.',
+  },
+  backToOrganisations: 'Back to organisations',
+  backToOrganisation: (name: string) => `Back to ${name}`,
+  backToNoOrganisation: 'Back to people with no organisation',
+  notFound: {
+    title: 'We could not find that organisation',
+    body: 'Its people may have been hidden or removed from the list, or its name may be written differently now.',
   },
 } as const;
 
@@ -170,6 +209,49 @@ export const override = {
   failedSignedOut:
     'You have been signed out, so your correction was not saved. Sign in again and repeat it.',
   clearFailed: 'We could not clear your correction. Please try again.',
+} as const;
+
+/** The notes the owner types on a person's page. */
+export const notes = {
+  title: 'Your notes',
+  intro:
+    'Things no message says, kept for you alone. The assistant does not read them and they are not in your morning e-mail.',
+  empty: 'No notes yet.',
+  add: 'Add a note',
+  fieldLabel: 'Your note',
+  editFieldLabel: 'Change your note',
+  save: 'Save my note',
+  saveChanges: 'Save my changes',
+  saving: 'Saving… not saved yet',
+  cancel: 'Cancel',
+  change: 'Change',
+  changeLabel: (excerpt: string) => `Change the note “${excerpt}”`,
+  remove: 'Delete',
+  removeLabel: (excerpt: string) => `Delete the note “${excerpt}”`,
+  removeConfirmTitle: 'Delete this note?',
+  removeConfirmBody: (excerpt: string) => `“${excerpt}” will be gone for good. This cannot be undone.`,
+  removeConfirm: 'Yes, delete it',
+  removeCancel: 'No, keep it',
+  writtenOn: (dateText: string) => `Written ${dateText}`,
+  changedOn: (dateText: string) => `changed ${dateText}`,
+  onlyNewestShown: (count: number) => `Only your newest ${count} notes are shown.`,
+  problems: {
+    empty: 'Please write something before saving the note.',
+    tooLong: (most: number) => `A note can be at most ${most.toLocaleString('en-GB')} characters long.`,
+  },
+  done: {
+    added: 'Your note was saved.',
+    saved: 'Your changes to the note were saved.',
+    removed: 'The note was deleted.',
+  },
+  failed: {
+    add: 'We could not save your note. Please try again.',
+    save: 'We could not save your changes. Please try again.',
+    remove: 'We could not delete the note. Please try again.',
+    signedOut: 'You have been signed out, so nothing was saved. Sign in again and repeat it.',
+  },
+  notSetUp:
+    "Notes are not switched on in your database yet. Run 'uv run tracker setup database' in your copy of Threadline, then reload this page.",
 } as const;
 
 export const settings = {

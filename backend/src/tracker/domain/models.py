@@ -159,6 +159,17 @@ class PersonOverride(Record):
     note: str | None = None
 
 
+class PersonNote(Record):
+    """A note the owner typed on a person's page of the dashboard.
+
+    The note's text is deliberately not a field. The notes are for the
+    dashboard only, and these models are the only shape data travels in between
+    layers, so a note's text can reach neither the assessment nor the summary.
+    """
+
+    person_id: UUID
+
+
 class ReviewItem(Record):
     """A yes/no question for the owner."""
 

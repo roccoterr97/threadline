@@ -257,3 +257,70 @@ def test_nothing_but_0015_may_change_the_reserved_row() -> None:
 
     assert "if tg_op = 'UPDATE' and old.key = 'unknown'" in guard
     assert 'the category "unknown" is reserved and cannot be changed' in guard
+
+
+NOTES_SQL: Final[str] = (MIGRATIONS / "0016_person_notes.sql").read_text(encoding="utf-8")
+NOTES_CONSTANTS: Final[str] = (
+    REPOSITORY_ROOT / "frontend" / "src" / "constants" / "notes.ts"
+).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("action", "clause"),
+    [
+        ("insert", "with check (public.is_app_owner())"),
+        ("update", "using (public.is_app_owner()) with check (public.is_app_owner())"),
+        ("delete", "using (public.is_app_owner())"),
+        ("select", "using (public.is_app_owner())"),
+    ],
+)
+def test_only_the_owner_may_touch_the_notes(action: str, clause: str) -> None:
+    policies = re.findall(
+        r"create policy \"[^\"]+\" on public\.person_notes\s+for (\w+) to (\w+) ([^;]+);",
+        NOTES_SQL,
+    )
+
+    matching = [policy for policy in policies if policy[0] == action]
+    assert len(matching) == 1
+    assert matching[0][1] == "authenticated"
+    assert " ".join(matching[0][2].split()) == clause
+
+
+def test_the_public_key_gets_no_notes() -> None:
+    assert "alter table public.person_notes enable row level security;" in NOTES_SQL
+    assert "revoke all on public.person_notes from anon, authenticated;" in NOTES_SQL
+    assert re.search(r"grant [^;]* to [^;]*\banon\b", NOTES_SQL) is None
+
+
+def test_the_dashboard_can_only_write_a_notes_text_and_person() -> None:
+    """A note can never be moved to another person or given another date from the dashboard."""
+    grants = re.findall(r"grant ([^;]+) on public\.person_notes to authenticated;", NOTES_SQL)
+
+    assert grants == ["select", "insert (person_id, body)", "update (body)", "delete"]
+
+
+def test_a_note_goes_with_its_person() -> None:
+    assert "references public.people (id) on delete cascade" in NOTES_SQL
+
+
+def test_a_note_cannot_be_blank_and_the_dashboard_holds_the_same_limit() -> None:
+    check = re.search(r"body text not null check \((.+)\)", NOTES_SQL)
+    limit = re.search(r"MAX_NOTE_LENGTH = (\d+);", NOTES_CONSTANTS)
+
+    assert check is not None
+    assert limit is not None
+    assert check.group(1) == rf"body ~ '\S' and char_length(body) <= {limit.group(1)}"
+
+
+def test_moving_a_note_to_the_surviving_record_does_not_count_as_an_edit() -> None:
+    trigger = _statement(NOTES_SQL, "create trigger person_notes_set_updated_at")
+
+    assert "when (old.body is distinct from new.body)" in trigger
+    assert "execute function public.set_updated_at()" in trigger
+
+
+def test_0016_is_seen_by_the_notes_table_without_reading_a_note() -> None:
+    marker = ColumnsProbe("person_notes", "id,person_id")
+
+    assert KNOWN_MIGRATIONS["0016_person_notes"] == marker
+    assert "body" not in marker.columns

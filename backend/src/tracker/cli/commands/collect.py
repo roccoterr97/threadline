@@ -80,14 +80,18 @@ SinceOption = Annotated[
     ),
 ]
 
+_REFRESH_HELP = "Read only what is new since the mailboxes were last read successfully"
+
+EmailRefreshOption = Annotated[
+    bool,
+    typer.Option("--refresh", help=f"{_REFRESH_HELP}."),
+]
+
 RefreshOption = Annotated[
     bool,
     typer.Option(
         "--refresh",
-        help=(
-            "Read only what is new since the mailboxes were last read successfully; "
-            "with --record, record into the refresh that is open."
-        ),
+        help=f"{_REFRESH_HELP}; with --record, record into the refresh that is open.",
     ),
 ]
 
@@ -137,7 +141,7 @@ def collect_linkedin(since: SinceOption = None, show_folders: ShowFoldersOption 
 
 
 @collect_app.command("email")
-def collect_email(since: SinceOption = None, refresh: RefreshOption = False) -> None:
+def collect_email(since: SinceOption = None, refresh: EmailRefreshOption = False) -> None:
     """Read every mailbox you set up (Outlook, Gmail…) and store what is worth keeping."""
     if refresh and since is not None:
         message = "--refresh and --since cannot be used together"

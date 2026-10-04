@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, cleanup, screen, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchRunSince, requestRefresh } from '../api/refresh';
@@ -33,6 +33,8 @@ function renderLayout(route: string, signOut = vi.fn(() => Promise.resolve())) {
         <Route path="/" element={<p>People page</p>} />
         <Route path="/review" element={<p>Review page</p>} />
         <Route path="/runs" element={<p>Runs page</p>} />
+        <Route path="/organisations" element={<p>Organisations page</p>} />
+        <Route path="/people/:personId" element={<p>Person page</p>} />
       </Route>
     </Routes>,
     { route, path: null, auth: { signOut } },
@@ -96,6 +98,43 @@ describe('AppLayout — header', () => {
     expect(
       await header.findByRole('link', { name: `${copy.nav.review} ${REVIEW_COUNT_TEXT}` }),
     ).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('lists Organisations next to People, where the bottom bar has no room for it', async () => {
+    renderLayout('/organisations');
+    const header = within(screen.getByRole('navigation', { name: copy.nav.headerLabel }));
+    const organisations = header.getByRole('link', { name: copy.nav.organisations });
+    expect(organisations).toHaveAttribute('href', '/organisations');
+    expect(organisations).toHaveAttribute('aria-current', 'page');
+    expect(bottomBar().queryByRole('link', { name: copy.nav.organisations })).not.toBeInTheDocument();
+    expect(bottomBar().getAllByRole('link')).toHaveLength(4);
+    expect(await screen.findByText('Organisations page')).toBeInTheDocument();
+  });
+
+  it('keeps People marked on a person, and Organisations when opened from one', async () => {
+    renderLayout('/people/p-01');
+    expect(await screen.findByText('Person page')).toBeInTheDocument();
+    expect(bottomBar().getByRole('link', { name: copy.nav.home })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+
+    cleanup();
+    renderWithProviders(
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/people/:personId" element={<p>Person page</p>} />
+        </Route>
+      </Routes>,
+      { route: '/people/p-01', path: null, state: { organisation: { name: 'Acme' } } },
+    );
+    expect(await screen.findByText('Person page')).toBeInTheDocument();
+    const header = within(screen.getByRole('navigation', { name: copy.nav.headerLabel }));
+    expect(header.getByRole('link', { name: copy.nav.organisations })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(header.getByRole('link', { name: copy.nav.home })).not.toHaveAttribute('aria-current');
   });
 
   it('signs out', async () => {

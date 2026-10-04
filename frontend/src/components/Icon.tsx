@@ -1,6 +1,7 @@
 /** Every small line icon the dashboard draws. */
 export type IconName =
   | 'people'
+  | 'organisations'
   | 'review'
   | 'runs'
   | 'settings'
@@ -15,6 +16,15 @@ const ICON_PATHS: Record<IconName, readonly string[]> = {
     'M12.5 7a3.5 3.5 0 1 1-7 0 3.5 3.5 0 0 1 7 0Z',
     'M22 20v-1.5a4 4 0 0 0-3-3.87',
     'M16 3.13a4 4 0 0 1 0 7.75',
+  ],
+  organisations: [
+    'M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z',
+    'M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2',
+    'M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2',
+    'M10 6h4',
+    'M10 10h4',
+    'M10 14h4',
+    'M10 18h4',
   ],
   review: [
     'M22 12h-6l-2 3h-4l-2-3H2',

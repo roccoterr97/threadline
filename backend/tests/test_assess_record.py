@@ -26,7 +26,7 @@ from tracker.repositories import Repositories
 from tracker.services.assessment.run_step import record_assessment
 from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
 from tracker.shared.clock import FixedClock
-from tracker.shared.config import Settings
+from tracker.shared.config import REPOSITORY_ROOT, Settings
 
 #: The codes a terminal reads as "switch to this colour".
 _COLOUR_CODES = re.compile(r"\x1b\[[0-9;]*m")
@@ -384,6 +384,16 @@ def test_the_help_offers_to_record_the_step(command: str) -> None:
     # On GitHub Actions the help is printed in colour, and the colour codes sit
     # between the two dashes and the option's name.
     assert "--record" in _COLOUR_CODES.sub("", result.output)
+
+
+@pytest.mark.parametrize("command", ["export", "import", "status"])
+def test_the_help_names_the_default_folders_from_the_project(command: str) -> None:
+    result = CliRunner().invoke(build_cli(), ["ai", command, "--help"])
+
+    output = _COLOUR_CODES.sub("", result.output)
+    assert "work/batches" in output
+    assert "work/results" in output
+    assert str(REPOSITORY_ROOT) not in output
 
 
 # --- the service --------------------------------------------------------------------

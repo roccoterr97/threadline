@@ -10,8 +10,9 @@ raised to remove.
 
 Which record survives is not arbitrary: the one carrying a real name wins over
 the one named after an address, because that is the name the owner will
-recognise. Everything the other record holds — its identities, its threads, and
-its correction if the survivor has none — moves across before it is removed.
+recognise. Everything the other record holds — its identities, its threads, the
+owner's notes, and its correction if the survivor has none — moves across
+before it is removed.
 """
 
 from __future__ import annotations
@@ -135,7 +136,8 @@ class PersonMerger:
         Args:
             survivor: The record that stays.
             absorbed: The record whose addresses, threads, assessment,
-                correction and questions move across before it is removed.
+                correction, notes and questions move across before it is
+                removed.
 
         Returns:
             How many identities and how many threads moved.
@@ -143,6 +145,7 @@ class PersonMerger:
         identities = self._move_identities(survivor, absorbed)
         conversations = self._move_conversations(survivor, absorbed)
         self._move_state_and_correction(survivor, absorbed)
+        self._move_notes(survivor, absorbed)
         self._repoint_questions(survivor, absorbed)
         self._repositories.people.delete_by_ids([absorbed.id])
         _log.info("person_merged", kept=str(survivor.id), removed=str(absorbed.id))
@@ -189,6 +192,15 @@ class PersonMerger:
                 self._repositories.person_overrides.bulk_upsert(
                     [override.model_copy(update={"person_id": survivor.id})]
                 )
+
+    def _move_notes(self, survivor: Person, absorbed: Person) -> None:
+        """Give the survivor the notes the owner typed on the absorbed record.
+
+        A person can have any number of notes, so every one of them moves and
+        the survivor keeps its own. This must happen before the record is
+        removed: the database deletes a person's notes with the person.
+        """
+        self._repositories.person_notes.move_to_person(absorbed.id, survivor.id)
 
     def _repoint_questions(self, survivor: Person, absorbed: Person) -> None:
         """Keep the owner's answers by moving them onto the surviving record.

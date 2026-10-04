@@ -47,9 +47,9 @@ If your daily update runs on **GitHub** (the main way), switch it on with:
 uv run tracker setup refresh
 ```
 
-in Terminal, in your Threadline folder. You install nothing else: the set-up
-opens a GitHub page and a Supabase page, you make one key on each and paste
-it, and it does what steps 2A, 3 and 4 below do by hand. [Part 8f of the
+in Terminal, in the `backend` folder of your copy. You install nothing else:
+the set-up opens a GitHub page and a Supabase page, you make one key on each
+and paste it, and it does what steps 2A, 3 and 4 below do by hand. [Part 8f of the
 set-up guide](./setup-your-accounts.md) walks through it, with what to tick on
 each page. If you set Threadline up before Refresh now existed, run
 `uv run tracker setup database` first (step 1).
@@ -79,7 +79,8 @@ every step there are two lines:
 ## 1. Update the database
 
 Refresh now needs a few small additions to your database, in three files.
-`tracker setup database` adds every one you do not have yet:
+`tracker setup database` adds every one you do not have yet (and any later
+file you are missing, in the same go):
 
 - `0013_refresh_requests`: a list of when the button was last used, so it can
   say "wait a few minutes".
@@ -88,8 +89,10 @@ Refresh now needs a few small additions to your database, in three files.
   only one update starts.
 - `0015_category_names`: not about this button, but applied in the same go. It
   makes sure no two of your categories share a name, whatever the capitals.
+- `0016_person_notes`: not about this button either. It adds the notes you can
+  type on a person's page.
 
-**What you do:** in Terminal, in your Threadline folder, run:
+**What you do:** in Terminal, in the `backend` folder of your copy, run:
 
 ```bash
 uv run tracker setup database
@@ -103,8 +106,8 @@ already, `Every structure file is already applied.`).
 
 **If not:** open **Supabase → SQL Editor → New query**, paste the whole of
 `supabase/migrations/0013_refresh_requests.sql`, click **Run**, and wait for
-`Success. No rows returned`. Then do the same with `0014_refresh_cooldown.sql`
-and `0015_category_names.sql`, in that order.
+`Success. No rows returned`. Then do the same with `0014_refresh_cooldown.sql`,
+`0015_category_names.sql` and `0016_person_notes.sql`, in that order.
 
 ---
 
@@ -254,7 +257,8 @@ file's name is exactly `refresh.ts`.
 
 ### 4B. With the terminal
 
-In Terminal, in your Threadline folder:
+In Terminal, in the top folder of your copy (the one that holds the `supabase`
+folder, not `backend`):
 
 ```bash
 npx supabase login

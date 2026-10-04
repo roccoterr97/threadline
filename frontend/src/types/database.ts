@@ -179,6 +179,16 @@ export interface PersonOverrideRow extends RowBase {
   note: string | null;
 }
 
+/** A note the owner typed on a person's page (the `person_notes` table). */
+export interface PersonNoteRow extends RowBase {
+  person_id: string;
+  /** Plain text, never blank. The dashboard holds the same length limit as the database. */
+  body: string;
+}
+
+/** A new note, as the person page inserts it (id and timestamps default). */
+export type PersonNoteInsert = Pick<PersonNoteRow, 'person_id' | 'body'>;
+
 export interface ReviewItemRow extends RowBase {
   kind: ReviewKind;
   person_id: string | null;

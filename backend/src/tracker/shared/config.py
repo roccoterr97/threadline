@@ -37,6 +37,19 @@ REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
 #: The single ``.env`` file shared by the backend and the frontend build.
 ENV_FILE: Path = REPOSITORY_ROOT / ".env"
 
+
+def in_project(path: Path) -> str:
+    """Spell a path from the project's top folder, the way help text names it.
+
+    Args:
+        path: A path inside the repository.
+
+    Returns:
+        ``work/batches in the project folder``, never the machine's full path.
+    """
+    return f"{path.relative_to(REPOSITORY_ROOT).as_posix()} in the project folder"
+
+
 _EMAIL_SEPARATOR: Final[str] = ","
 
 # --- Owner settings ------------------------------------------------------------

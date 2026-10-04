@@ -334,8 +334,43 @@ async def test_the_claude_key_instruction_says_where_and_what_it_looks_like() ->
     await GitHubStep().run(world.context())
 
     shown = world.io.text()
-    assert "Open the Terminal app (a new window: ⌘ + N), run claude setup-token" in shown
+    assert "Open the Terminal app (a new window; on a Mac: ⌘ + N), run claude setup-token" in shown
     assert "sk-ant-" in shown
+
+
+@pytest.mark.asyncio
+async def test_with_outlook_alone_the_step_says_github_cannot_send_the_summary() -> None:
+    env = github_env() | {"MAIL_SOURCES": "outlook", "IMAP_PROVIDER": "", "IMAP_USERNAME": ""}
+    world = make_world(["", True], env)
+
+    await GitHubStep().run(world.context())
+
+    shown = world.io.text()
+    assert "the run on GitHub cannot e-mail you the morning summary" in shown
+    assert "Outlook alone has no app password to send with" in shown
+    assert "'uv run tracker setup cloud'" in shown
+    assert "the dashboard is updated every morning" in shown
+
+
+@pytest.mark.asyncio
+async def test_with_the_gmail_connector_chosen_the_step_says_github_cannot_send() -> None:
+    world = make_world(["", True], github_env() | {"SUMMARY_DELIVERY": "gmail_connector"})
+
+    await GitHubStep().run(world.context())
+
+    shown = world.io.text()
+    assert "the run on GitHub cannot e-mail you the morning summary" in shown
+    assert "SUMMARY_DELIVERY is set to gmail_connector" in shown
+    assert "Outlook alone" not in shown
+
+
+@pytest.mark.asyncio
+async def test_with_a_gmail_mailbox_nothing_is_said_about_sending() -> None:
+    world = make_world(["", True], github_env())
+
+    await GitHubStep().run(world.context())
+
+    assert "cannot e-mail you" not in world.io.text()
 
 
 @pytest.mark.asyncio
@@ -412,7 +447,11 @@ async def test_without_a_copy_or_gh_the_template_steps_are_given_and_nothing_is_
     with pytest.raises(ValidationFailedError):
         await GitHubStep().run(world.context())
 
-    assert "brew install gh" in world.io.text()
+    shown = world.io.text()
+    assert "install the GitHub CLI (from https://cli.github.com)" in shown
+    assert "move the hidden" in shown
+    assert "file .env from the top folder of this project into the top folder of the new" in shown
+    assert "backend/.env" not in shown
     assert world.github.secrets == {}
 
 

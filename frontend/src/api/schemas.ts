@@ -5,6 +5,7 @@ import type {
   ConversationRow,
   MessageRow,
   PeopleOverviewRow,
+  PersonNoteRow,
   PersonOverrideRow,
   ReviewItemRow,
   RunLogRow,
@@ -170,6 +171,12 @@ export const personOverrideRowSchema = z.object({
   person_type: categoryKeySchema.nullable(),
   note: z.string().nullable(),
 }) satisfies z.ZodType<PersonOverrideRow>;
+
+export const personNoteRowSchema = z.object({
+  ...rowBase,
+  person_id: z.string(),
+  body: z.string(),
+}) satisfies z.ZodType<PersonNoteRow>;
 
 export const reviewItemRowSchema = z.object({
   ...rowBase,

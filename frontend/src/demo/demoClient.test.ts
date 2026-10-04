@@ -6,6 +6,12 @@ import { fetchUpcomingMeetings } from '../api/meetings';
 import { clearOverride, fetchOverride, markPersonAsNoise, saveOverride } from '../api/overrides';
 import { fetchPeople } from '../api/people';
 import { fetchPerson, fetchPersonConversations } from '../api/person';
+import {
+  addPersonNote,
+  deletePersonNote,
+  fetchPersonNotes,
+  updatePersonNote,
+} from '../api/personNotes';
 import { answerReviewItem, fetchOpenReviewItems } from '../api/review';
 import { fetchRunSince, requestRefresh } from '../api/refresh';
 import { fetchRecentRuns } from '../api/runs';
@@ -14,6 +20,7 @@ import { fixedClock } from '../lib/clock';
 import { RefusalReason, RefusedError } from '../lib/errors';
 import { getSupabaseClient, isConfigured } from '../lib/supabaseClient';
 import { DEMO_REFRESH_SECONDS } from '../constants/dashboard';
+import { MAX_NOTE_LENGTH } from '../constants/notes';
 import { CategoryNameIndex } from '../domain/categorySettings';
 import { DEMO_OWNER_EMAIL, DEMO_UNUSED_CATEGORY } from './demoData';
 import { startDemo } from './startDemo';
@@ -203,5 +210,50 @@ describe('demo "Refresh now"', () => {
     await expect(fetchRunSince(DEMO_NOW)).resolves.toMatchObject({ status: 'success' });
     const [newest] = await fetchRecentRuns();
     expect(newest?.run_step_logs.some((step) => step.step === 'summary_email')).toBe(false);
+  });
+});
+
+describe('demo notes', () => {
+  it('has two invented notes on the first person, newest first', async () => {
+    const notes = await fetchPersonNotes('demo-p01');
+    expect(notes.map((note) => note.body)).toEqual([
+      expect.stringMatching(/Joris Vermeulen/),
+      expect.stringMatching(/Rotterdam/),
+    ]);
+    expect(await fetchPersonNotes('demo-p02')).toEqual([]);
+  });
+
+  it('adds, changes and deletes a note for the page load only', async () => {
+    await addPersonNote({ person_id: 'demo-p02', body: 'Finance meets on Thursdays.' });
+    const [added] = await fetchPersonNotes('demo-p02');
+    expect(added).toMatchObject({
+      body: 'Finance meets on Thursdays.',
+      created_at: DEMO_NOW.toISOString(),
+      updated_at: DEMO_NOW.toISOString(),
+    });
+
+    await updatePersonNote(added!.id, 'Finance meets on Thursdays, at ten.');
+    expect((await fetchPersonNotes('demo-p02'))[0]?.body).toBe(
+      'Finance meets on Thursdays, at ten.',
+    );
+
+    await deletePersonNote(added!.id);
+    expect(await fetchPersonNotes('demo-p02')).toEqual([]);
+
+    startDemo(clock);
+    expect(await fetchPersonNotes('demo-p02')).toEqual([]);
+  });
+
+  it('refuses a blank note, an over-long one and one on nobody, as the database does', async () => {
+    await expect(addPersonNote({ person_id: 'demo-p02', body: ' \n ' })).rejects.toMatchObject({
+      reason: RefusalReason.BreaksRule,
+    });
+    await expect(
+      addPersonNote({ person_id: 'demo-p02', body: 'x'.repeat(MAX_NOTE_LENGTH + 1) }),
+    ).rejects.toMatchObject({ reason: RefusalReason.BreaksRule });
+    await expect(addPersonNote({ person_id: 'nobody', body: 'Hello' })).rejects.toMatchObject({
+      reason: RefusalReason.InUse,
+    });
+    await expect(updatePersonNote('demo-n01', '')).rejects.toBeInstanceOf(RefusedError);
   });
 });

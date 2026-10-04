@@ -14,6 +14,7 @@ import { PeopleFilters } from '../components/PeopleFilters';
 import { PeopleTable } from '../components/PeopleTable';
 import { RunBanner } from '../components/RunBanner';
 import { StatusGrid } from '../components/StatusGrid';
+import { ViewSwitch } from '../components/ViewSwitch';
 import * as copy from '../copy/en';
 import { categoriesInUse } from '../domain/categories';
 import { countByTypeAndStatus, countPeople } from '../domain/counters';
@@ -68,6 +69,8 @@ export function HomePage() {
         <h1 className="text-2xl font-semibold text-ink">{copy.home.title}</h1>
         <p className="mt-1 text-ink-muted">{copy.home.subtitle}</p>
       </div>
+
+      <ViewSwitch />
 
       <HiddenPersonNotice />
 

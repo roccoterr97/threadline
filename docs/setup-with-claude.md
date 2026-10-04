@@ -35,8 +35,8 @@ Claude will ask permission before it installs or runs anything; say yes when
 it explains what it is for. It will then take you through, one step at a
 time:
 
-1. **Tools** — it installs two small helpers (`uv` and `gh`) if they are
-   missing.
+1. **Tools** — it installs the small helpers it needs (`uv`, `gh` and the
+   Claude command-line tool) if they are missing.
 2. **Your private copy** — it makes your own copy of Threadline on GitHub
    (you may need to sign in to GitHub once, in the browser, with a code it
    gives you).

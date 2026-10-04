@@ -69,6 +69,7 @@ from tracker.shared.constants.collection import INITIAL_WINDOW_DAYS
 from tracker.shared.constants.mailbox import IMAP_PRESETS, DeliveryRoute
 from tracker.shared.constants.retry import HEALTHCHECK_ATTEMPTS, HEALTHCHECK_DELAY_SECONDS
 from tracker.shared.constants.setup import (
+    CONFIGURATION_FIX,
     MIGRATIONS_DIRECTORY,
     SECRET_PROBE_NAME,
     SECRET_PROBE_VALUE,
@@ -159,11 +160,7 @@ def _configuration_failed(error: TrackerError) -> DoctorReport:
     detail = error.message.removeprefix("invalid configuration: ").replace(
         f" ({_PYDANTIC_MISSING})", " (missing)"
     )
-    fix = (
-        "run 'uv run tracker setup'; on GitHub, add the missing secrets with "
-        "'uv run tracker setup github'"
-    )
-    first = problem(CONFIGURATION, f"missing or wrong: {detail}", fix)
+    first = problem(CONFIGURATION, f"missing or wrong: {detail}", CONFIGURATION_FIX)
     rest = (skipped(name, "needs the configuration first") for name in DEPENDENT_CHECKS)
     return DoctorReport((first, *rest))
 

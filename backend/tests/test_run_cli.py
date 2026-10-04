@@ -16,7 +16,7 @@ from tracker.cli.discovery import command_module_names
 from tracker.cli.main import build_cli, main
 from tracker.domain.enums import RunStatus, RunStep, RunTrigger
 from tracker.services.assessment.work_files import clean_work_directory
-from tracker.shared.config import Settings, reset_settings_cache
+from tracker.shared.config import REPOSITORY_ROOT, Settings, reset_settings_cache
 from tracker.shared.errors import DatabaseUnavailableError, ValidationFailedError, WorkFileError
 
 #: The codes a terminal reads as "switch to this colour".
@@ -426,6 +426,18 @@ def test_the_help_offers_the_folded_steps(runner: CliRunner, command: str, optio
     # On GitHub Actions the help is printed in colour, and the colour codes sit
     # between the two dashes and the option's name.
     assert option in _COLOUR_CODES.sub("", result.output)
+
+
+@pytest.mark.parametrize("command", ["build", "send"])
+def test_the_summary_help_names_its_default_file_from_the_project(
+    runner: CliRunner, command: str
+) -> None:
+    result = runner.invoke(build_cli(), ["summary", command, "--help"])
+
+    output = _COLOUR_CODES.sub("", result.output)
+    assert result.exit_code == 0
+    assert "work/summary.json" in output
+    assert str(REPOSITORY_ROOT) not in output
 
 
 def test_a_refresh_closes_its_own_run_and_leaves_the_daily_run_going(

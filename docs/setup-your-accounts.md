@@ -66,8 +66,8 @@ your Supabase account was registered with (or members of your Supabase
 organisation), unless you set up your own sending service ("custom SMTP"). Part 2
 explains what that means for you.
 
-**Time.** About an hour and a half the first time, most of it waiting for pages
-to load (at the time of writing). You can stop at any point:
+**Time.** About an hour and a half the first time, most of it creating accounts
+and copying values from one screen to another. You can stop at any point:
 `uv run tracker setup` carries on where you left off.
 
 **What it costs.** No other paid service is needed. Supabase, Vercel, GitHub,
@@ -78,6 +78,31 @@ Free-plan limits change, so check the providers' pricing pages if in doubt.
 **Your keys.** Every key you paste is saved in a file called `.env` in the
 project folder, readable only by you. Never paste a key into a chat, an e-mail
 or a document.
+
+**On Linux.** This guide was written on a Mac. On Linux, the Mac keyboard
+shortcuts it gives (such as ⌘ + N for a new Terminal window) are your desktop's
+own, and the set-up cannot reach your clipboard: wherever it would put a value
+on the clipboard, it says `No clipboard is available here` and you copy the
+value from `.env` (or the file it names) yourself. Everything else is the same.
+
+**Words used here.** A few words come up before they are explained:
+
+- **IMAP** is the standard way a program reads a mailbox; **SMTP** is the
+  standard way it sends mail. Your provider's help pages give a server name for
+  each.
+- An **app password** is a separate password made for one program only, which
+  you can remove without changing your real password.
+- **Secrets and variables** are the settings the run on GitHub reads. A secret
+  is hidden in every log; a variable is a harmless setting shown in the open.
+- **cron** is the line in the workflow file that says at what time the run
+  starts each day.
+- An **Edge Function** is a small helper that runs inside your Supabase
+  project; the Refresh now button uses one. The **Management API** is the
+  official way the set-up talks to Supabase on your behalf, with a token you
+  make and delete afterwards.
+- A **CRM** is customer-relationship software, which Threadline is not.
+- The **EEA** is the European Economic Area: the EU plus Iceland, Liechtenstein
+  and Norway.
 
 ---
 
@@ -97,9 +122,9 @@ or a document.
 
    Then close Terminal and open it again.
 4. Download your copy. GitHub no longer accepts your account password for
-   this, so the easiest way is the GitHub command-line tool. Install it from
-   <https://cli.github.com> (on a Mac with Homebrew: `brew install gh`), then
-   sign in once. Choose **GitHub.com**, **HTTPS**, say **yes** to
+   this, so the easiest way is the GitHub command-line tool. Download the
+   installer from <https://cli.github.com> (on a Mac: the `.pkg` file), open
+   it, then sign in once. Choose **GitHub.com**, **HTTPS**, say **yes** to
    authenticating Git, and **Login with a web browser**:
 
    ```bash
@@ -213,17 +238,19 @@ The full set-up goes through these steps in this order: `supabase`,
 with one detour: the dashboard needs Vercel, which comes in part 7.
 
 **The first time you run it:** carry on through parts 3 to 6 as the set-up asks.
-When it reaches `Is the dashboard published already?`, answer **no**, then
-press Ctrl + C to stop. Do part 7 (Vercel), then run
-`uv run tracker setup dashboard`. The schedule, GitHub and Refresh now steps
-follow in part 8, one at a time.
+When it reaches `Is the dashboard published already?`, answer **no**: the
+set-up stops there by itself, because the steps after it need the dashboard's
+address. Do part 7 (Vercel), then run `uv run tracker setup` again: it skips
+what is already done and carries on from the dashboard through the steps of
+part 8.
 
-**✅ Check:** after you answer **no**, you see `Skipped. Run 'uv run tracker
-setup dashboard' once it is published.`
+**✅ Check:** after you answer **no**, you see `Stopped: the dashboard is not
+published yet - publish it first (part 7 of the guide).` and then `Fix that,
+then run 'uv run tracker setup' again: finished steps are kept and it carries
+on from here.`
 
-**If not:** if you let it run on by mistake, nothing is lost: the steps after
-the dashboard ask for things that do not exist yet, so stop them with Ctrl + C
-and carry on from part 7.
+**If not:** if you answered **yes** by mistake, it asks for the address: press
+Ctrl + C to stop. Nothing is lost; carry on from part 7.
 
 To run one step again later, name it, for example
 `uv run tracker setup database`.
@@ -278,16 +305,21 @@ once. The token is used for this step only and **never saved**.
 
 1. Answer **yes** to "Apply them automatically?".
 2. On the page that opens (**Account → Access Tokens**), click **Generate new
-   token**, give it any name, choose the shortest expiry offered, and copy it.
-   (The page may look slightly different.)
-3. Paste it into Terminal.
+   token**, give it any name, choose the shortest expiry offered, and leave the
+   access as Supabase offers it: the set-up needs to read and write the
+   database's **migrations** (its structure files). Copy the token. (The page
+   may look slightly different.)
+3. Paste it into Terminal. Once the step is done, delete the token on the same
+   Supabase page.
 
 The files go one at a time, a second or two apart, so this takes about half a
 minute. If Supabase refuses a file, the set-up shows Supabase's reason in one
 line and tries that file once more by itself.
 
-**✅ Check:** you see `Applied 0001_schema`, one line per file, and then
-`The database structure is in place.`
+**✅ Check:** the step starts with `To apply: 0001_schema, 0002_access_rules, …`,
+naming every file still missing (all of them on a new project). Then you see
+`Applied 0001_schema`, one line per file, and `The database structure is in
+place.`
 
 **If not:** if you prefer not to create a token, or a file still fails, the
 set-up switches to the manual route by itself: it opens the **SQL Editor**, puts
@@ -297,8 +329,7 @@ then press Return in Terminal. Pressing Return is not enough on its own: the
 set-up checks that the file really ran, and if it did not, it says
 `The database does not show … yet` and gives you the same file again. At the
 end it checks the database once more. If it still lists a file as missing, run
-`uv run tracker setup database` again. You can delete the access token
-afterwards on the same Supabase page.
+`uv run tracker setup database` again.
 
 ---
 
@@ -315,7 +346,9 @@ owner, and checks that sign-ups are switched off.
 **What you do:**
 
 1. Type the e-mail address you signed up to Supabase with (see the warning in
-   part 2).
+   part 2). If you signed in to Supabase with GitHub, it is the main e-mail
+   address of your GitHub account; Supabase shows it under **Account →
+   Preferences**.
 2. If it says "Sign-ups are still open", the page **Authentication → Sign In /
    Providers** opens. Switch off **Allow new users to sign up**, click **Save**,
    and press Return in Terminal.
@@ -400,7 +433,12 @@ The set-up asks: *Which mailbox should Threadline read? gmail, outlook, icloud,
 yahoo, fastmail or other*. Type one word and press Return.
 
 - **outlook** (also for Hotmail and Live): go on to
-  [5c](#5c-outlook-mailbox-and-calendar-tracker-setup-microsoft).
+  [5c](#5c-outlook-mailbox-and-calendar-tracker-setup-microsoft). Good to know
+  now rather than in part 8: with Outlook alone, the run on GitHub cannot
+  e-mail you the morning summary, because Microsoft allows no app password for
+  sending. Connect a Gmail or other mailbox as well (run
+  `uv run tracker setup mailbox` again later), or use the
+  [alternative route](#alternative-the-daily-run-in-a-claude-cloud-routine).
 - **anything else**: follow 5b below for your provider.
 
 **✅ Check:** the set-up either asks for your address (5b) or says the Microsoft
@@ -777,9 +815,12 @@ phone.
      *"Multiple applications detected"* and lists **backend** and **frontend**,
      click **Import single project** next to **frontend** (marked *Vite*): that
      sets the folder for you.
-   - **Environment Variables:** add two:
+   - **Environment Variables:** add two. These are the address and the
+     **Publishable key** from part 3a: **Supabase → Project Settings → API
+     Keys**.
      - `VITE_SUPABASE_URL` = your project address (`https://<project-id>.supabase.co`)
-     - `VITE_SUPABASE_ANON_KEY` = your **publishable** key. Never the secret one.
+     - `VITE_SUPABASE_ANON_KEY` = your **publishable** key (it starts with
+       `sb_publishable_`). Never the secret one.
 4. Click **Deploy** (or **Create Project**, then **Deploy**) and wait for it to
    finish. If Vercel only says *"Project created … then deploy"* and nothing
    starts, open the project and choose **Deployments → Redeploy**, or push any
@@ -802,6 +843,18 @@ choose **Redeploy** (changed variables only apply after a redeploy).
 
 ### 7a. Tell Threadline and Supabase (`tracker setup dashboard`)
 
+Back in Terminal, in the `backend` folder, start the set-up again:
+
+```bash
+uv run tracker setup
+```
+
+It skips every finished step (an optional step you skipped before, such as
+LinkedIn, is offered once more: answer **n** to skip it again) and asks
+`Is the dashboard published already?`. Answer **yes** this time, and paste the
+production address from step 5. (To redo only this step later:
+`uv run tracker setup dashboard`.)
+
 **What the set-up does for you:** it opens the address once to check it shows
 the dashboard (and not a Vercel login), saves it so the morning e-mail links to
 it, and opens Supabase's **Authentication → URL Configuration** page.
@@ -812,8 +865,10 @@ it, and opens Supabase's **Authentication → URL Configuration** page.
 - **Redirect URLs:** add your production address followed by `/**`.
 - Click **Save**, then press Return in Terminal.
 
-**✅ Check:** on your phone, open the address, type your e-mail, and click the
-link in the e-mail Supabase sends. The dashboard opens (it is empty until the
+**✅ Check:** you see `Saved DASHBOARD_BASE_URL in .env.`, and the set-up goes
+straight on to `Step 11 of 14: The daily time (GitHub Actions)`, which is part
+8b. Later, on your phone, open the address, type your e-mail, and click the
+link in the e-mail Supabase sends: the dashboard opens (it is empty until the
 first run).
 
 **If not:** "Email address not authorized" means the address is not the one of
@@ -829,6 +884,12 @@ job with **your own Claude subscription**, and e-mails you the summary from
 your own mailbox, with your laptop shut. At the time of writing, GitHub's
 free plan includes 2,000 minutes a month for private repositories; one run takes
 about five to ten minutes, so a month of mornings uses roughly 150 to 300.
+
+The set-up you restarted in 7a carries on here by itself, in this order: the
+daily time (8b), your settings on GitHub (8c) and Refresh now (8f). It ends
+with the doctor's check of every connection. The command under each of those
+headings runs that one step again on its own, later. Parts 8a, 8d and 8e are
+done on the GitHub website once the set-up has finished.
 
 **Which mailbox sends the summary.** Threadline sends it from the Gmail,
 iCloud, Yahoo, Fastmail or other mailbox you connected in part 5, with the same
@@ -853,6 +914,9 @@ and reusable workflows**, click **Save**, and open the Actions tab again.
 
 ### 8b. Choose the time (`tracker setup schedule`)
 
+The set-up reaches this step right after the dashboard. To run it on its own
+later:
+
 ```bash
 uv run tracker setup schedule
 ```
@@ -873,11 +937,18 @@ The `cron:` line shows your minute and hour (`7 7 * * *` for 07:07), and the
 `timezone:` line shows your zone.
 
 **If not:** the change was not pushed yet. In Terminal, run the `git` lines the
-set-up printed (they work from any folder of the project). If the set-up said
+set-up printed (they work from any folder of the project). If Terminal answers
+*Please tell me who you are*, git does not know your name yet: run
+`git config --global user.name "Your Name"` and
+`git config --global user.email you@example.com` once, with your own name and
+address, then run the `git` lines again. If the set-up said
 `This folder is not linked to a copy of yours on GitHub yet`, carry on with 8c:
 it makes your copy and uploads the change with it.
 
 ### 8c. Put your settings on GitHub (`tracker setup github`)
+
+The set-up goes on with this step after the daily time. To run it on its own
+later:
 
 ```bash
 uv run tracker setup github
@@ -901,8 +972,8 @@ explains the **Use this template → Private** steps from part 1 and stops; run
 `uv run tracker setup github` again from the new copy's `backend` folder.
 
 **The Claude key.** GitHub also needs a key that lets it use your Claude
-subscription. The set-up asks for it. Open a second Terminal window (⌘ + N) and
-run:
+subscription. The set-up asks for it. Open a second Terminal window (on a Mac:
+⌘ + N) and run:
 
 ```bash
 claude setup-token
@@ -973,10 +1044,10 @@ about five to ten minutes it has a green tick.
   key is wrong or expired: run `claude setup-token` again and replace the
   `CLAUDE_CODE_OAUTH_TOKEN` secret.
 - *A run stopped half-way (cancelled, or GitHub stopped it):* nothing to clean
-  up. The dashboard's **Runs** page shows it as running for a while; when the
-  next run starts (at least three hours later), it is closed as **failed**,
-  with the step where it stopped marked "The run stopped here and never
-  finished", and the next morning summary mentions it once.
+  up. The dashboard's **Daily runs** page shows it as **Running** for a while;
+  when the next run starts (at least three hours later), it is closed as
+  **Did not work**, with the step where it stopped marked "The run stopped
+  here and never finished", and the next morning summary mentions it once.
 
 ### 8e. See the log, and the e-mail
 
@@ -985,8 +1056,8 @@ Claude**: the log ends with Claude's short report of the run, in plain
 English. It never contains the text of your messages.
 
 **✅ Check:** within about ten minutes of the start, the summary e-mail is in
-your inbox, sent from your own mailbox, and the dashboard's **Runs** page shows
-the run as `success` or `partial`.
+your inbox, sent from your own mailbox, and the dashboard's **Daily runs** page
+shows the run as **Worked** or **Partly worked**.
 
 **If not:** a green tick only means the job ran, not that every part worked.
 Read Claude's report at the end of the log, then run `uv run tracker doctor` on
@@ -999,15 +1070,17 @@ mode: it reads only what is new and sends no e-mail. Part 8f switches it on.
 
 ### 8f. Switch on Refresh now (`tracker setup refresh`)
 
+The set-up reaches this step right after 8c, so you will meet it before the
+first run of 8d. To run it on its own later:
+
 ```bash
 uv run tracker setup refresh
 ```
 
-(The full `uv run tracker setup` runs this part too, right after 8c.) It puts
-a small helper called `refresh-now` into your Supabase project, so the button
-can start an extra update. You install nothing: the set-up does it through
-Supabase's and GitHub's websites. It needs two keys, each pasted once (nothing
-shows while you paste) and never saved on your computer.
+It puts a small helper called `refresh-now` into your Supabase project, so the
+button can start an extra update. You install nothing: the set-up does it
+through Supabase's and GitHub's websites. It needs two keys, each pasted once
+(nothing shows while you paste) and never saved on your computer.
 
 **Before you start:** the dashboard is published (part 7a) and your private
 copy is on GitHub (part 8c). If not, the set-up says which part to do first.
@@ -1155,8 +1228,8 @@ Anyone who can use this environment can read these values, so keep it to
 yourself.
 
 **✅ Check:** start a session in this environment, on your Threadline copy, and ask
-it to run `cd backend && uv run tracker doctor`. Every line says `ok` (LinkedIn
-and the dashboard may say `skipped`).
+it to run `cd backend && uv run tracker doctor`. Every line says `ok` (optional
+parts may say `skipped`).
 
 **If not:** a `PROBLEM` line says what to fix. "could not be reached" in the
 cloud almost always means a missing allowed domain. "missing or wrong" names a
@@ -1186,8 +1259,8 @@ click **Connect**.
 7. Save, then click **Run now** once.
 
 **✅ Check:** within about ten minutes, the summary e-mail arrives in your
-inbox, and the dashboard's **Runs** page shows the run as `success` or
-`partial`.
+inbox, and the dashboard's **Daily runs** page shows the run as **Worked** or
+**Partly worked**.
 
 **If not:** a green routine status only means the session ran, not that the job
 worked. Open the session and read its last message. Then run

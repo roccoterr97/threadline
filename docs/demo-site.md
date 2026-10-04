@@ -18,7 +18,8 @@ npm run build:demo
 npm run preview
 ```
 
-Open <http://localhost:4173>.
+`npm install` may print warnings about vulnerabilities or install scripts: they
+concern developer tools only and can be ignored. Open <http://localhost:4173>.
 
 ✅ Check: you should now see the dashboard with a notice at the top saying
 "Demo — made-up data. Nothing is saved." and a "Set up your own" link.
@@ -34,8 +35,9 @@ the same one your real dashboard uses. This makes a second, separate project.
 
 ## 3. Name it and point it at the dashboard folder
 
-- **Project Name:** `threadline-demo` (this becomes the web address, for
-  example `threadline-demo.vercel.app`, if nobody else has taken it).
+- **Project Name:** a name of your own, such as `my-threadline-demo` (this
+  becomes the web address, `my-threadline-demo.vercel.app`, if nobody else has
+  taken it; `try-threadline.vercel.app` is the official demo).
 - **Root Directory:** click **Edit** and choose `frontend`. If Vercel says
   *"Multiple applications detected"*, click **Import single project** next to
   **frontend** (marked *Vite*) instead: that sets the folder for you.
@@ -74,8 +76,9 @@ the setup guide on GitHub.
 
 If you forked Threadline and publish your own demo, two places still point at
 the original project's demo and guide, so change them to yours: the "Live
-demo:" line of the README's "Try the demo" section (replace the example
-address with yours), and the demo notice's "Set up your own" link, which is the
+demo:" line of the README's "Try the demo" section (replace the official
+demo's address, `https://try-threadline.vercel.app`, with yours), and the demo
+notice's "Set up your own" link, which is the
 `SETUP_GUIDE_URL` in `frontend/src/demo/DemoBanner.tsx`. Leave them as they are
 if you would rather keep pointing at the original.
 
@@ -87,14 +90,17 @@ if you would rather keep pointing at the original.
   well as your real dashboard.
 - **Nothing is saved.** Each visitor gets a fresh copy of the made-up data;
   reloading the page starts again.
-- **Search engines are asked to skip it**, like the real dashboard, because
-  both share the same `vercel.json` rules. People can still open it from a link.
+- **Search engines are asked to skip your demo**, like the real dashboard,
+  because both share the same `vercel.json` rules. The one exception is the
+  official demo, `try-threadline.vercel.app`, which `frontend/vercel.json` lets
+  search engines list; your own demo keeps the rule unless you add its address
+  there too. People can still open it from a link.
 - **Keep the two apart.** Never add `VITE_DEMO` to your real dashboard's
   project — it would show the made-up data instead of yours.
 - **Shared links show a picture.** When someone posts the demo's address in
   a chat or on social media, a preview card with a picture of the dashboard
   appears. On Vercel this works by itself. Elsewhere, set `DEMO_SITE_URL` to
-  the demo's full address (for example `https://threadline-demo.vercel.app`)
+  the demo's full address (for example `https://my-threadline-demo.vercel.app`)
   in `frontend/.env.local` or in your host's settings before
   `npm run build:demo`, because previews need the full address of the picture.
   The picture itself is `frontend/assets/social-card.png`; if you change the

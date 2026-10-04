@@ -14,6 +14,12 @@ export class NotConfiguredError extends DashboardError {}
 /** The database refused or could not be reached. */
 export class DataUnavailableError extends DashboardError {}
 
+/**
+ * The database has no such table: a structure file newer than the database
+ * has not been applied yet. A kind of "unavailable" a page can explain.
+ */
+export class TableMissingError extends DataUnavailableError {}
+
 /** The database answered, but not in the shape the dashboard expects. */
 export class UnexpectedDataError extends DashboardError {}
 

@@ -11,6 +11,7 @@ import typer
 
 from tracker.cli.discovery import register_commands
 from tracker.shared.config import DEFAULT_PRODUCT_NAME, AppEnv, LogLevel, get_settings
+from tracker.shared.constants.setup import CONFIGURATION_FIX
 from tracker.shared.errors import ConfigurationError, TrackerError
 from tracker.shared.logging import configure_logging, get_logger
 
@@ -18,6 +19,10 @@ _log = get_logger(__name__)
 
 #: What the root help says after the product name.
 _HELP_TAIL = "collect messages, assess them, report on them."
+
+#: The plain line a command adds when it failed because a setting is missing or
+#: wrong; the same fix the doctor prints.
+_CONFIGURATION_PROBLEM = f"PROBLEM  A setting is missing or wrong. Fix: {CONFIGURATION_FIX}."
 
 
 def build_cli() -> typer.Typer:
@@ -34,6 +39,9 @@ def build_cli() -> typer.Typer:
 def main() -> None:
     """Run the command-line tool.
 
+    A broken configuration is the one failure a newcomer meets before anything
+    else works, so it also gets the doctor's plain fix line, on standard output.
+
     Raises:
         SystemExit: With status 1 when a command fails for a known reason.
     """
@@ -43,6 +51,8 @@ def main() -> None:
         build_cli()()
     except TrackerError as error:
         _log.error("command_failed", code=error.code, detail=error.message)
+        if isinstance(error, ConfigurationError):
+            typer.echo(_CONFIGURATION_PROBLEM)
         raise SystemExit(1) from error
 
 

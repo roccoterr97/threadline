@@ -12,6 +12,7 @@ import { LoadingState } from '../components/LoadingState';
 import { MarkNoiseAction } from '../components/MarkNoiseAction';
 import { PersonCorrection } from '../components/PersonCorrection';
 import { PersonHeader } from '../components/PersonHeader';
+import { PersonNotes } from '../components/PersonNotes';
 import { PersonSummary } from '../components/PersonSummary';
 import { Timeline } from '../components/Timeline';
 import * as copy from '../copy/en';
@@ -19,21 +20,22 @@ import { buildTimeline } from '../domain/timeline';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
-import { peopleListAddress } from '../lib/peopleListAddress';
+import { personOrigin } from '../lib/personOrigin';
 
 /**
- * One person: who they are, every message, and — folded away — how to correct
- * the assistant.
+ * One person: who they are, the owner's own notes on them, every message,
+ * and — folded away — how to correct the assistant.
  *
- * On a phone everything is one column: summary, then the history, then the
- * correction. On a laptop the history takes the wide left column and the
- * summary and correction sit beside it, so the messages start at the top.
- * Every way back to People keeps the filters and order it was opened with.
+ * On a phone everything is one column: summary, notes, then the history, then
+ * the correction. On a laptop the history takes the wide left column and the
+ * summary, notes and correction sit beside it, so the messages start at the top.
+ * Every way back goes to the list the person was opened from (People, or an
+ * organisation's page) with the filters and order it had.
  */
 export function PersonPage() {
   const clock = useClock();
   const { personId = '' } = useParams<{ personId: string }>();
-  const peopleAddress = peopleListAddress(useLocation().state);
+  const origin = personOrigin(useLocation().state);
 
   const person = useQuery({
     queryKey: personQueryKey(personId),
@@ -71,8 +73,12 @@ export function PersonPage() {
         title={copy.person.notFound.title}
         body={copy.person.notFound.body}
         action={
-          <Link to={peopleAddress} className="font-medium text-accent underline underline-offset-2">
-            {copy.person.backToPeople}
+          <Link
+            to={origin.address}
+            state={origin.state}
+            className="font-medium text-accent underline underline-offset-2"
+          >
+            {origin.label}
           </Link>
         }
       />
@@ -83,15 +89,20 @@ export function PersonPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link to={peopleAddress} className="self-start text-accent underline underline-offset-2">
-        {copy.person.backToPeople}
+      <Link
+        to={origin.address}
+        state={origin.state}
+        className="self-start text-accent underline underline-offset-2"
+      >
+        {origin.label}
       </Link>
 
       <PersonHeader person={person.data} vocabulary={vocabulary.vocabulary} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:grid-rows-[auto_1fr] lg:items-start">
-        <div className="lg:col-start-2 lg:row-start-1">
+        <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1">
           <PersonSummary person={person.data} clock={clock} />
+          <PersonNotes personId={personId} />
         </div>
 
         <section className="flex min-w-0 flex-col gap-3 lg:col-start-1 lg:row-span-2 lg:row-start-1">

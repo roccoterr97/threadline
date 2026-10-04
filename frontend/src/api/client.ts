@@ -4,6 +4,7 @@ import {
   NotSignedInError,
   RefusalReason,
   RefusedError,
+  TableMissingError,
   UnexpectedDataError,
 } from '../lib/errors';
 import { logError, logInfo } from '../lib/logger';
@@ -32,6 +33,9 @@ const REFUSAL_CODES = new Map<string, RefusalReason>([
   ['23514', RefusalReason.BreaksRule],
   ['23505', RefusalReason.Duplicate],
 ]);
+
+/** Postgres's and the data API's codes for a table the database does not have (yet). */
+const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST205']);
 
 /** Where Postgres names the rule a refused write broke: `… constraint "name"`. */
 const CONSTRAINT_NAME = /constraint "([^"]+)"/;
@@ -66,6 +70,11 @@ function toDomainError(
   ) {
     logError('query.not_signed_in', { event, code, status: status ?? null });
     return new NotSignedInError(event);
+  }
+
+  if (code !== null && MISSING_TABLE_CODES.has(code)) {
+    logError('query.table_missing', { event, code, status: status ?? null });
+    return new TableMissingError(event);
   }
 
   const reason = code === null ? undefined : REFUSAL_CODES.get(code);

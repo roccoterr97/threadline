@@ -48,8 +48,10 @@ already done.
 Everything runs on a Mac or Linux. On Windows, stop and say Threadline does
 not support Windows yet.
 
-Check what is there, quietly: `git --version`, `uv --version`,
-`gh --version`, `claude --version`.
+Check what is there, quietly, the way the Terminal app would see it:
+`zsh -lc 'git --version; uv --version; gh --version; claude --version'`
+(`bash -lc` on Linux). Downloads with `curl` ask for permission every time;
+that is intended, so explain each one in a sentence and let them say yes.
 
 - **git** missing on a Mac: run `xcode-select --install`, tell them a window
   will ask to install "command line developer tools" and to click Install,
@@ -58,14 +60,21 @@ Check what is there, quietly: `git --version`, `uv --version`,
   `curl -LsSf https://astral.sh/uv/install.sh | sh`, then use
   `~/.local/bin/uv` (or open a new shell) for the rest.
 - **gh** (the GitHub tool) missing: it makes the next parts far easier.
-  With Homebrew (`brew --version` works): `brew install gh`. Without: download
-  the latest macOS or Linux archive from
-  <https://github.com/cli/cli/releases/latest>, unpack it and put the `gh`
-  binary in `~/.local/bin`. If that is not possible, carry on: the two places
-  that need it have a by-hand route.
-- **claude** is already there if you are running. Nothing to do.
+  With Homebrew (`brew --version` works): `brew install gh`. On a Mac without
+  it: ask them to download the macOS `.pkg` installer from
+  <https://cli.github.com>, open it and click through. On Linux: download the
+  latest archive from <https://github.com/cli/cli/releases/latest>, unpack it
+  and put the `gh` binary in `~/.local/bin`. If that is not possible, carry
+  on: the two places that need it have a by-hand route.
+- **claude** missing in that check: the Claude app you are running in keeps
+  its own copy in a private folder that the Terminal app cannot see, and part
+  4 needs them to run `claude setup-token` in the Terminal. With their
+  permission, run `curl -fsSL https://claude.ai/install.sh | bash`
+  (Anthropic's installer for the command-line tool, which puts `claude` in
+  `~/.local/bin`), then check again with `zsh -lc 'claude --version'`.
 
-**Check:** the four commands print a version (gh may be missing by choice).
+**Check:** the four commands print a version in that login-shell check (gh
+may be missing by choice).
 
 ## Part 2 — their own private copy (`copy`)
 
@@ -77,15 +86,24 @@ Threadline runs every day from the person's own **private** copy on GitHub.
    `gh auth login --hostname github.com --git-protocol https --web` in the
    background. It prints a one-time code such as `ABCD-1234` and a link. Give
    them the code and the link (<https://github.com/login/device>), tell them
-   to paste the code there and click Authorize. Wait until the command ends.
-3. Make the copy and download it, in their home folder:
+   to paste the code there and click Authorize. Wait until the command ends,
+   then run `gh auth setup-git`, so git can download and upload their private
+   copy without asking for a password.
+3. Give git a name, if `git config --global user.name` prints nothing: a new
+   computer has none, and the schedule step later saves a change with it.
+   Ask what name should appear on saved changes (a first name is fine) and run
+   `git config --global user.name "<their answer>"`. For the e-mail use
+   GitHub's no-reply address, so their real one is never written into the
+   copy: `git config --global user.email "$(gh api user --jq '"\(.id)+\(.login)@users.noreply.github.com"')"`.
+   Without gh: ask which e-mail address they gave GitHub and use that.
+4. Make the copy and download it, in their home folder:
    `gh repo create threadline --template roccoterr97/threadline --private --clone`
    (run it in `~`; if a `threadline` folder already exists there, ask whether
    it is an earlier attempt, and use it). Without gh: ask them to open
    <https://github.com/roccoterr97/threadline>, click **Use this template →
    Create a new repository**, choose **Private**, and tell you the name; then
    clone it with the address they see.
-4. Install the backend: `cd ~/threadline/backend && uv sync`.
+5. Install the backend: `cd ~/threadline/backend && uv sync`.
 
 **Check:** `uv run tracker --help` (in `~/threadline/backend`) lists `setup`
 and `doctor`, and `git remote get-url origin` names *their* GitHub user.
@@ -154,12 +172,17 @@ Two moments need a word from you:
   from `claude setup-token`. Tell them: open the **Terminal** app (⌘ + Space,
   type Terminal, Return), type `claude setup-token`, press Return, sign in in
   the browser, come back to Terminal, copy the long key that starts with
-  `sk-ant-` and paste it into the set-up page. Not into this chat.
+  `sk-ant-` and paste it into the set-up page. Not into this chat. If
+  Terminal answers `command not found`, the command-line tool is missing: do
+  the **claude** line of part 1, then ask them to open a new Terminal window
+  and try again.
 - **"Is the dashboard published already?"** — they did Vercel in part 3, so
   the answer is yes, and the address is the production one from Vercel.
 
-If the page says **Stopped** or the command ends before "All done": read the
-last lines, explain in plain words, fix what you can, and run
+The page's own last words ("All done", "Stopped before the end") are shown on
+the page only; what you see is the final check. If the page says **Stopped**,
+or the command ends without `Everything Threadline needs is working.`: read
+the last lines, explain in plain words, fix what you can, and run
 `uv run tracker setup --browser` again — it carries on where it stopped. One
 step alone is `uv run tracker setup <step> --browser`.
 
@@ -175,9 +198,13 @@ to redo.
    button like **I understand my workflows, go ahead and enable them**, click
    it (guide, 8a).
 2. Start the first run: with gh,
-   `gh workflow run threadline-run.yml -f mode=daily` from `~/threadline`,
-   then `gh run watch` to follow it (about five to ten minutes). Without gh:
-   tell them **Actions → Threadline run → Run workflow → Run workflow**.
+   `gh workflow run threadline-run.yml -f mode=daily` from `~/threadline`.
+   Wait a few seconds, find the run's number with
+   `gh run list --workflow threadline-run.yml --limit 1 --json databaseId --jq '.[0].databaseId'`,
+   then follow it with `gh run watch <that number>` (about five to ten
+   minutes; `gh run watch` with no number refuses to run without a terminal).
+   Without gh: tell them **Actions → Threadline run → Run workflow → Run
+   workflow**.
 3. When it ends, tell them to look for the summary e-mail in their inbox, and
    to open the dashboard address and sign in with the link Supabase e-mails
    them (only two such e-mails an hour).

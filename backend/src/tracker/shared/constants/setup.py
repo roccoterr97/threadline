@@ -25,6 +25,13 @@ SECRET_PROBE_NAME: Final[str] = "healthcheck_probe"
 #: What they write; the value itself is meaningless.
 SECRET_PROBE_VALUE: Final[str] = "healthcheck"
 
+#: What to do when the configuration is missing or wrong, as the doctor and a
+#: failed command both say it.
+CONFIGURATION_FIX: Final[str] = (
+    "run 'uv run tracker setup'; on GitHub, add the missing secrets with "
+    "'uv run tracker setup github'"
+)
+
 # --- The set-up page in the browser -----------------------------------------
 
 #: The page is served to this computer only; never to the network.

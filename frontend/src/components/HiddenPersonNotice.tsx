@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { markPersonAsRelevant } from '../api/overrides';
 import { peopleQueryKey } from '../api/people';
 import * as copy from '../copy/en';
-import { readHiddenPerson, type HiddenPerson } from '../lib/hiddenPerson';
+import { readHiddenPerson, withoutHiddenPerson, type HiddenPerson } from '../lib/hiddenPerson';
 import { Button } from './Button';
 import { SaveFeedback } from './SaveFeedback';
 
@@ -14,8 +14,8 @@ const text = copy.person.hidden;
  * Says who was just hidden from the list, with a way to undo it.
  *
  * The person page hands the name over in the location state. It is read once
- * and then cleared from the browser history, so going back or reloading does
- * not bring the message back. The note takes focus when it appears, so a
+ * and then cleared from the browser history (anything else the page was opened
+ * with stays), so going back or reloading does not bring the message back. The note takes focus when it appears, so a
  * screen reader hears it and the keyboard is one Tab away from "Undo", and
  * takes it back once the undo has worked. An undo that fails says so the way
  * every failed save does: its message takes the focus and comes on screen,
@@ -36,8 +36,11 @@ export function HiddenPersonNotice() {
   const hasState = readHiddenPerson(location.state) !== null;
   useEffect(() => {
     if (!hasState) return;
-    void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
-  }, [hasState, location.pathname, location.search, navigate]);
+    void navigate(`${location.pathname}${location.search}`, {
+      replace: true,
+      state: withoutHiddenPerson(location.state),
+    });
+  }, [hasState, location.pathname, location.search, location.state, navigate]);
 
   // Again once undone: "Undo" leaves the page while it has the keyboard, which
   // would otherwise drop back to the top, and the note now says who is back.

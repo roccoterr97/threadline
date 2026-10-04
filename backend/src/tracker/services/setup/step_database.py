@@ -112,7 +112,9 @@ async def _apply_automatically(
     Returns:
         The files still to apply by hand; empty when all went through.
     """
-    ctx.io.say("Create a token on the page that opens (any name; the shortest expiry is fine).")
+    ctx.io.say("Create a token on the page that opens: any name, the shortest expiry, and leave")
+    ctx.io.say("the access as offered (it must read and write the database's migrations).")
+    ctx.io.say("Delete the token on that page once this step is done.")
     ctx.io.open_page(SUPABASE_TOKENS_PAGE)
     token, applied = await ctx.ask_until_accepted(
         lambda: ctx.io.ask_secret("Supabase access token (it stays hidden)"),

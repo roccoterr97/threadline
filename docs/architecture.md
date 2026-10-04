@@ -238,7 +238,11 @@ exactly one known person, two people of one company writing in the same e-mail
 conversation, and a bare address at a company with exactly one named person. It
 only reads who sent something in which thread, never the text, and it never
 asks about the same pair twice. A "yes" is applied by `services/identity/merge.py`,
-which keeps the record showing a real name.
+which keeps the record showing a real name and moves everything the other
+record holds — its addresses, threads, correction, the owner's notes — across
+before removing it. The notes are moved in one request that reads nothing
+back; a database without the notes table yet (migration 0016 not applied) has
+none to move and merges as before.
 
 **Writing** (`services/collection/writer.py`) reuses the primary key a row
 already has and upserts on the natural keys, so any collector can be run twice
@@ -561,6 +565,7 @@ owner's time zone (see "The daily run").
 | `messages` | `conversation_id`, `source_message_id` |
 | `person_states` | `person_id` |
 | `person_overrides` | `person_id` |
+| `person_notes` | `id` |
 | `review_items` | `id` |
 | `run_logs`, `run_step_logs` | `id` |
 | `app_secrets` | `name` |
@@ -585,6 +590,12 @@ corrections already applied over the AI's values, plus `last_contact_at`,
   subject itself, and a check constraint enforces the same rule in the database.
 - `run_step_logs` holds counts and error codes only — never message text, never
   a secret.
+- `person_notes`, the notes the owner types on a person's page, are for the
+  dashboard only. The Python jobs never read a note's text: the model they use
+  has no field for it, so a note can reach neither the AI assessment nor the
+  summary e-mail. The jobs only point a note at the surviving record when two
+  records of one person are joined. The dashboard refuses a blank note and
+  holds the same 2000-character limit as the database.
 
 ### Access rules
 
@@ -592,9 +603,10 @@ corrections already applied over the AI's values, plus `last_contact_at`,
   filled in after the owner's first sign-in; until then nobody can read
   through the public key.
 - The logged-in role may read everything except `app_secrets` and `app_owner`,
-  and may write only `person_overrides`, the answer columns of `review_items`,
-  `people.relevance` and `categories` (never a category's key) — enforced by
-  column grants *and* row-level security.
+  and may write only `person_overrides`, `person_notes` (a note's person and
+  text on the way in, its text alone afterwards — never its dates), the answer
+  columns of `review_items`, `people.relevance` and `categories` (never a
+  category's key) — enforced by column grants *and* row-level security.
 - `app_secrets` is unreachable for the anonymous and logged-in roles. Only the
   service key the Python jobs use can read it, and the values inside are
   encrypted with `TOKEN_ENCRYPTION_KEY`, which is deliberately not in the

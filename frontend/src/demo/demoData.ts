@@ -5,6 +5,7 @@ import type {
   CategoryKey,
   CategorySuggestion,
   ContactStatus,
+  PersonNoteRow,
   PersonOverrideRow,
   Relevance,
   ReviewItemRow,
@@ -15,6 +16,7 @@ import type {
   WaitingOn,
 } from '../types/database';
 import { atLocal, dailyRunEnd, dailyRunStart, hoursBefore, localDate } from './demoCalendar';
+import { buildDemoNotes } from './demoNotes';
 import { DEMO_PEOPLE, type PersonSeed, type ThreadSeed } from './demoPeople';
 
 /**
@@ -50,6 +52,7 @@ export interface DemoTables {
   states: DemoState[];
   conversations: ConversationWithMessages[];
   overrides: PersonOverrideRow[];
+  notes: PersonNoteRow[];
   categories: Category[];
   suggestions: CategorySuggestion[];
   statusLabels: StatusLabel[];
@@ -290,6 +293,7 @@ export function createDemoData(now: Date): DemoTables {
       seed.threads.map((thread, index) => buildThread(seed, thread, index, now)),
     ),
     overrides: buildOverrides(now),
+    notes: buildDemoNotes(now),
     categories: [
       ...SALES_PRESET.filter((preset) => preset.key !== DEMO_UNUSED_CATEGORY).map(
         (preset, index) => ({

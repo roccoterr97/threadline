@@ -1,7 +1,7 @@
-import { NavLink } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import * as copy from '../copy/en';
 import { Icon } from './Icon';
-import { NAV_ITEMS } from './navItems';
+import { currentNavPath, NAV_ITEMS } from './navItems';
 import { ReviewCount } from './ReviewCount';
 
 interface HeaderNavProps {
@@ -9,7 +9,7 @@ interface HeaderNavProps {
   reviewCount: number;
 }
 
-function linkClass({ isActive }: { isActive: boolean }): string {
+function linkClass(isActive: boolean): string {
   const base =
     'inline-flex min-h-11 items-center gap-2 rounded-token-md px-3 py-2 text-sm font-medium transition-colors';
   return isActive ? `${base} bg-accent text-accent-fg` : `${base} text-ink hover:bg-neutral-soft`;
@@ -17,17 +17,24 @@ function linkClass({ isActive }: { isActive: boolean }): string {
 
 /**
  * The main menu inside the header, from tablet width up. On a phone the same
- * links live in the bottom bar instead, so the header never wraps.
+ * links live in the bottom bar instead, so the header never wraps. The
+ * current page is marked by colour and announced (see `currentNavPath`).
  */
 export function HeaderNav({ reviewCount }: HeaderNavProps) {
+  const current = currentNavPath(useLocation());
   return (
     <nav aria-label={copy.nav.headerLabel} className="hidden items-center gap-1 md:flex">
       {NAV_ITEMS.map((item) => (
-        <NavLink key={item.to} to={item.to} end={item.end} className={linkClass}>
+        <Link
+          key={item.to}
+          to={item.to}
+          aria-current={item.to === current ? 'page' : undefined}
+          className={linkClass(item.to === current)}
+        >
           <Icon name={item.icon} className="h-4 w-4" />
           {item.label}
           {item.showsReviewCount && <ReviewCount count={reviewCount} />}
-        </NavLink>
+        </Link>
       ))}
     </nav>
   );

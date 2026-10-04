@@ -86,7 +86,12 @@ class SetupWizard:
         return await self._attempt(step, skip_when_done=False)
 
     async def _attempt(self, step: Step, *, skip_when_done: bool) -> bool:
-        """Run one step, turning a problem into two plain lines."""
+        """Run one step, turning a problem into two plain lines.
+
+        A full run names the full command to run again, since it skips the
+        finished steps and carries on from the one that stopped; a single step
+        names itself.
+        """
         try:
             if skip_when_done and await step.is_done(self._ctx):
                 self._ctx.io.say(f"Already done. To redo it: uv run tracker setup {step.name}")
@@ -100,8 +105,16 @@ class SetupWizard:
         except TrackerError as error:
             _log.warning("setup_step_stopped", step=step.name.value, code=error.code)
             self._ctx.io.say(f"Stopped: {error.message}.")
-            self._ctx.io.say(
-                f"Fix that, then run 'uv run tracker setup {step.name}' - finished steps are kept."
-            )
+            self._ctx.io.say(_how_to_carry_on(step, full_run=skip_when_done))
             return False
         return True
+
+
+def _how_to_carry_on(step: Step, *, full_run: bool) -> str:
+    """The one command to run after a stop, and what it does."""
+    if full_run:
+        return (
+            "Fix that, then run 'uv run tracker setup' again: finished steps are kept "
+            "and it carries on from here."
+        )
+    return f"Fix that, then run 'uv run tracker setup {step.name}' - finished steps are kept."

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -14,6 +15,10 @@ from tracker.cli.main import build_cli, main
 from tracker.domain.enums import Channel
 from tracker.services.identity.directory import DirectoryEntry
 from tracker.shared.errors import ValidationFailedError
+
+#: On GitHub Actions the help is printed in colour, with the codes between the
+#: two dashes and the option's name.
+_COLOUR_CODES = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @pytest.fixture
@@ -40,6 +45,18 @@ def test_the_collect_group_offers_both_sources_and_both_together(runner: CliRunn
     assert result.exit_code == 0
     for command in ("linkedin", "email", "all"):
         assert command in result.output
+
+
+def test_only_collect_all_speaks_of_recording_the_steps(runner: CliRunner) -> None:
+    email = _COLOUR_CODES.sub("", runner.invoke(build_cli(), ["collect", "email", "--help"]).output)
+    everything = _COLOUR_CODES.sub(
+        "", runner.invoke(build_cli(), ["collect", "all", "--help"]).output
+    )
+
+    assert "--refresh" in email
+    assert "--record" not in email
+    assert "--record" in everything
+    assert "with --record" in everything
 
 
 def test_the_microsoft_group_offers_the_one_time_sign_in(runner: CliRunner) -> None:

@@ -8,17 +8,23 @@ Threadline is a private, self-hosted tool for the conversations you are keeping
 alive: who you are talking to, where each conversation stands, who owes whom a
 reply, and what to do next.
 
-Once a day it reads your new LinkedIn messages, your Microsoft personal
-mailbox (Outlook.com / Hotmail) and its calendar, throws away the noise, and
-groups what is left into one timeline per person. An AI step, run by Claude on
-your own subscription, then judges each person: the status, who is waiting on
-whom, the next action and when it is due. You see the result on a private
-dashboard, and a short summary e-mail reaches you every morning.
+Once a day it reads your new LinkedIn messages and your mailbox (Gmail,
+Outlook.com, iCloud, Yahoo, Fastmail or any IMAP mailbox), plus your Outlook
+calendar if you have one, throws away the noise, and groups what is left into
+one timeline per person. An AI step, run by Claude on your own subscription,
+then judges each person: the status, who is waiting on whom, the next action
+and when it is due. You see the result on a private dashboard, and a short
+summary e-mail reaches you every morning.
 
 Threadline started as a job-search tool and is being generalised. You pick a
 preset — job search, sales outreach, fundraising, freelance clients or general
 networking — or define your own categories. See
 [`docs/customising.md`](./docs/customising.md).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/people-list-dark.png">
+  <img src="./docs/images/people-list.png" width="1200" alt="The people list of the Threadline dashboard: one row per person with their category, last contact, status, who is waiting on whom, the next action, its due date and the signal. One row is marked Overdue.">
+</picture>
 
 ## Try the demo
 
@@ -26,6 +32,8 @@ Live demo: <https://try-threadline.vercel.app>
 
 See the dashboard with made-up data before setting anything up. You need
 [Node.js](https://nodejs.org) 22 or newer; no accounts and no settings.
+Download the code first (part 1 of the guide, or the green **Code → Download
+ZIP** button on this page), then in Terminal, inside that folder:
 
 ```bash
 cd frontend
@@ -33,12 +41,39 @@ npm install
 npm run demo
 ```
 
-Then open <http://localhost:5173>. You are signed in as an invented owner who
+`npm install` may print warnings about vulnerabilities or install scripts: they
+concern developer tools only and can be ignored. Then open
+<http://localhost:5173>. You are signed in as an invented owner who
 does sales outreach. You can correct people, answer the review questions and
 change the categories on the Settings page; nothing is saved, and reloading the
 page starts again from the same made-up data. A demo build is made with
 `npm run build:demo`; a normal build never contains the demo. To put the demo
 online as its own website, follow [`docs/demo-site.md`](./docs/demo-site.md).
+
+## What it looks like
+
+The home page, and the questions the AI step was unsure about:
+
+<p>
+  <img src="./docs/images/home.png" width="49%" align="top" alt="The home page: the demo notice, the meetings coming up, five counters such as Actions for me and Overdue replies, and a grid of how many people in each category have each status.">
+  <img src="./docs/images/review.png" width="49%" align="top" alt="The To review page: three questions the assistant is unsure about, such as whether two names are the same person, each with Yes and No buttons.">
+</p>
+
+The same people grouped by organisation, so you can see where you stand with
+each one as a whole:
+
+<img src="./docs/images/organisations.png" width="1200" alt="The Organisations page: one row per organisation with how many people are there, badges such as Overdue: 1 and Your turn: 1 showing where things stand with them as a whole, and the most recent contact.">
+
+One person's page with every message in one timeline, and the people list on
+a phone:
+
+<p>
+  <img src="./docs/images/person.png" width="72%" align="top" alt="One person's page: the e-mails and the meeting exchanged with Maya Lindqvist in one timeline, beside a summary of what is going on, the next action and its due date, and your own notes on her.">
+  <img src="./docs/images/people-list-phone.png" width="24%" align="top" alt="The people list on a phone: one card per person with the same details as the table, and a menu bar along the bottom of the screen.">
+</p>
+
+Every picture comes from the demo, so every name, company and address in it is
+made up.
 
 ## What it is, and what it is not
 
@@ -86,7 +121,7 @@ Outlook-only set-ups). The design is described in
 | A Mac or a Linux computer with a terminal | Running the set-up once. Windows is not supported | – |
 | A paid Claude plan (Pro, Max or Team) | The Claude Code session that runs everything and does the judging. The daily run uses part of your plan's usage limits | Your existing subscription; no separate API key |
 | [Claude Code](https://code.claude.com/docs/en/setup), installed (check with `claude --version`) | Making the key that lets GitHub use your plan (`claude setup-token`) | Included in your plan |
-| A GitHub account (optional: the [GitHub CLI](https://cli.github.com), `gh`) | Your private copy of the code, and GitHub Actions, which starts the run every day. `gh` signs you in for the download and lets the set-up create your copy and save your settings | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
+| A GitHub account (recommended: the [GitHub CLI](https://cli.github.com), `gh`) | Your private copy of the code, and GitHub Actions, which starts the run every day. `gh` signs you in for the download and lets the set-up create your copy and save your settings; without it, both take extra steps by hand | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
 | A [Supabase](https://supabase.com) project | The database and the dashboard sign-in. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
 | A [Vercel](https://vercel.com) account | Publishing the dashboard | Hobby plan, free for personal, non-commercial use |
 | At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any IMAP mailbox | The mail that is read (read-only). Gmail and the others need an app password, which also sends you the summary; Outlook needs a one-time sign-in | Free (Fastmail: a paid plan above Basic) |
@@ -123,35 +158,29 @@ sentence to paste into the Claude app.
 
 **By hand**, in a terminal:
 
-1. Follow [`docs/setup-your-accounts.md`](./docs/setup-your-accounts.md) to
-   create the accounts and collect the values Threadline needs.
-2. Install [uv](https://docs.astral.sh/uv/), then install the backend:
+The set-up guide, [`docs/setup-your-accounts.md`](./docs/setup-your-accounts.md),
+takes you through everything in order, with a check after every step and a
+short list of the words it uses (IMAP, app password, secrets…). In brief:
 
-   ```bash
-   cd backend
-   uv sync
-   ```
-
-3. Run the setup wizard, which asks for those values and writes your `.env`,
-   then check that everything is reachable:
-
-   ```bash
-   uv run tracker setup
-   uv run tracker doctor
-   ```
-
+1. Make your private copy of this repository and download it
+   ([part 1](./docs/setup-your-accounts.md#1-get-threadline-onto-your-computer):
+   **Use this template**, then `gh repo clone` and `uv sync` in its `backend`
+   folder).
+2. In that `backend` folder, run `uv run tracker setup`. It connects Supabase,
+   builds the database, creates your login and connects your mailbox
+   ([parts 3 to 6](./docs/setup-your-accounts.md#3-connect-supabase-and-build-the-database)),
+   and stops when it asks whether the dashboard is published.
    Add `--browser` to have the questions asked on a page in your web browser
    instead of in the terminal: keys go into hidden fields, and the page is
    served to your computer only.
-
-4. The first time, answer **no** to "Is the dashboard published already?",
-   publish the dashboard on Vercel (part 7 of the guide), then run
-   `uv run tracker setup dashboard`. The steps after it are the daily time
-   (`tracker setup schedule`), your settings on GitHub
-   (`tracker setup github`) and the dashboard's Refresh now button
-   (`tracker setup refresh`). Then start the first run by hand on GitHub
-   (**Actions → Threadline run → Run workflow**), as the setup guide
-   describes.
+3. Publish the dashboard on Vercel
+   ([part 7](./docs/setup-your-accounts.md#7-publish-the-dashboard-vercel)),
+   then run `uv run tracker setup` again: it carries on from there with the
+   daily time, your settings on GitHub and the Refresh now button
+   ([part 8](./docs/setup-your-accounts.md#8-run-it-every-day-on-github)), and
+   ends with `tracker doctor`'s check of every connection.
+4. Start the first run by hand on GitHub (**Actions → Threadline run → Run
+   workflow**), as part 8 describes.
 
 Day-to-day operation — what to do when something fails, renewing the LinkedIn
 key and the yearly Claude key, redoing the Microsoft sign-in, changing the time,
@@ -177,7 +206,6 @@ information.
 | `tracker setup refresh` | Switch on the dashboard's Refresh now button: deploy the `refresh-now` function and its settings through Supabase's Management API, with a GitHub key that can only start your workflow |
 | `tracker setup cloud` | The alternative route: what a Claude cloud routine needs |
 | `tracker doctor` | Check that every account and setting is in order |
-| `tracker healthcheck` | Check the configuration, the database and the secret store |
 | `tracker sample load` | Write made-up sample records; running it twice changes nothing |
 | `tracker sample clear` | Remove the made-up sample records, leaving real data untouched |
 
@@ -217,7 +245,7 @@ calls an AI service.
 
 | Command | What it does |
 |---------|--------------|
-| `tracker profile choose [--preset NAME] [--guide]` | Pick a preset, keep the suggested categories you use and add your own; saved to the database, and the assessment guide is rebuilt; `--guide PATH` chooses where it is written (default `docs/assessment-guide.md`) |
+| `tracker profile choose [--preset NAME] [--guide PATH]` | Pick a preset, keep the suggested categories you use and add your own; saved to the database, and the assessment guide is rebuilt; `--guide PATH` chooses where it is written (default `docs/assessment-guide.md`) |
 | `tracker profile check [--file PATH \| --preset NAME]` | Check your profile (or a shipped preset) and print its suggested categories and stage labels; changes nothing |
 | `tracker profile apply [--file PATH] [--categories] [--guide PATH]` | Save the stage labels and suggestions and rebuild the assessment guide from your categories (written to `docs/assessment-guide.md`, or to `--guide PATH`); `--categories` also replaces your categories with the file's list |
 
@@ -228,6 +256,7 @@ See [`docs/customising.md`](./docs/customising.md).
 | Command | What it does |
 |---------|--------------|
 | `tracker run start [--trigger github\|cloud\|refresh\|mac\|manual] [--prepare]` | Open today's run and print its identifier (default trigger: `cloud`). `--prepare` goes on to `tracker healthcheck` and `tracker profile apply` and ends with `ready: yes` or `ready: no` — this is how the daily run opens |
+| `tracker healthcheck` | The daily run's own check of the configuration, the database and the secret store, run by `run start --prepare`. By hand, `tracker doctor` says more |
 | `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID \| --refresh]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `assess` or `summary_email`. `--refresh` records into the refresh that is open rather than the daily run |
 | `tracker run finish [--run ID \| --refresh] [--clean]` | Close the run with the status its steps add up to. `--refresh` closes the refresh that is open rather than the daily run. `--clean` then removes the exchanged files, as `tracker ai clean` does — this is how the daily run closes |
 | `tracker summary build [--out PATH] [--run ID]` | Write the morning summary to a file, ready to send, and say how it is sent (`delivery: smtp` or `gmail_connector`) |
@@ -261,6 +290,8 @@ waiting-on value means is defined in
   carry message text to the AI step are deleted once their verdicts are saved.
 - The dashboard's public key reads nothing on its own: the database only
   answers the one signed-in owner.
+- Notes you type on a person's page are yours alone: they are never sent to
+  the AI step and never put in the summary e-mail.
 
 The full model — what is stored where and how untrusted text is contained —
 is in [`SECURITY.md`](./SECURITY.md). Report vulnerabilities privately through
@@ -276,7 +307,7 @@ GitHub, as described there.
 | `supabase/migrations/` | The database structure and its access rules, one file per change |
 | `.claude/` | The daily-run and assessment recipes, the assessor helper and the session's permissions |
 | `.github/workflows/` | The checks every change must pass, and `threadline-run.yml`, the daily run |
-| `docs/` | Setup, operations, architecture, the assessment guide and the coding standards |
+| `docs/` | Setup, operations, architecture, the assessment guide, the coding standards and the README's pictures (`docs/images/`) |
 
 ## Development
 

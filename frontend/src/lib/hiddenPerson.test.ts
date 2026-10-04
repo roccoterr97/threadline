@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hiddenPersonState, readHiddenPerson } from './hiddenPerson';
+import { hiddenPersonState, readHiddenPerson, withoutHiddenPerson } from './hiddenPerson';
 
 describe('the "just hidden" note', () => {
   it('reads back the person it was made for', () => {
@@ -13,4 +13,13 @@ describe('the "just hidden" note', () => {
       expect(readHiddenPerson(state)).toBeNull();
     },
   );
+
+  it('comes off a state leaving the rest, or nothing when it was alone', () => {
+    const note = hiddenPersonState({ id: 'p-01', name: 'Ada Lovelace' });
+    expect(withoutHiddenPerson({ ...note, organisationsSearch: '?sort=name' })).toEqual({
+      organisationsSearch: '?sort=name',
+    });
+    expect(withoutHiddenPerson(note)).toBeNull();
+    expect(withoutHiddenPerson(null)).toBeNull();
+  });
 });

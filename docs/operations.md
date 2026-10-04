@@ -18,24 +18,21 @@ route, a Claude cloud routine does the same.) In about five to ten minutes it:
 
 1. opens a new run in the database, so the morning is recorded whatever happens;
 2. checks that it can reach the database and read its stored keys;
-3. reads your new LinkedIn messages;
-4. reads your new e-mails and calendar entries;
-5. reads through what is new and works out, per person, where things stand;
-6. builds the summary;
-7. e-mails it to your own address (for example `you@example.com`), sent from
+3. reads your new LinkedIn messages, e-mails and calendar entries, all at the
+   same time; if one source is unavailable, the others are still read;
+4. reads through what is new and works out, per person, where things stand;
+5. builds the summary;
+6. e-mails it to your own address (for example `you@example.com`), sent from
    your own mailbox;
-8. closes the run with one of three results.
+7. closes the run with one of three results.
 
-Steps 3 and 4 are independent on purpose: if LinkedIn is unavailable, your
-e-mail is still read, and the other way round.
+The three results, as the dashboard's **Daily runs** page shows them:
 
-The three results:
-
-| Result | What it means |
-|--------|---------------|
-| **success** | Everything worked. |
-| **partial** | Something failed, the rest worked. The summary opens with "Something needs your attention" and says what to do. |
-| **failed** | Nothing worked. The summary says so. |
+| On the dashboard | Code | What it means |
+|------------------|------|---------------|
+| **Worked** | `success` | Everything worked. |
+| **Partly worked** | `partial` | Something failed, the rest worked. The summary opens with "Something needs your attention" and says what to do. |
+| **Did not work** | `failed` | Nothing worked. The summary says so. |
 
 **It never silently switches to another way of working.** If LinkedIn or
 Microsoft refuses, you are told, and you decide what to do. See
@@ -76,9 +73,10 @@ old.
 
 ## Reading the run page
 
-The dashboard's **Runs** page lists the last fourteen runs. Each one shows when
-it started, how long it took, its result, and one line per step: LinkedIn, the
-mailbox, the reading-through, and the summary e-mail.
+The dashboard's **Daily runs** page lists the last fourteen runs. Each one shows
+when it started, how long it took, its result (**Worked**, **Partly worked** or
+**Did not work**), and one line per step: LinkedIn, the mailbox, the
+reading-through, and the summary e-mail.
 
 A failed step never shows you a technical error. It shows the same plain
 sentence the e-mail uses. If you ever see something that looks like computer
@@ -152,8 +150,8 @@ cd backend && uv run tracker doctor
 
 The Microsoft sign-in, Mailbox and Calendar lines should all say `ok`.
 
-The next cloud run picks the new key up by itself: the key lives in the
-database, not on your laptop.
+The next run on GitHub (or on the alternative route) picks the new key up by
+itself: the key lives in the database, not on your laptop.
 
 If Microsoft refuses again within a few days, that is the moment to think about
 [the Mac route](#the-mac-route-and-when-to-choose-it).
@@ -221,9 +219,9 @@ one year. When it expires, the run on GitHub fails with a red cross at the
 your calendar for a week before the date you made it.
 
 1. In Terminal, run `claude setup-token`, sign in, and copy the key it prints.
-2. In the project folder, run `uv run tracker setup github` and paste the key
-   when asked. It replaces the `CLAUDE_CODE_OAUTH_TOKEN` secret and is saved
-   nowhere else. (Without the GitHub tool `gh`: on GitHub, open **Settings →
+2. In the `backend` folder of your copy, run `uv run tracker setup github` and
+   paste the key when asked. It replaces the `CLAUDE_CODE_OAUTH_TOKEN` secret
+   and is saved nowhere else. (Without the GitHub tool `gh`: on GitHub, open **Settings →
    Secrets and variables → Actions**, click the pencil next to
    `CLAUDE_CODE_OAUTH_TOKEN`, paste the key and save.)
 3. On GitHub, open **Actions → Threadline run → Run workflow** with mode
@@ -233,6 +231,26 @@ your calendar for a week before the date you made it.
 
 The key belongs to your own Claude subscription. Never give it to anybody, and
 never paste it anywhere but your own repository's secrets.
+
+---
+
+## Renew the Refresh now key (once a year)
+
+The dashboard's **Refresh now** button starts the workflow with a GitHub key of
+its own, which expires on the date you chose when you made it (part 8f of the
+set-up guide). From that day the dashboard says the key was turned down. In
+the `backend` folder of your copy, run:
+
+```bash
+uv run tracker setup refresh
+```
+
+As in part 8f, it opens GitHub's page for a new key and Supabase's page for a
+short-lived token, checks the key, and saves it in your Supabase project.
+Nothing changes on your computer. The way by hand is in
+[Renew the key](refresh-now.md#renew-the-key).
+
+**✅ Check:** **Refresh now** on the dashboard says "Refreshing…" again.
 
 ---
 
@@ -254,14 +272,15 @@ same thing the dashboard's **Refresh now** does. Or, with your laptop on, open
 the project in Claude Code and type `/daily-run`: the same recipe, and the
 summary goes to the same address.
 
-**Change the time.** In the project folder, run:
+**Change the time.** In the `backend` folder of your copy, run:
 
 ```bash
 uv run tracker setup schedule
 ```
 
-Type the new time and your time zone; it shows the change to the workflow file
-and offers to commit and push it. GitHub uses the new time once it is pushed.
+Type the new time; it uses your saved time zone (change that with
+`uv run tracker setup timezone`). It shows the change to the workflow file and
+offers to commit and push it. GitHub uses the new time once it is pushed.
 Pick a few minutes past the hour (such as 07:07): GitHub is busiest on the hour
 and may start a run a few minutes late. (On the alternative route, edit the
 routine's schedule instead.)
@@ -280,7 +299,7 @@ Open **Actions → Threadline run**. Every run is one line:
 
 | What you see | What it means | What to do |
 |--------------|---------------|------------|
-| Green tick, and the summary arrived | The run worked (it may still be `partial`: the summary says what needs attention). | Nothing. |
+| Green tick, and the summary arrived | The run worked (the dashboard may still say **Partly worked**: the summary says what needs attention). | Nothing. |
 | Green tick after a few seconds, no summary | A required secret is missing, so the run did nothing on purpose. The run page names the missing secrets in a note at the top. | `uv run tracker setup github`. |
 | Red cross at **Run the recipe with Claude** | The Claude key was refused or expired, or the session stopped. | [Renew the Claude key](#renew-the-claude-key-once-a-year); if it happens again, read the end of that step's log. |
 | Red cross at **Install Threadline** | GitHub could not install the tool, usually a passing outage. | Nothing; the next run tries again. |

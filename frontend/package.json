@@ -2,7 +2,7 @@
   "name": "threadline-frontend",
   "description": "Threadline dashboard: every conversation, one clear line.",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.0",
   "license": "MIT",
   "type": "module",
   "scripts": {

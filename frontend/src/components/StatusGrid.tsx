@@ -3,6 +3,7 @@ import * as copy from '../copy/en';
 import type { StatusGrid as StatusGridCounts } from '../domain/counters';
 import { ANY, NOT_ASSESSED, type StatusKey } from '../domain/peopleView';
 import type { StatusLabels } from '../domain/vocabulary';
+import { SidewaysScroll } from './SidewaysScroll';
 import { STICKY_COLUMN, StatusGridRow, type GridLinkFor } from './StatusGridRow';
 import { TypeDot } from './TypeDot';
 
@@ -19,8 +20,9 @@ const HEAD = 'px-1 py-2 text-right text-xs font-semibold text-ink-muted sm:px-3 
  *
  * Statuses run down the side and categories across the top. A profile may have
  * up to nine categories, which cannot all fit a phone, so the grid scrolls
- * sideways inside its own frame (the page itself never does) and the status
- * names stay pinned on the left. Every non-zero count links to its people.
+ * sideways inside its own frame (the page itself never does), which fades
+ * its hidden edge and says so, and the status names stay pinned on the
+ * left. Every non-zero count links to its people.
  */
 export function StatusGrid({ grid, statusLabels, linkFor }: StatusGridProps) {
   const captionId = useId();
@@ -33,7 +35,7 @@ export function StatusGrid({ grid, statusLabels, linkFor }: StatusGridProps) {
       <h2 id={captionId} className="px-3 pt-3 pb-1 text-base font-semibold text-ink">
         {copy.home.grid.caption}
       </h2>
-      <div className="overflow-x-auto">
+      <SidewaysScroll hint={copy.home.grid.scrollHint}>
         <table aria-labelledby={captionId} className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-line">
@@ -78,7 +80,7 @@ export function StatusGrid({ grid, statusLabels, linkFor }: StatusGridProps) {
             />
           </tfoot>
         </table>
-      </div>
+      </SidewaysScroll>
     </div>
   );
 }

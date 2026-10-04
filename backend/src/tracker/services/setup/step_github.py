@@ -20,6 +20,7 @@ from pydantic import SecretStr
 
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.github_copy import find_or_create_copy
+from tracker.services.setup.mail_sources import saved_sources, summary_route
 from tracker.services.setup.models import StepName
 from tracker.services.setup.step_cloud import (
     cloud_setting_names,
@@ -34,6 +35,7 @@ from tracker.shared.constants.github import (
     WORKFLOW_FIXED_SETTINGS,
     WORKFLOW_PAGE,
 )
+from tracker.shared.constants.mailbox import DeliveryRoute, MailSource
 from tracker.shared.errors import SourceUnavailableError, ValidationFailedError
 
 #: Where the page is when the repository's name is not known.
@@ -56,6 +58,8 @@ class GitHubStep:
         """Collect the key, then save everything with gh or show how to by hand."""
         secrets, variables = split_settings(ctx)
         ctx.io.say("GitHub runs Threadline every day on your own copy of this project.")
+        if summary_route(ctx) is not DeliveryRoute.SMTP:
+            _say_github_cannot_send(ctx)
         repository = find_or_create_copy(ctx)
         ctx.io.say("It needs your settings: secret ones as 'secrets', the rest as 'variables'.")
         token = _ask_token(ctx)
@@ -93,13 +97,27 @@ def split_settings(ctx: SetupContext) -> tuple[tuple[str, ...], tuple[str, ...]]
     return secrets, variables
 
 
+def _say_github_cannot_send(ctx: SetupContext) -> None:
+    """Warn that the run on GitHub will do everything but e-mail the summary."""
+    io = ctx.io
+    io.say("Note: with these settings the run on GitHub cannot e-mail you the morning summary.")
+    if MailSource.IMAP in (saved_sources(ctx) or ()):
+        io.say("  SUMMARY_DELIVERY is set to gmail_connector, which only a Claude cloud routine")
+        io.say("  has. Remove that line from .env to send from your mailbox instead.")
+    else:
+        io.say("  Outlook alone has no app password to send with. Connect a Gmail or other")
+        io.say("  mailbox too ('uv run tracker setup mailbox'), or use the alternative route")
+        io.say("  ('uv run tracker setup cloud', the end of the guide).")
+    io.say("  Everything else still runs, and the dashboard is updated every morning.")
+
+
 def _ask_token(ctx: SetupContext) -> SecretStr | None:
     """Ask for the Claude subscription key; it is kept in memory only."""
     io = ctx.io
     io.say("GitHub also needs a key to use your Claude subscription. To make it:")
-    io.say("  Open the Terminal app (a new window: ⌘ + N), run claude setup-token, sign in")
-    io.say("  in the browser, then copy the long key it prints back in that window (it starts")
-    io.say("  with sk-ant-). It lasts one year.")
+    io.say("  Open the Terminal app (a new window; on a Mac: ⌘ + N), run claude setup-token,")
+    io.say("  sign in in the browser, then copy the long key it prints back in that window")
+    io.say("  (it starts with sk-ant-). It lasts one year.")
     raw = io.ask_secret(
         f"Paste that key for {CLAUDE_TOKEN_SECRET} (it is not shown), or leave it empty to skip"
     )

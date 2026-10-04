@@ -5,11 +5,22 @@ import { RequireAuth } from './auth/RequireAuth';
 import { AppLayout } from './components/AppLayout';
 import { LoadingState } from './components/LoadingState';
 import * as copy from './copy/en';
+import {
+  NO_ORGANISATION_PATH,
+  ORGANISATION_ROUTE,
+  ORGANISATIONS_PATH,
+} from './lib/organisationAddress';
 
 // Split per route: opening the dashboard on a phone should not download the
 // person page, the review list and the run history first.
 const HomePage = lazy(async () => ({ default: (await import('./pages/HomePage')).HomePage }));
 const PersonPage = lazy(async () => ({ default: (await import('./pages/PersonPage')).PersonPage }));
+const OrganisationsPage = lazy(async () => ({
+  default: (await import('./pages/OrganisationsPage')).OrganisationsPage,
+}));
+const OrganisationPage = lazy(async () => ({
+  default: (await import('./pages/OrganisationPage')).OrganisationPage,
+}));
 const ReviewPage = lazy(async () => ({ default: (await import('./pages/ReviewPage')).ReviewPage }));
 const RunsPage = lazy(async () => ({ default: (await import('./pages/RunsPage')).RunsPage }));
 const SettingsPage = lazy(async () => ({
@@ -39,6 +50,9 @@ export function App({ banner, signInPage }: AppParts = {}) {
         >
           <Route path="/" element={<HomePage />} />
           <Route path="/people/:personId" element={<PersonPage />} />
+          <Route path={ORGANISATIONS_PATH} element={<OrganisationsPage />} />
+          <Route path={ORGANISATION_ROUTE} element={<OrganisationPage />} />
+          <Route path={NO_ORGANISATION_PATH} element={<OrganisationPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/runs" element={<RunsPage />} />
           <Route path="/settings" element={<SettingsPage />} />

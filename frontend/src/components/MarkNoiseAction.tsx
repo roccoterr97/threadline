@@ -6,7 +6,7 @@ import { peopleQueryKey } from '../api/people';
 import { personQueryKey } from '../api/person';
 import * as copy from '../copy/en';
 import { hiddenPersonState } from '../lib/hiddenPerson';
-import { peopleListAddress } from '../lib/peopleListAddress';
+import { personOrigin } from '../lib/personOrigin';
 import type { PeopleOverviewRow } from '../types/database';
 import { Button } from './Button';
 import { ConfirmPanel } from './ConfirmPanel';
@@ -19,13 +19,14 @@ interface MarkNoiseActionProps {
 /**
  * "Not relevant": hides a person from the list, but only after an
  * "are you sure?" step, because it also stops the assistant reading them.
- * Once hidden, the page goes back to the list as the owner left it, without
- * the person, and the list says so and offers to undo.
+ * Once hidden, the page goes back to the list the person was opened from (the
+ * People page or an organisation's page) as the owner left it, without the
+ * person, and that list says so and offers to undo.
  */
 export function MarkNoiseAction({ personId, personName }: MarkNoiseActionProps) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const peopleAddress = peopleListAddress(useLocation().state);
+  const origin = personOrigin(useLocation().state);
   const [confirming, setConfirming] = useState(false);
 
   const markNoise = useMutation({
@@ -37,8 +38,8 @@ export function MarkNoiseAction({ personId, personName }: MarkNoiseActionProps) 
         people?.filter((person) => person.person_id !== personId),
       );
       // Leave first: refetching this person now would flash "not found".
-      void navigate(peopleAddress, {
-        state: hiddenPersonState({ id: personId, name: personName }),
+      void navigate(origin.address, {
+        state: { ...origin.state, ...hiddenPersonState({ id: personId, name: personName }) },
       });
       queryClient.removeQueries({ queryKey: personQueryKey(personId) });
       await queryClient.invalidateQueries({ queryKey: peopleQueryKey });

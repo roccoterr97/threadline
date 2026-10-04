@@ -37,6 +37,11 @@ vi.mock('../api/overrides', async (importOriginal) => ({
   markPersonAsNoise: vi.fn(),
 }));
 
+vi.mock('../api/personNotes', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/personNotes')>()),
+  fetchPersonNotes: vi.fn(() => Promise.resolve([])),
+}));
+
 vi.mock('../api/categories', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/categories')>()),
   fetchCategories: vi.fn(),
@@ -113,6 +118,19 @@ describe('PersonPage — the four states', () => {
     expect(
       await screen.findByRole('link', { name: copy.person.backToPeople }),
     ).toHaveAttribute('href', '/?type=startup&sort=name');
+  });
+
+  it('goes back to the organisation it was opened from, by name', async () => {
+    renderWithProviders(<PersonPage />, {
+      route: `/people/${PERSON.person_id}`,
+      path: '/people/:personId',
+      state: { organisation: { name: 'Slate & Sons' }, organisationsSearch: '?sort=name' },
+    });
+    const back = await screen.findByRole('link', {
+      name: copy.organisations.backToOrganisation('Slate & Sons'),
+    });
+    expect(back).toHaveAttribute('href', '/organisations/name/Slate%20%26%20Sons');
+    expect(screen.queryByRole('link', { name: copy.person.backToPeople })).not.toBeInTheDocument();
   });
 
   it('goes back to the whole list when opened some other way', async () => {
@@ -425,6 +443,22 @@ describe('PersonPage — not relevant', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('location')).toHaveTextContent('/?type=startup&sort=name');
+    });
+  });
+
+  it('goes back to the organisation it was opened from once the person is hidden', async () => {
+    const { user } = renderWithProviders(<PersonPage />, {
+      route: `/people/${PERSON.person_id}`,
+      path: '/people/:personId',
+      state: { organisation: { name: 'Northwind Labs' } },
+    });
+    await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
+    await user.click(screen.getByRole('button', { name: copy.person.markNoise.confirm }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        '/organisations/name/Northwind%20Labs',
+      );
     });
   });
 

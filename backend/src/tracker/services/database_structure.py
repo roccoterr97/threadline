@@ -130,6 +130,8 @@ KNOWN_MIGRATIONS: Final[dict[str, MigrationMarker | None]] = {
     "0015_category_names": RowProbe(
         "categories", (("key", "unknown"), ("group_label", "Not known"))
     ),
+    # Asked for without the notes' text: the jobs never read what the owner wrote.
+    "0016_person_notes": ColumnsProbe("person_notes", "id,person_id"),
 }
 
 

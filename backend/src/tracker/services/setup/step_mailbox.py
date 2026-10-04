@@ -27,7 +27,7 @@ from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.smtp import SmtpAccount
 from tracker.services.setup import values
 from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
-from tracker.services.setup.mail_sources import save_sources, saved_sources
+from tracker.services.setup.mail_sources import save_sources, saved_sources, summary_route
 from tracker.services.setup.models import StepName
 from tracker.services.setup.owner_address import remember_address
 from tracker.services.setup.step_microsoft import microsoft_access
@@ -48,7 +48,6 @@ IMAP_HOST: Final[str] = "IMAP_HOST"
 IMAP_PORT: Final[str] = "IMAP_PORT"
 SMTP_HOST: Final[str] = "SMTP_HOST"
 SMTP_PORT: Final[str] = "SMTP_PORT"
-SUMMARY_DELIVERY: Final[str] = "SUMMARY_DELIVERY"
 
 #: How a provider's receiving server is usually named, and its sending one.
 _IMAP_HOST_PREFIX: Final[str] = "imap."
@@ -313,8 +312,7 @@ def _likely_smtp_host(imap_host: str) -> str | None:
 
 def _summary_goes_by_smtp(ctx: SetupContext) -> bool:
     """Whether the summary is sent by SMTP: the default once an IMAP mailbox is read."""
-    chosen = (ctx.env.get(SUMMARY_DELIVERY) or DeliveryRoute.SMTP.value).strip().lower()
-    return chosen == DeliveryRoute.SMTP.value
+    return summary_route(ctx) is DeliveryRoute.SMTP
 
 
 def _explain(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> None:

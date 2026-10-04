@@ -30,13 +30,18 @@ class DashboardStep:
         return ctx.env.get(ADDRESS) is not None
 
     async def run(self, ctx: SetupContext) -> None:
-        """Ask for the address, open it once, save it, then set Supabase's Site URL."""
+        """Ask for the address, open it once, save it, then set Supabase's Site URL.
+
+        Raises:
+            ValidationFailedError: If the dashboard is not published yet, so a
+                full set-up stops here and carries on from here next time.
+        """
         io = ctx.io
         io.say("The dashboard is published on Vercel (the guide, part 7, shows how).")
         io.say("The morning e-mail links to it once its address is saved here.")
         if not io.confirm("Is the dashboard published already?", default=False):
-            io.say("Skipped. Run 'uv run tracker setup dashboard' once it is published.")
-            return
+            message = "the dashboard is not published yet - publish it first (part 7 of the guide)"
+            raise ValidationFailedError(message)
         address = await ctx.ask_until_accepted(
             lambda: io.ask("Production address from Vercel's Domains tab (https://...)"),
             lambda raw: _check_address(ctx, raw),

@@ -23,7 +23,6 @@
       "Read(~/.ssh/**)",
       "Read(**/.env)",
       "Bash(*.env*)",
-      "Bash(curl:*)",
       "Bash(wget:*)",
       "Bash(nc:*)",
       "Bash(env:*)",
@@ -33,7 +32,8 @@
       "WebFetch"
     ],
     "ask": [
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(curl:*)"
     ],
     "defaultMode": "acceptEdits"
   }

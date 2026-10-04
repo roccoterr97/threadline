@@ -5,6 +5,7 @@ import {
   NotSignedInError,
   RefusalReason,
   RefusedError,
+  TableMissingError,
   UnexpectedDataError,
 } from '../lib/errors';
 import { runMutation, runQuery, type SupabaseResult } from './client';
@@ -37,6 +38,16 @@ describe('runQuery', () => {
     await expect(
       runQuery('test', schema, answer({ error: { message: 'boom' }, status: 500 })),
     ).rejects.toBeInstanceOf(DataUnavailableError);
+  });
+
+  it('says which kind of unavailable a table the database does not have is', async () => {
+    const missing = answer({ error: { message: 'no table', code: 'PGRST205' }, status: 404 });
+    const failure = runQuery('test', schema, missing);
+    await expect(failure).rejects.toBeInstanceOf(TableMissingError);
+    await expect(failure).rejects.toBeInstanceOf(DataUnavailableError);
+    await expect(
+      runQuery('test', schema, answer({ error: { message: 'no relation', code: '42P01' } })),
+    ).rejects.toBeInstanceOf(TableMissingError);
   });
 
   it('raises a "data unavailable" error when the request itself threw', async () => {

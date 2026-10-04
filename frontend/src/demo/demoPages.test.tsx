@@ -50,6 +50,14 @@ describe('the dashboard in demo mode', () => {
     expect(await screen.findByText(/revise it before Thursday/)).toBeInTheDocument();
   });
 
+  it('shows the owner\'s notes on a person, with their dates', async () => {
+    renderDemo('/people/demo-p01');
+    const notes = await screen.findByRole('region', { name: copy.notes.title });
+    expect(await within(notes).findByText(/Rotterdam logistics fair/)).toBeInTheDocument();
+    expect(within(notes).getAllByText(/^Written /)).toHaveLength(2);
+    expect(within(notes).getAllByText(/^changed /)).toHaveLength(1);
+  });
+
   it('shows the open questions', async () => {
     renderDemo('/review');
     const question = 'Is Marcus Bell part of your sales outreach?';

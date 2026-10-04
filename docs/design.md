@@ -74,12 +74,19 @@ wording in the dashboard is plain English.
 
 - Views by company and by opportunity (one person → several companies, several
   people → one opportunity). The data model allows for it from day one.
+  *Since built:* the dashboard has an Organisations page that groups the same
+  people by the organisation they are listed under and shows where things
+  stand with each one as a whole; opening one lists its people. It is read
+  from the people list the dashboard already has, so a person still belongs
+  to one organisation. The opportunity view is not built.
 - More than one update per day (the frequency is a single setting).
 - Calendar events, search questions in plain English ("who am I waiting for?").
   *Since built:* the Outlook calendar is read as a third source, and the
   dashboard shows the meetings coming up. Plain-English questions are not
   built.
 - Notes typed by hand on a person (calls, meetings in person).
+  *Since built:* a person's page has "Your notes", for the owner alone — the
+  assistant does not read them and they are not in the morning e-mail.
 - A small "refresh now" button on the dashboard for a manual update between
   daily runs (to decide later).
 - Additional sources such as Gmail (to decide later).

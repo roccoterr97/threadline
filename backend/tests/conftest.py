@@ -15,7 +15,7 @@ from uuid import uuid4
 
 import pytest
 from cryptography.fernet import Fernet
-from postgrest import APIError, CountMethod
+from postgrest import APIError, CountMethod, ReturnMethod
 from supabase import Client
 from typer.testing import Result
 
@@ -135,6 +135,8 @@ class FakeQuery:
         self._limit: int | None = None
         self._operation = "select"
         self._payload: list[dict[str, Any]] = []
+        self._changes: dict[str, Any] = {}
+        self._returning = ReturnMethod.representation
         self._count: CountMethod | None = None
 
     def select(self, *_columns: str, **options: Any) -> Self:
@@ -148,6 +150,13 @@ class FakeQuery:
         self._operation = "upsert"
         self._payload = list(json)
         self._client.conflict_columns[self._table] = str(options.get("on_conflict", "id"))
+        return self
+
+    def update(self, json: dict[str, Any], **options: Any) -> Self:
+        """Start a change to the rows the filters keep."""
+        self._operation = "update"
+        self._changes = dict(json)
+        self._returning = options.get("returning", ReturnMethod.representation)
         return self
 
     def delete(self, **_options: Any) -> Self:
@@ -188,12 +197,25 @@ class FakeQuery:
     def execute(self) -> FakeResponse:
         """Run the query against the in-memory rows."""
         self._client.executed.append((self._table, self._operation))
+        if self._table in self._client.missing_tables:
+            raise APIError(
+                {
+                    "code": MISSING_TABLE_CODE,
+                    "message": f"Could not find the table 'public.{self._table}'",
+                }
+            )
         if self._operation == "upsert":
             return FakeResponse(self._apply_upsert())
         matched = self._matching()
+        if self._operation == "update":
+            for row in matched:
+                row.update(self._changes)
+            # Asked for nothing back, the server sends no row at all.
+            return FakeResponse(matched if self._returning is ReturnMethod.representation else [])
         if self._operation == "delete":
             for row in matched:
                 self._rows.remove(row)
+                self._client.remove_dependants(self._table, row)
             return FakeResponse(matched)
         return FakeResponse(self._page(matched), self._total(matched))
 
@@ -306,6 +328,9 @@ SERVER_ROW_CAP: Final[int] = 1000
 #: Postgres code for a write a unique index refuses.
 UNIQUE_VIOLATION_CODE: Final[str] = "23505"
 
+#: The data API's code for a table the database does not have (yet).
+MISSING_TABLE_CODE: Final[str] = "PGRST205"
+
 
 def _comparable(value: object) -> str:
     """A name as migration 0015's indexes compare it: ``lower(btrim(name))``."""
@@ -331,11 +356,24 @@ class FakeSupabaseClient:
         #: Columns each of which a unique index keeps apart, per table, compared
         #: without capitals or surrounding spaces. Empty: nothing is refused.
         self.unique_names: dict[str, tuple[str, ...]] = {}
+        #: Tables a migration has not created yet: every request on one is
+        #: refused the way the data API refuses it.
+        self.missing_tables: set[str] = set()
+        #: Per table, the (table, column) pairs whose rows the database deletes
+        #: along with the row they point at (``on delete cascade``). Empty:
+        #: nothing follows a deleted row.
+        self.cascades: dict[str, tuple[tuple[str, str], ...]] = {}
 
     def table(self, table_name: str) -> FakeQuery:
         """Return a query builder for one table."""
         rows = self.tables.setdefault(table_name, [])
         return FakeQuery(rows, self, table_name)
+
+    def remove_dependants(self, table_name: str, deleted: dict[str, Any]) -> None:
+        """Delete the rows that point at a row just deleted, as the database does."""
+        for dependant, column in self.cascades.get(table_name, ()):
+            rows = self.tables.setdefault(dependant, [])
+            rows[:] = [row for row in rows if str(row.get(column)) != str(deleted.get("id"))]
 
 
 @pytest.fixture

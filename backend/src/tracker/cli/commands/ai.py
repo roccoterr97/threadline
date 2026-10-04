@@ -32,7 +32,7 @@ from tracker.services.assessment.work_files import clean_work_directory
 from tracker.services.profile.loader import load_profile
 from tracker.services.runs.run_recorder import RunRecorder, unconfigured_steps
 from tracker.shared.clock import Clock, SystemClock
-from tracker.shared.config import Settings, get_settings
+from tracker.shared.config import Settings, get_settings, in_project
 from tracker.shared.constants.assessment import BATCH_DIRECTORY, RESULT_DIRECTORY
 from tracker.shared.errors import TrackerError
 from tracker.shared.logging import get_logger
@@ -53,12 +53,20 @@ ai_app = typer.Typer(
 
 BatchDirectoryOption = Annotated[
     Path,
-    typer.Option("--batches", help="Directory the batch files live in."),
+    typer.Option(
+        "--batches",
+        help=f"Directory the batch files live in (default: {in_project(BATCH_DIRECTORY)}).",
+        show_default=False,
+    ),
 ]
 
 ResultDirectoryOption = Annotated[
     Path,
-    typer.Option("--results", help="Directory the verdict files live in."),
+    typer.Option(
+        "--results",
+        help=f"Directory the verdict files live in (default: {in_project(RESULT_DIRECTORY)}).",
+        show_default=False,
+    ),
 ]
 
 LimitOption = Annotated[

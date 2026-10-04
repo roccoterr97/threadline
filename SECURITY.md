@@ -41,7 +41,7 @@ one person. There is no separation between users inside one database, so
 
 | Where | What | Who can reach it |
 |-------|------|------------------|
-| Your Supabase database | People, conversations, message text of the conversations kept, the AI's verdicts, your corrections, review questions, run logs | The Python jobs (service key); you, signed in on the dashboard (read, plus your answers and corrections) |
+| Your Supabase database | People, conversations, message text of the conversations kept, the AI's verdicts, your corrections, the notes you type on a person, review questions, run logs | The Python jobs (service key); you, signed in on the dashboard (read, plus your answers, corrections and notes). Your notes are never sent to the AI step and never put in the summary e-mail |
 | Your Supabase database, `app_secrets` | The rotating Microsoft mailbox key and the IMAP app password, encrypted with `TOKEN_ENCRYPTION_KEY` | The Python jobs only; never the dashboard |
 | `.env` on your machine, your repository's Actions secrets and variables, or the routine's environment settings | Supabase keys, `TOKEN_ENCRYPTION_KEY`, the LinkedIn key, your own addresses; personal and secret values are Actions *secrets*, hidden in every log | You and the jobs; `.env` is ignored by git |
 | Your repository's Actions secrets only | `CLAUDE_CODE_OAUTH_TOKEN`, the key `claude setup-token` makes for your Claude subscription. Threadline never stores it, not even in `.env` | GitHub, for the daily run |

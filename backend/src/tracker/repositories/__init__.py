@@ -21,6 +21,7 @@ from tracker.repositories.organisations import OrganisationRepository
 from tracker.repositories.people import PersonRepository
 from tracker.repositories.people_overview import PeopleOverviewRepository
 from tracker.repositories.person_identities import PersonIdentityRepository
+from tracker.repositories.person_notes import PersonNoteRepository
 from tracker.repositories.person_overrides import PersonOverrideRepository
 from tracker.repositories.person_states import PersonStateRepository
 from tracker.repositories.review_items import ReviewItemRepository
@@ -38,6 +39,7 @@ __all__ = [
     "OrganisationRepository",
     "PeopleOverviewRepository",
     "PersonIdentityRepository",
+    "PersonNoteRepository",
     "PersonOverrideRepository",
     "PersonRepository",
     "PersonStateRepository",
@@ -61,6 +63,7 @@ class Repositories:
     messages: MessageRepository
     person_states: PersonStateRepository
     person_overrides: PersonOverrideRepository
+    person_notes: PersonNoteRepository
     review_items: ReviewItemRepository
     run_logs: RunLogRepository
     run_step_logs: RunStepLogRepository
@@ -89,6 +92,7 @@ def build_repositories(client: Client) -> Repositories:
         messages=MessageRepository(client),
         person_states=PersonStateRepository(client),
         person_overrides=PersonOverrideRepository(client),
+        person_notes=PersonNoteRepository(client),
         review_items=ReviewItemRepository(client),
         run_logs=RunLogRepository(client),
         run_step_logs=RunStepLogRepository(client),

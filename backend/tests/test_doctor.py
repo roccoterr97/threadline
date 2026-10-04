@@ -569,8 +569,31 @@ def _pending_when_applied_up_to(newest: str, *more: MigrationFile) -> list[str]:
     return [item.name for item in pending_files(files, inspect_structure(files, admin))]
 
 
-async def test_a_database_at_0014_is_offered_0015() -> None:
-    assert _pending_when_applied_up_to("0014_refresh_cooldown") == ["0015_category_names"]
+async def test_a_database_at_0014_is_offered_everything_after_it() -> None:
+    assert _pending_when_applied_up_to("0014_refresh_cooldown") == [
+        "0015_category_names",
+        "0016_person_notes",
+    ]
+
+
+async def test_a_database_at_0015_is_offered_0016() -> None:
+    assert _pending_when_applied_up_to("0015_category_names") == ["0016_person_notes"]
+
+
+async def test_the_doctor_says_0016_is_missing_from_a_database_at_0015() -> None:
+    admin = FakeAdmin(present=set(KNOWN_MIGRATIONS) - {"0016_person_notes"})
+
+    result = await MigrationsCheck(admin, migration_files()).run()
+
+    assert result.status is CheckStatus.PROBLEM
+    assert result.detail == "not applied yet: 0016_person_notes"
+
+
+async def test_0016_shows_once_the_notes_table_is_there() -> None:
+    admin = FakeAdmin()
+
+    assert is_applied("0016_person_notes", admin) is True
+    assert admin.has_columns("person_notes", "id,person_id")
 
 
 async def test_the_doctor_says_0015_is_missing_from_a_database_at_0014() -> None:
@@ -603,13 +626,13 @@ async def test_a_file_that_leaves_no_mark_is_offered_when_nothing_after_it_shows
 
 
 async def test_a_file_that_leaves_no_mark_is_taken_as_applied_when_a_later_one_shows() -> None:
-    assert _pending_when_applied_up_to("0015_category_names") == []
+    assert _pending_when_applied_up_to("0016_person_notes") == []
 
 
 async def test_a_file_this_version_does_not_know_is_offered(tmp_path: Path) -> None:
     future = MigrationFile("0099_future", tmp_path / "0099_future.sql")
 
-    assert _pending_when_applied_up_to("0015_category_names", future) == ["0099_future"]
+    assert _pending_when_applied_up_to("0016_person_notes", future) == ["0099_future"]
 
 
 async def test_the_newest_migration_can_be_seen_from_outside() -> None:
