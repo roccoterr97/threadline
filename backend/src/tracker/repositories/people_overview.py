@@ -19,6 +19,8 @@ class PeopleOverviewRepository(SupabaseReader[PersonOverview]):
 
     table_name: ClassVar[str] = "people_overview"
     order_column: ClassVar[str] = "last_contact_at"
+    #: The view has no ``id`` column; each row is one person.
+    tie_breaker_column: ClassVar[str] = "person_id"
 
     def __init__(self, client: Client) -> None:
         """Bind the repository to the shared Supabase client."""

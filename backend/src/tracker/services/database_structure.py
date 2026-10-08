@@ -132,6 +132,7 @@ KNOWN_MIGRATIONS: Final[dict[str, MigrationMarker | None]] = {
     ),
     # Asked for without the notes' text: the jobs never read what the owner wrote.
     "0016_person_notes": ColumnsProbe("person_notes", "id,person_id"),
+    "0017_daily_start": ColumnsProbe("daily_starts", "owner_date,requested_at"),
 }
 
 

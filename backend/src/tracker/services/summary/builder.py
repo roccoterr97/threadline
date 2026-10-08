@@ -15,10 +15,11 @@ is kept for replies the owner owes.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from tracker.domain.enums import RunStatus, RunTrigger, WaitingOn
+from tracker.domain.enums import RunStatus, WaitingOn
 from tracker.domain.models import PersonOverview, RunLog, RunStepLog
 from tracker.repositories import Repositories
 from tracker.schemas.summary import (
@@ -28,6 +29,7 @@ from tracker.schemas.summary import (
     SummaryProblem,
 )
 from tracker.services.runs.run_recorder import derive_run_status, triggers_of_kind
+from tracker.services.summary.once_a_day import summary_went_out
 from tracker.services.summary.problem_messages import explain
 from tracker.services.summary.renderer import format_day, render_email
 from tracker.services.summary.wording import Branding
@@ -47,6 +49,21 @@ from tracker.shared.logging import get_logger
 _NO_DUE_DATE = datetime.max.date()
 
 _log = get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _DailyHistory:
+    """The recent daily runs, read once for the reply window and the notices.
+
+    Attributes:
+        runs: The newest daily runs, newest first; never a refresh.
+        interrupted: The runs closed as interrupted, with the step they stopped at.
+        summarised: The runs whose summary actually reached the owner.
+    """
+
+    runs: list[RunLog]
+    interrupted: dict[UUID, RunStepLog]
+    summarised: frozenset[UUID]
 
 
 class SummaryBuilder:
@@ -91,10 +108,9 @@ class SummaryBuilder:
             The e-mail, ready to send.
         """
         problems, status = self._run_outcome(run)
-        recent = self._repositories.run_logs.list(limit=RECENT_RUNS_SCANNED)
-        interrupted = self._interrupted(recent)
-        window_start = self._reply_window_start(run, recent, interrupted)
-        problems += _interrupted_problems(run, recent, interrupted, window_start)
+        history = self._daily_history()
+        window_start = self._reply_window_start(run, history)
+        problems += _interrupted_problems(run, history, window_start)
         overview = self._repositories.people_overview.list_every()
         do_today = [row for row in overview if _is_waiting_on_owner(row)]
         overdue = [row for row in overview if row.is_overdue]
@@ -172,33 +188,41 @@ class SummaryBuilder:
         )
         return problems, status
 
-    def _interrupted(self, recent: list[RunLog]) -> dict[UUID, RunStepLog]:
-        """Find the recent runs that were closed as interrupted, with the step they stopped at."""
-        steps = self._repositories.run_step_logs.list_for_runs([run.id for run in recent])
-        return {step.run_id: step for step in steps if step.error_code == RUN_INTERRUPTED_CODE}
+    def _daily_history(self) -> _DailyHistory:
+        """Read the recent daily runs and what their steps say.
 
-    def _reply_window_start(
-        self, run: RunLog | None, recent: list[RunLog], interrupted: dict[UUID, RunStepLog]
-    ) -> datetime:
+        Refreshes are left out in the query itself: they send no summary, and a
+        busy afternoon of them must not push yesterday's run out of the list.
+        """
+        runs = self._repositories.run_logs.list_recent(
+            triggers_of_kind(refresh=False), limit=RECENT_RUNS_SCANNED
+        )
+        steps = self._repositories.run_step_logs.list_for_runs([run.id for run in runs])
+        return _DailyHistory(
+            runs=runs,
+            interrupted={
+                step.run_id: step for step in steps if step.error_code == RUN_INTERRUPTED_CODE
+            },
+            summarised=frozenset(step.run_id for step in steps if summary_went_out(step)),
+        )
+
+    def _reply_window_start(self, run: RunLog | None, history: _DailyHistory) -> datetime:
         """Return the moment "replied since yesterday" counts from.
 
-        That moment is the start of the previous finished run, so a morning that
-        was missed is caught up rather than skipped. A refresh between two
-        mornings sends no summary, so it does not count: otherwise a reply seen
-        by an afternoon refresh would never be reported. A run that was
-        interrupted does not count either: it may never have sent its summary.
-        When there is no earlier run, the window is the last day.
+        That moment is the start of the previous daily run whose summary
+        actually reached the owner, so a morning that was missed is caught up
+        rather than skipped. A run whose summary failed, was skipped, or never
+        got that far sent the owner nothing, so it does not count: otherwise
+        the replies it saw would never appear in any e-mail. When there is no
+        such run, the window is the last day.
         """
         earlier = [
-            candidate
-            for candidate in recent
-            if candidate.finished_at is not None
-            and candidate.trigger is not RunTrigger.REFRESH
-            and candidate.id not in interrupted
-            and (run is None or candidate.id != run.id)
+            candidate.started_at
+            for candidate in history.runs
+            if candidate.id in history.summarised and (run is None or candidate.id != run.id)
         ]
         if earlier:
-            return max(candidate.started_at for candidate in earlier)
+            return max(earlier)
         return self._clock.now() - timedelta(hours=REPLY_WINDOW_FALLBACK_HOURS)
 
     def _replied_since(
@@ -245,18 +269,17 @@ class SummaryBuilder:
 
 def _interrupted_problems(
     run: RunLog | None,
-    recent: list[RunLog],
-    interrupted: dict[UUID, RunStepLog],
+    history: _DailyHistory,
     since: datetime,
 ) -> tuple[SummaryProblem, ...]:
-    """Explain the earlier runs that died part-way since the last summary.
+    """Explain the earlier daily runs that died part-way since the last summary.
 
     The run being reported on explains its own steps, so it is left out here.
     """
     return tuple(
-        explain(interrupted[earlier.id].step, RUN_INTERRUPTED_CODE)
-        for earlier in sorted(recent, key=lambda candidate: candidate.started_at)
-        if earlier.id in interrupted
+        explain(history.interrupted[earlier.id].step, RUN_INTERRUPTED_CODE)
+        for earlier in sorted(history.runs, key=lambda candidate: candidate.started_at)
+        if earlier.id in history.interrupted
         and earlier.started_at >= since
         and (run is None or earlier.id != run.id)
     )

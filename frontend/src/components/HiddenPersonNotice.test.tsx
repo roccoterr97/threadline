@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { upcomingMeetingsQueryKey } from '../api/meetings';
 import { markPersonAsRelevant } from '../api/overrides';
 import * as copy from '../copy/en';
 import { DataUnavailableError } from '../lib/errors';
@@ -52,6 +53,16 @@ describe('HiddenPersonNotice', () => {
     expect(await screen.findByText(text.restored(ADA.name))).toBeInTheDocument();
     expect(restoreMock).toHaveBeenCalledWith(ADA.id);
     expect(screen.queryByRole('button', { name: text.undoLabel(ADA.name) })).not.toBeInTheDocument();
+  });
+
+  it('refreshes the meetings strip, so it opens this person\'s page again', async () => {
+    const { user, queryClient } = renderNotice();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await user.click(screen.getByRole('button', { name: text.undoLabel(ADA.name) }));
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: upcomingMeetingsQueryKey });
+    });
   });
 
   it('keeps the keyboard on the note once "Undo" has gone', async () => {

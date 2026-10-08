@@ -15,7 +15,9 @@ class FormIO:
 
     The echo carries no answers, only what was said and asked, so whoever
     started the command (a person, or Claude Code following the set-up recipe)
-    can follow along without ever seeing a key.
+    can follow along without seeing what was typed. It is not a wall: the
+    page's own address, printed when the page opens, holds the key that lets a
+    caller read and answer the page, so whoever sees the output could reach it.
     """
 
     def __init__(

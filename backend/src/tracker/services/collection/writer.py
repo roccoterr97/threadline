@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Final
 from uuid import UUID
 
 from tracker.domain.enums import Channel, Direction, Relevance, RelevanceDecidedBy
@@ -22,6 +23,12 @@ from tracker.services.collection.models import RawConversation
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
+
+#: Deciders whose answer is richer than the obvious-noise rules', so a later
+#: collection run never overwrites it.
+DECIDED_BEYOND_RULES: Final[frozenset[RelevanceDecidedBy]] = frozenset(
+    {RelevanceDecidedBy.OWNER, RelevanceDecidedBy.AI}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,7 +115,7 @@ class ConversationWriter:
             How many messages were offered and how many were new.
         """
         known = {
-            (message.conversation_id, message.source_message_id): message.id
+            (message.conversation_id, message.source_message_id): message
             for message in self._repositories.messages.list_for_conversations(
                 [record.id for record in records]
             )
@@ -139,6 +146,9 @@ def _conversation_of(
 
     Returns:
         The row to write. A noise thread carries no subject: the model drops it.
+        The dates never shrink against the stored row: a thread rebuilt from
+        the collection window alone (a noise thread is) may not hold its
+        oldest or its owner's messages, which must not move or erase them.
     """
     relevance, decided_by = _decision(existing, raw)
     sent_times = [message.sent_at for message in raw.messages]
@@ -157,7 +167,24 @@ def _conversation_of(
     )
     if existing is not None:
         conversation.id = existing.id
+        _keep_known_dates(conversation, existing)
     return conversation
+
+
+def _keep_known_dates(conversation: Conversation, existing: Conversation) -> None:
+    """Keep the earliest first and the latest last dates the stored row knows."""
+    conversation.first_message_at = _earliest(
+        conversation.first_message_at, existing.first_message_at
+    )
+    conversation.last_message_at = _latest_of(
+        conversation.last_message_at, existing.last_message_at
+    )
+    conversation.last_inbound_at = _latest_of(
+        conversation.last_inbound_at, existing.last_inbound_at
+    )
+    conversation.last_outbound_at = _latest_of(
+        conversation.last_outbound_at, existing.last_outbound_at
+    )
 
 
 def _decision(
@@ -177,8 +204,7 @@ def _decision(
     Returns:
         The relevance and the decider to write.
     """
-    richer = {RelevanceDecidedBy.OWNER, RelevanceDecidedBy.AI}
-    if existing is not None and existing.relevance_decided_by in richer:
+    if existing is not None and existing.relevance_decided_by in DECIDED_BEYOND_RULES:
         return existing.relevance, existing.relevance_decided_by
     if raw.relevance is Relevance.NOISE:
         return Relevance.NOISE, RelevanceDecidedBy.RULE
@@ -205,6 +231,16 @@ def _person_of(
     return None
 
 
+def _earliest(found: datetime | None, stored: datetime | None) -> datetime | None:
+    """The earlier of two moments, either of which may be unknown."""
+    return min((moment for moment in (found, stored) if moment is not None), default=None)
+
+
+def _latest_of(found: datetime | None, stored: datetime | None) -> datetime | None:
+    """The later of two moments, either of which may be unknown."""
+    return max((moment for moment in (found, stored) if moment is not None), default=None)
+
+
 def _latest(raw: RawConversation, direction: Direction) -> datetime | None:
     """Return the most recent moment a message went in one direction."""
     return max(
@@ -216,31 +252,37 @@ def _latest(raw: RawConversation, direction: Direction) -> datetime | None:
 def _messages_of(
     raw: RawConversation,
     record: Conversation,
-    known: dict[tuple[UUID, str], UUID],
+    known: dict[tuple[UUID, str], Message],
 ) -> list[Message]:
     """Build the message rows of one thread.
 
     Args:
         raw: The collected thread.
         record: The conversation row the messages hang from.
-        known: Primary keys of the messages already stored.
+        known: The messages already stored, by thread and source identifier.
 
     Returns:
-        The rows to write; a noise thread's messages carry no body.
+        The rows to write; a noise thread's messages carry no body. A thread
+        that keeps text never trades a stored body for none or an empty one:
+        a run that did not read the text (or could not find the message
+        again) cannot know it is gone.
     """
     keeps_text = record.relevance is not Relevance.NOISE
     rows: list[Message] = []
     for message in raw.messages:
+        stored = known.get((record.id, message.source_message_id))
+        body = message.body if keeps_text else None
+        if keeps_text and not body and stored is not None and stored.body:
+            body = stored.body
         row = Message(
             conversation_id=record.id,
             source_message_id=message.source_message_id,
             direction=message.direction,
             sent_at=message.sent_at,
             sender_identifier=message.sender_identifier,
-            body=message.body if keeps_text else None,
+            body=body,
         )
-        existing_id = known.get((record.id, message.source_message_id))
-        if existing_id is not None:
-            row.id = existing_id
+        if stored is not None:
+            row.id = stored.id
         rows.append(row)
     return rows

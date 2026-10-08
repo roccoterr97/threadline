@@ -16,6 +16,7 @@ import asyncio
 from collections import defaultdict
 from collections.abc import Sequence
 from datetime import datetime
+from itertools import zip_longest
 
 from pydantic import SecretStr
 
@@ -245,18 +246,26 @@ def _participants(messages: Sequence[SnapshotMessage], owner: str) -> tuple[RawP
         owner: The owner's normalised profile link.
 
     Returns:
-        One participant per distinct profile link, first spelling winning.
+        One participant per distinct profile link, first known spelling winning.
     """
     found: dict[str, RawParticipant] = {}
     for message in messages:
         pairs = [(message.sender_profile_url, message.sender_name)]
-        pairs.extend(zip(message.recipient_profile_urls, message.recipient_names, strict=False))
+        # The parser leaves the names out when they do not line up with the
+        # links, so every link is kept even when its name is unknown.
+        pairs.extend(
+            zip_longest(message.recipient_profile_urls, message.recipient_names, fillvalue="")
+        )
         for url, name in pairs:
             if not url or url == owner:
                 continue
-            found.setdefault(
-                url, RawParticipant(channel=Channel.LINKEDIN, identifier=url, display_name=name)
-            )
+            # A name left out of one message is filled in by a later one, such
+            # as the person's own reply, instead of staying blank for good.
+            known = found.get(url)
+            if known is None or (not known.display_name and name):
+                found[url] = RawParticipant(
+                    channel=Channel.LINKEDIN, identifier=url, display_name=name
+                )
     return tuple(found.values())
 
 

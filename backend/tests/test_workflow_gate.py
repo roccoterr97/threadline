@@ -9,6 +9,7 @@ waiting, so the gate's sense of elapsed time is tested without real time passing
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -48,6 +49,35 @@ if [ "$reply" = hang ]; then exit 124; fi
 echo "$reply"
 """
 
+#: The stand-in ``gh`` that answers like GitHub does: it applies the gate's own
+#: ``--jq`` filter, with the real ``jq``, to the runs in ``runs.json``.
+_JQ_GH: Final[str] = """#!/bin/bash
+echo "$*" >> "$FAKE_DIR/gh-calls"
+filter=""
+while [ $# -gt 0 ]; do
+  if [ "$1" = --jq ]; then filter=$2; shift; fi
+  shift
+done
+jq "$filter" "$FAKE_DIR/runs.json"
+"""
+
+#: The stand-in ``date``: the owner's today and UTC offset from the test, and
+#: the zone it was asked in noted, so no test depends on the real clock.
+_FAKE_DATE: Final[str] = """#!/bin/bash
+echo "${TZ:-}" >> "$FAKE_DIR/date-zones"
+case "$1" in
+  +%F) echo "$FAKE_TODAY" ;;
+  +%z) echo "$FAKE_OFFSET" ;;
+  *) exec /bin/date "$@" ;;
+esac
+"""
+
+#: The owner's day the stand-in ``date`` reports unless a test says otherwise.
+TODAY: Final[str] = "2026-10-06"
+
+#: Paris in summer: two hours ahead of UTC.
+PARIS_SUMMER_OFFSET: Final[str] = "+0200"
+
 #: The stand-in ``timeout``: notes the limit it was given, then runs the command.
 _FAKE_TIMEOUT: Final[str] = """#!/bin/bash
 echo "$1" >> "$FAKE_DIR/timeouts"
@@ -77,6 +107,7 @@ class GateRun:
     gh_calls: int
     sleeps: list[int]
     timeouts: list[int]
+    date_zones: list[str]
 
 
 def _install(directory: Path, name: str, text: str) -> None:
@@ -90,6 +121,16 @@ def _numbers(path: Path) -> list[int]:
     return [int(line) for line in path.read_text(encoding="utf-8").split()] if path.exists() else []
 
 
+@dataclass(frozen=True, slots=True)
+class Owner:
+    """What the gate learns about the owner's day: the event, the zone and its clock."""
+
+    event: str = "workflow_dispatch"
+    zone: str = "Europe/Paris"
+    today: str = TODAY
+    offset: str = PARIS_SUMMER_OFFSET
+
+
 def run_gate(
     tmp_path: Path,
     mode: str,
@@ -97,29 +138,41 @@ def run_gate(
     *,
     seconds_per_sleep: int | None = None,
     pipefail: bool = False,
+    owner: Owner | None = None,
+    runs: list[dict[str, Any]] | None = None,
 ) -> GateRun:
     """Run the gate in one mode, with GitHub answering ``replies`` in turn.
 
     Args:
         tmp_path: Where the stand-ins keep their notes.
-        mode: ``daily`` or ``refresh``.
+        mode: ``daily``, ``refresh`` or ``""`` (a scheduled run has no input).
         replies: GitHub's answers, in turn (see :data:`_FAKE_GH`).
         seconds_per_sleep: How far each wait moves the clock, when not by
             what it was asked to wait.
         pipefail: Also run with ``-o pipefail``, as ``shell: bash`` would.
+        owner: The event that started the run and the owner's clock.
+        runs: When given, GitHub's runs list, filtered by the gate's own
+            ``--jq`` with the real ``jq`` instead of the scripted replies.
     """
+    owner = owner or Owner()
     tools = tmp_path / "bin"
     tools.mkdir()
-    _install(tools, "gh", _FAKE_GH)
+    _install(tools, "gh", _FAKE_GH if runs is None else _JQ_GH)
     _install(tools, "timeout", _FAKE_TIMEOUT)
+    _install(tools, "date", _FAKE_DATE)
     (tmp_path / "gh-replies").write_text("\n".join(replies) + "\n", encoding="utf-8")
+    (tmp_path / "runs.json").write_text(json.dumps(runs or []), encoding="utf-8")
     output = tmp_path / "github-output"
     output.touch()
     environment = {
         "PATH": f"{tools}{os.pathsep}{os.environ['PATH']}",
         "FAKE_DIR": str(tmp_path),
+        "FAKE_TODAY": owner.today,
+        "FAKE_OFFSET": owner.offset,
         "GITHUB_OUTPUT": str(output),
         "MODE": mode,
+        "EVENT": owner.event,
+        "OWNER_TIME_ZONE": owner.zone,
         "RUN_ID": "1001",
         **dict.fromkeys(REQUIRED_SECRETS, "set"),
     }
@@ -144,7 +197,13 @@ def run_gate(
         gh_calls=len(calls.read_text(encoding="utf-8").splitlines()) if calls.exists() else 0,
         sleeps=_numbers(tmp_path / "sleeps"),
         timeouts=_numbers(tmp_path / "timeouts"),
+        date_zones=_lines(tmp_path / "date-zones"),
     )
+
+
+def _lines(path: Path) -> list[str]:
+    """The lines a stand-in noted; none when it was never called."""
+    return path.read_text(encoding="utf-8").splitlines() if path.exists() else []
 
 
 def _gate_number(name: str) -> int:
@@ -277,6 +336,121 @@ def test_the_time_lookups_take_counts_towards_the_wait(tmp_path: Path) -> None:
     assert gate.outputs["ready"] == "true"
     assert len(gate.sleeps) == -(-_gate_number("wait_limit_seconds") // 600)
     assert "::warning::A refresh still looked busy" in gate.stdout
+
+
+# --- GitHub's own schedule, the backup for the on-time morning start --------------
+
+SCHEDULED: Final[Owner] = Owner(event="schedule")
+
+
+def test_a_scheduled_run_stops_when_todays_daily_run_already_started(tmp_path: Path) -> None:
+    gate = run_gate(tmp_path, "", ["1"], owner=SCHEDULED)
+
+    assert gate.outputs == {"ready": "false"}
+    assert "::notice::Today's daily run already started on time" in gate.stdout
+    assert gate.gh_calls == 1
+    assert gate.date_zones == ["Europe/Paris", "Europe/Paris"]
+
+
+def test_a_scheduled_run_goes_ahead_when_no_daily_run_started_today(tmp_path: Path) -> None:
+    gate = run_gate(tmp_path, "", ["0", "0"], owner=SCHEDULED)
+
+    assert gate.outputs == {"ready": "true", "mode": "daily", "trigger": "github"}
+    assert gate.gh_calls == 2
+
+
+def test_a_scheduled_run_goes_ahead_when_github_cannot_say(tmp_path: Path) -> None:
+    """Not knowing never skips the morning; the once-a-day e-mail rule is the last net."""
+    attempts = _gate_number("lookup_attempts")
+    gate = run_gate(tmp_path, "", ["fail"] * attempts + ["0"], owner=SCHEDULED)
+
+    assert gate.outputs["ready"] == "true"
+    assert "could not say whether today's daily run already started" in gate.stdout
+
+
+def test_a_scheduled_run_without_a_saved_zone_reads_the_day_in_utc(tmp_path: Path) -> None:
+    gate = run_gate(tmp_path, "", ["1"], owner=Owner(event="schedule", zone=""))
+
+    assert gate.outputs == {"ready": "false"}
+    assert gate.date_zones == ["UTC", "UTC"]
+
+
+@pytest.mark.parametrize("mode", ["daily", ""])
+def test_a_daily_run_started_by_hand_or_by_supabase_never_looks(tmp_path: Path, mode: str) -> None:
+    gate = run_gate(tmp_path, mode, ["0"])
+
+    assert gate.outputs["ready"] == "true"
+    assert gate.gh_calls == 1
+    assert gate.date_zones == []
+
+
+def test_a_refresh_is_never_stopped_by_the_schedule_check(tmp_path: Path) -> None:
+    gate = run_gate(tmp_path, "refresh", ["0"], owner=SCHEDULED)
+
+    assert gate.outputs == {"ready": "true", "mode": "refresh", "trigger": "refresh"}
+
+
+def _run(
+    run_id: int, created_at: str, *, title: str = "Threadline daily run", **state: str | None
+) -> dict[str, Any]:
+    """One run as ``gh run list --json`` prints it."""
+    return {
+        "databaseId": run_id,
+        "displayTitle": title,
+        "status": state.get("status", "completed"),
+        "conclusion": state.get("conclusion", "success"),
+        "createdAt": created_at,
+    }
+
+
+needs_jq = pytest.mark.skipif(shutil.which("jq") is None, reason="needs jq to apply the filter")
+
+
+@needs_jq
+@pytest.mark.parametrize(
+    ("run", "stops"),
+    [
+        # 00:30 in Paris on the 6th is still the 5th in UTC: it is today's run.
+        (_run(7, "2026-10-05T22:30:00Z"), True),
+        # 23:30 in Paris on the 5th: yesterday's run, though UTC says the 5th too.
+        (_run(7, "2026-10-05T21:30:00Z"), False),
+        (_run(7, "2026-10-06T05:00:00Z", status="in_progress", conclusion=""), True),
+        (_run(7, "2026-10-06T05:00:00Z", status="queued", conclusion=None), True),
+        # A morning that failed or was cancelled gets one more try.
+        (_run(7, "2026-10-06T05:00:00Z", conclusion="failure"), False),
+        (_run(7, "2026-10-06T05:00:00Z", conclusion="cancelled"), False),
+        (_run(7, "2026-10-06T05:00:00Z", title="Threadline refresh"), False),
+        # The scheduled run itself is never counted.
+        (_run(1001, "2026-10-06T05:00:00Z"), False),
+    ],
+)
+def test_the_gate_reads_todays_daily_run_in_the_owners_zone(
+    tmp_path: Path, run: dict[str, Any], *, stops: bool
+) -> None:
+    gate = run_gate(tmp_path, "", [], owner=SCHEDULED, runs=[run])
+
+    assert gate.outputs["ready"] == ("false" if stops else "true")
+
+
+@needs_jq
+@pytest.mark.parametrize(
+    ("created_at", "stops"),
+    [
+        # 00:30 in New York on the 6th.
+        ("2026-10-06T04:30:00Z", True),
+        # 23:30 in New York on the 5th, though UTC already says the 6th.
+        ("2026-10-06T03:30:00Z", False),
+    ],
+)
+def test_a_zone_behind_utc_moves_the_day_the_other_way(
+    tmp_path: Path, created_at: str, *, stops: bool
+) -> None:
+    """New York in summer is four hours behind: its 6 October starts at 04:00 UTC."""
+    new_york = Owner(event="schedule", zone="America/New_York", today=TODAY, offset="-0400")
+
+    gate = run_gate(tmp_path, "", [], owner=new_york, runs=[_run(7, created_at)])
+
+    assert gate.outputs["ready"] == ("false" if stops else "true")
 
 
 # --- the numbers agree --------------------------------------------------------------

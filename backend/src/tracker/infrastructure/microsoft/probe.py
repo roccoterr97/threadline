@@ -87,16 +87,23 @@ class GraphProbe:
         if self._http is None:
             message = "Graph probe used outside its context manager"
             raise SourceUnavailableError(message)
-        headers = {"Authorization": f"Bearer {await self._tokens.access_token()}"}
         try:
             response = await get_with_retries(
-                self._http, url, params=params, headers=headers, source="microsoft graph"
+                self._http,
+                url,
+                params=params,
+                fresh_headers=self._authorisation,
+                source="microsoft graph",
             )
         except httpx.HTTPError as error:
             _log.error("graph_unreachable", error_type=type(error).__name__, what=what)
             message = "Microsoft could not be reached"
             raise SourceUnavailableError(message) from error
         return _payload(response, what)
+
+    async def _authorisation(self) -> dict[str, str]:
+        """The authorisation header, with a key valid at this very attempt."""
+        return {"Authorization": f"Bearer {await self._tokens.access_token()}"}
 
 
 def _payload(response: httpx.Response, what: str) -> dict[str, Any]:

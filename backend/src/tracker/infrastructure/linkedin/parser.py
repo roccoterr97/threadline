@@ -111,6 +111,7 @@ def parse_row(row: dict[str, str]) -> SnapshotMessage | None:
         return None
     sender_profile_url = normalise_profile_url(row.get(SENDER_PROFILE_FIELD, ""))
     content = row.get(CONTENT_FIELD, "")
+    profile_urls, names = _recipients(row.get(RECIPIENT_PROFILES_FIELD, ""), row.get(TO_FIELD, ""))
     return SnapshotMessage(
         message_id=build_message_id(conversation_id, sent_at, sender_profile_url, content),
         conversation_id=conversation_id,
@@ -118,11 +119,8 @@ def parse_row(row: dict[str, str]) -> SnapshotMessage | None:
         sent_at=sent_at,
         sender_profile_url=sender_profile_url,
         sender_name=row.get(FROM_FIELD, "").strip(),
-        recipient_profile_urls=tuple(
-            normalise_profile_url(value)
-            for value in _split_list(row.get(RECIPIENT_PROFILES_FIELD, ""))
-        ),
-        recipient_names=tuple(_split_list(row.get(TO_FIELD, ""))),
+        recipient_profile_urls=profile_urls,
+        recipient_names=names,
         subject=row.get(SUBJECT_FIELD, "").strip(),
         content=content,
         folder=row.get(FOLDER_FIELD, "").strip(),
@@ -194,9 +192,30 @@ def normalise_profile_url(raw: str) -> str:
     return cleaned.rstrip("/")
 
 
-def _split_list(raw: str) -> list[str]:
-    """Split one of the snapshot's list-shaped columns."""
-    value = raw
-    for separator in _LIST_SEPARATORS[1:]:
-        value = value.replace(separator, _LIST_SEPARATORS[0])
-    return [part.strip() for part in value.split(_LIST_SEPARATORS[0]) if part.strip()]
+def _recipients(raw_urls: str, raw_names: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Read the recipient links and the names that go with them.
+
+    A name may hold a comma ("Jane Doe, CFA") while a profile link never does,
+    so the names are split only on the separator the link column used. When
+    the two still do not line up one to one, the names are dropped: a missing
+    name is filled in later, a name on the wrong person is not noticed.
+
+    Args:
+        raw_urls: The ``RECIPIENT PROFILE URLS`` column.
+        raw_names: The ``TO`` column.
+
+    Returns:
+        The normalised links, and their names in the same order or none at all.
+    """
+    separator = next((item for item in _LIST_SEPARATORS if item in raw_urls), None)
+    urls = tuple(normalise_profile_url(value) for value in _split_on(raw_urls, separator))
+    names = tuple(_split_on(raw_names, separator))
+    if len(names) != len(urls):
+        return urls, ()
+    return urls, names
+
+
+def _split_on(raw: str, separator: str | None) -> list[str]:
+    """Split a list-shaped column on one separator, or keep it whole without one."""
+    parts = [raw] if separator is None else raw.split(separator)
+    return [part.strip() for part in parts if part.strip()]

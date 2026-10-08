@@ -819,9 +819,9 @@ async def test_cloud_without_a_clipboard_says_so() -> None:
 
 async def test_a_second_run_skips_finished_steps_and_stops_cleanly() -> None:
     env = configured_env() | {"TOKEN_ENCRYPTION_KEY": _fernet_key()}
-    # The login, skip the categories, keep the offered time zone and no name,
-    # then choose Outlook as the mailbox.
-    world = make_world([OWNER_EMAIL, False, "", "", "outlook"], env)
+    # The login, skip the categories, keep the offered time zone, leave the
+    # workflow's new zone unpushed, no name, then choose Outlook as the mailbox.
+    world = make_world([OWNER_EMAIL, False, "", False, "", "outlook"], env)
     world.microsoft.refuse = True
     wizard = SetupWizard(world.context(), default_steps())
 
@@ -904,7 +904,7 @@ async def test_the_time_zone_comes_right_after_the_categories() -> None:
 
 
 async def test_the_computers_time_zone_is_offered_and_saved() -> None:
-    world = make_world(["", ""], configured_env())
+    world = make_world(["", False, ""], configured_env())
 
     await TimeZoneStep().run(world.context())
 
@@ -914,7 +914,7 @@ async def test_the_computers_time_zone_is_offered_and_saved() -> None:
 
 
 async def test_a_typed_time_zone_is_checked_and_the_name_is_saved() -> None:
-    world = make_world(["Paris", "America/New_York", "  Sam   Rivera "], configured_env())
+    world = make_world(["Paris", "America/New_York", False, "  Sam   Rivera "], configured_env())
 
     await TimeZoneStep().run(world.context())
 
@@ -924,7 +924,7 @@ async def test_a_typed_time_zone_is_checked_and_the_name_is_saved() -> None:
 
 
 async def test_a_typed_time_zone_is_saved_as_the_database_spells_it() -> None:
-    world = make_world(["europe/rome", ""], configured_env())
+    world = make_world(["europe/rome", False, ""], configured_env())
 
     await TimeZoneStep().run(world.context())
 
@@ -932,7 +932,7 @@ async def test_a_typed_time_zone_is_saved_as_the_database_spells_it() -> None:
 
 
 async def test_a_saved_time_zone_in_the_wrong_case_is_put_right() -> None:
-    world = make_world(["", ""], configured_env() | {"OWNER_TIME_ZONE": "asia/tokyo"})
+    world = make_world(["", False, ""], configured_env() | {"OWNER_TIME_ZONE": "asia/tokyo"})
 
     await TimeZoneStep().run(world.context())
 
@@ -940,7 +940,7 @@ async def test_a_saved_time_zone_in_the_wrong_case_is_put_right() -> None:
 
 
 async def test_a_saved_time_zone_is_offered_before_the_computers() -> None:
-    world = make_world(["", ""], configured_env() | {"OWNER_TIME_ZONE": "Asia/Tokyo"})
+    world = make_world(["", False, ""], configured_env() | {"OWNER_TIME_ZONE": "Asia/Tokyo"})
 
     await TimeZoneStep().run(world.context())
 

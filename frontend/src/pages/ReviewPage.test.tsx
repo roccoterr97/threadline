@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { upcomingMeetingsQueryKey } from '../api/meetings';
 import { fetchPeople } from '../api/people';
 import { answerReviewItem, fetchOpenReviewItems } from '../api/review';
 import { AppLayout } from '../components/AppLayout';
@@ -166,6 +167,17 @@ describe('ReviewPage — answering', () => {
     });
   });
 
+  it('refreshes the meetings strip, since an answer can put someone on the list or take them off', async () => {
+    const { user, queryClient } = renderWithProviders(<ReviewPage />);
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const firstCard = (await screen.findAllByRole('listitem'))[0]!;
+    await user.click(within(firstCard).getByRole('button', { name: copy.review.yes }));
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: upcomingMeetingsQueryKey });
+    });
+  });
+
   it('puts the card back and explains itself when saving fails', async () => {
     answerMock.mockRejectedValue(new DataUnavailableError('review.answer'));
     const { user } = renderWithProviders(<ReviewPage />);
@@ -215,6 +227,71 @@ describe('ReviewPage — the count in the navigation', () => {
     const cards = await within(screen.getByRole('main')).findAllByRole('listitem');
     await user.click(within(cards[0]!).getByRole('button', { name: copy.review.yes }));
 
+    await waitFor(() => {
+      expect(reviewLink).toHaveTextContent(copy.nav.reviewCountLabel(1));
+    });
+  });
+});
+
+describe('ReviewPage — two answers at once', () => {
+  /**
+   * The first answer hangs until `failFirst` is called; the second one is
+   * stored at once, so the database stops returning that question.
+   */
+  function firstAnswerFailsLate() {
+    let open = [...sampleReviewItems];
+    let failFirst: () => void = () => undefined;
+    fetchItemsMock.mockImplementation(() => Promise.resolve(open));
+    answerMock.mockImplementation((itemId) => {
+      if (itemId === FIRST_ITEM!.id) {
+        return new Promise<void>((_resolve, reject) => {
+          failFirst = () => {
+            reject(new DataUnavailableError('review.answer'));
+          };
+        });
+      }
+      open = open.filter((item) => item.id !== itemId);
+      return Promise.resolve();
+    });
+    return { failFirst: () => failFirst() };
+  }
+
+  it('brings back only the failed card, not one answered in the meantime', async () => {
+    const { failFirst } = firstAnswerFailsLate();
+    const { user, queryClient } = renderWithProviders(
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/review" element={<ReviewPage />} />
+        </Route>
+      </Routes>,
+      { route: '/review', path: null },
+    );
+    const main = within(screen.getByRole('main'));
+    const menu = within(screen.getByRole('navigation', { name: copy.nav.headerLabel }));
+    const reviewLink = await menu.findByRole('link', { name: /To review/ });
+
+    const firstCard = (await main.findAllByRole('listitem'))[0]!;
+    await user.click(within(firstCard).getByRole('button', { name: copy.review.yes }));
+    const secondCard = await main.findByRole('listitem');
+    expect(secondCard).toHaveTextContent(SECOND_ITEM!.question);
+    await user.click(within(secondCard).getByRole('button', { name: copy.review.yes }));
+
+    // Once the second answer is stored, only the first is still on its way.
+    await waitFor(() => {
+      expect(queryClient.isMutating()).toBe(1);
+    });
+    await waitFor(() => {
+      expect(queryClient.isFetching()).toBe(0);
+    });
+    // Refreshing after the second answer must not pull back the first card
+    // while its answer is still on the way.
+    expect(main.queryAllByRole('listitem')).toHaveLength(0);
+
+    failFirst();
+
+    expect(await main.findByText(copy.review.failed)).toBeInTheDocument();
+    expect(main.getByText(FIRST_ITEM!.question)).toBeInTheDocument();
+    expect(main.queryByText(SECOND_ITEM!.question)).not.toBeInTheDocument();
     await waitFor(() => {
       expect(reviewLink).toHaveTextContent(copy.nav.reviewCountLabel(1));
     });

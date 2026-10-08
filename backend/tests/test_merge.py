@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from datetime import UTC, datetime
 
-from tests.assessment_world import make_person, make_thread
+from tests.assessment_world import make_override, make_person, make_state, make_thread
 from tests.conftest import FakeSupabaseClient
 from tracker.domain.enums import Channel, ReviewAnswer, ReviewKind
 from tracker.domain.models import PersonIdentity, PersonOverride, ReviewItem
@@ -240,7 +240,104 @@ def test_a_question_opened_before_a_merge_is_closed_from_what_the_merge_left(
 
     assert (report.merged, report.questions_closed) == (1, 1)
     reads = [call for call in fake_client.executed if call == ("review_items", "select")]
-    # Once to find the answers, once to move the absorbed record's questions,
-    # once more because the merge changed them.
-    assert len(reads) == 3
+    # Once to find the answers, twice to move the absorbed record's questions
+    # (it may be named on either side), once more because the merge changed them.
+    assert len(reads) == 4
     assert repositories.review_items.get(still_open.id) is None
+
+
+def test_a_moved_assessment_and_correction_get_their_own_primary_key(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    """The absorbed record's rows still exist when the copies are written.
+
+    Reusing their primary key collides with them in the real database, which
+    the in-memory one does not enforce, so the test checks the keys.
+    """
+    named = make_person("Nicolas Reese")
+    by_address = make_person("nicolasreese75@gmail.com")
+    repositories.people.bulk_upsert([named, by_address])
+    state = make_state(by_address, assessed_through=datetime(2026, 9, 10, tzinfo=UTC))
+    override = make_override(by_address, next_action="Send the portfolio")
+    repositories.person_states.bulk_upsert([state])
+    repositories.person_overrides.bulk_upsert([override])
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id)])
+
+    PersonMerger(repositories).apply_answers()
+
+    (moved_state,) = repositories.person_states.list_for_people([named.id])
+    (moved_override,) = repositories.person_overrides.list_for_people([named.id])
+    assert moved_state.id != state.id
+    assert moved_override.id != override.id
+    assert moved_override.next_action == "Send the portfolio"
+    for table in ("person_states", "person_overrides"):
+        ids = [row["id"] for row in fake_client.tables[table]]
+        assert len(ids) == len(set(ids)), f"{table} holds two rows with one primary key"
+
+
+def test_a_question_naming_the_absorbed_record_second_is_kept(
+    repositories: Repositories,
+) -> None:
+    """The database removes a question when either record it names goes."""
+    named = make_person("Erik Lindqvist")
+    by_address = make_person("erik@railfreight.example")
+    other = make_person("Erik Svensson")
+    repositories.people.bulk_upsert([named, by_address, other])
+    about_other = _confirmed(other.id, by_address.id).model_copy(update={"answer": ReviewAnswer.NO})
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id), about_other])
+
+    PersonMerger(repositories).apply_answers()
+
+    moved = repositories.review_items.get(about_other.id)
+    assert moved is not None
+    assert (moved.person_id, moved.other_person_id) == (other.id, named.id)
+
+
+def test_a_merge_never_leaves_the_owner_the_same_question_twice(
+    repositories: Repositories,
+) -> None:
+    """Two open questions about one person and two records that become one."""
+    named = make_person("Erik Lindqvist")
+    by_address = make_person("erik@railfreight.example")
+    other = make_person("Erik Svensson")
+    repositories.people.bulk_upsert([named, by_address, other])
+    open_about = [
+        _confirmed(other.id, record).model_copy(update={"answer": None, "answered_at": None})
+        for record in (named.id, by_address.id)
+    ]
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id), *open_about])
+
+    PersonMerger(repositories).apply_answers()
+
+    still_open = [
+        (item.person_id, item.other_person_id)
+        for item in repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
+        if item.answer is None
+    ]
+    assert still_open == [(other.id, named.id)]
+
+
+def test_answers_chained_through_one_record_join_all_three(repositories: Repositories) -> None:
+    """ "b is a" and "c is b": the second answer names b as the other person.
+
+    Both answers are read before either merge, so the second must follow b to
+    the record it became, or c stays on its own line.
+    """
+    anna = make_person("Anna Vermeer")
+    work = make_person("anna@northwind.example")
+    personal = make_person("anna.v@mailbox.example")
+    repositories.people.bulk_upsert([anna, work, personal])
+    repositories.review_items.bulk_upsert(
+        [_confirmed(work.id, anna.id), _confirmed(personal.id, work.id)]
+    )
+
+    report = PersonMerger(repositories).apply_answers()
+
+    assert report.merged == 2
+    assert repositories.people.get(anna.id) is not None
+    assert repositories.people.get(work.id) is None
+    assert repositories.people.get(personal.id) is None
+    questions = repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
+    assert len(questions) == 2
+    assert all(q.person_id == q.other_person_id == anna.id for q in questions)

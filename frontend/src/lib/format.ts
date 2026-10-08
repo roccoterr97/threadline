@@ -32,11 +32,26 @@ const clockTimeFormatter = new Intl.DateTimeFormat(LOCALE, {
 const MINUTE_MS = 60_000;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
+const DAYS_IN_WEEK = 7;
+
+/** A stored calendar day such as a due date: "2026-03-14", with no time or zone. */
+const CALENDAR_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Reads a value as a moment. A bare calendar day is taken as that day's local
+ * midnight: `new Date` would read it as midnight in UTC, which west of
+ * Greenwich is still the evening before.
+ */
+function parseDateValue(value: string): Date {
+  const day = CALENDAR_DAY.exec(value);
+  if (day === null) return new Date(value);
+  return new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
+}
 
 /** "12 Mar 2026", or the "not set" wording for a missing value. */
 export function formatDate(value: string | null): string {
   if (value === null) return copy.values.none;
-  const date = new Date(value);
+  const date = parseDateValue(value);
   if (Number.isNaN(date.getTime())) return copy.values.none;
   return dateFormatter.format(date);
 }
@@ -63,17 +78,34 @@ export function formatClockTime(value: string): string {
   return clockTimeFormatter.format(date);
 }
 
-/** "3 hours ago" for anything recent, an absolute date once it is older. */
+/**
+ * How many calendar days lie between two moments, counted on the browser's own
+ * calendar. Comparing midnights in UTC terms keeps a daylight-saving change from
+ * turning a day into 23 or 25 hours.
+ */
+function calendarDaysBetween(earlier: Date, later: Date): number {
+  const earlierDay = Date.UTC(earlier.getFullYear(), earlier.getMonth(), earlier.getDate());
+  const laterDay = Date.UTC(later.getFullYear(), later.getMonth(), later.getDate());
+  return Math.round((laterDay - earlierDay) / DAY_MS);
+}
+
+/**
+ * "3 hours ago" for anything from today, "yesterday" or "3 days ago" by the
+ * calendar after that, and an absolute date once it is a week old.
+ */
 export function formatRelative(value: string | Date | null, clock: Clock): string {
   if (value === null) return copy.values.never;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return copy.values.never;
 
-  const elapsed = clock.now().getTime() - date.getTime();
+  const now = clock.now();
+  const elapsed = now.getTime() - date.getTime();
   if (elapsed < MINUTE_MS) return copy.time.justNow;
   if (elapsed < HOUR_MS) return copy.time.minutesAgo(Math.floor(elapsed / MINUTE_MS));
-  if (elapsed < DAY_MS) return copy.time.hoursAgo(Math.floor(elapsed / HOUR_MS));
-  if (elapsed < 7 * DAY_MS) return copy.time.daysAgo(Math.floor(elapsed / DAY_MS));
+
+  const days = calendarDaysBetween(date, now);
+  if (days === 0) return copy.time.hoursAgo(Math.floor(elapsed / HOUR_MS));
+  if (days < DAYS_IN_WEEK) return copy.time.daysAgo(days);
   return dateFormatter.format(date);
 }
 
@@ -101,12 +133,15 @@ export function formatRoleLine(role: string | null, organisation: string | null)
 /**
  * The short counts shown after a run step, such as "12 found" and "3 new".
  * The morning e-mail step stores a count of one for the one e-mail it sent,
- * which reads as nonsense ("1 found, 1 new"), so it just says "sent".
+ * which reads as nonsense ("1 found, 1 new"), so it just says "sent". A run
+ * that skipped its e-mail, because today's had already gone out, stores one
+ * due and zero new, and says so.
  */
 export function describeStepCounts(
   step: Pick<RunStepLogRow, 'step' | 'items_found' | 'items_new'>,
 ): string[] {
   if (step.step === 'summary_email') {
+    if (step.items_new === 0 && (step.items_found ?? 0) > 0) return [copy.runs.emailSkipped];
     const sent = (step.items_new ?? 0) > 0 || (step.items_found ?? 0) > 0;
     return sent ? [copy.runs.emailSent] : [];
   }

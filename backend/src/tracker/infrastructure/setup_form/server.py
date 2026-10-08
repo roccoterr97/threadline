@@ -2,9 +2,11 @@
 
 It listens on the loopback address only, on a port the system picks, and
 every request that reads or answers the conversation must carry a key that
-only the opened page knows (it travels in the address's fragment, which the
-browser never sends anywhere). The Host header is checked too, so a web page
-from elsewhere cannot reach it by a renamed address.
+only the opened page and whoever reads the command's output know: it travels
+in the address's fragment, which the browser never sends anywhere, and the
+address is printed where the command was started so it can be opened by hand.
+The Host header is checked too, so a web page from elsewhere cannot reach it by
+a renamed address.
 """
 
 from __future__ import annotations

@@ -46,6 +46,11 @@ class SupabaseReader[RowT: BaseModel]:
     #: Whether :meth:`list` sorts descending.
     order_descending: ClassVar[bool] = True
 
+    #: A unique column that breaks ties in :attr:`order_column`. Rows written
+    #: by one bulk upsert share a timestamp, and without a unique second key
+    #: paging through them can repeat one row and skip another.
+    tie_breaker_column: ClassVar[str] = "id"
+
     #: Attempts made for one request. The start-up probe lowers this to one,
     #: because it runs its own, slower retry loop on top.
     request_attempts: int = REQUEST_ATTEMPTS
@@ -88,11 +93,10 @@ class SupabaseReader[RowT: BaseModel]:
 
         The pages are sorted exactly as :meth:`_select_page` sorts them, so a
         caller that walked the pages itself sees the same rows in the same
-        order. That sort column can hold the same value on many rows, and the
-        database does not promise to order such rows the same way in two
-        requests; a read longer than one page inherits that from the paged
-        read it replaces. Sorting on the primary key as well would settle it,
-        but would also change which of two such rows comes first.
+        order. That sort column can hold the same value on many rows, so
+        :attr:`tie_breaker_column` settles their order; without it the
+        database may order such rows differently in two requests, and a page
+        could repeat one row and skip another.
 
         Args:
             narrow: Adds the filters to a select, and returns it.
@@ -102,9 +106,9 @@ class SupabaseReader[RowT: BaseModel]:
             Every matching row.
         """
         rows = self._read_pages(
-            lambda count: narrow(self._table().select(ALL_COLUMNS, count=count)).order(
-                self.order_column, desc=self.order_descending
-            ),
+            lambda count: narrow(self._table().select(ALL_COLUMNS, count=count))
+            .order(self.order_column, desc=self.order_descending)
+            .order(self.tie_breaker_column),
             operation,
         )
         return self._to_models(rows)
@@ -130,6 +134,7 @@ class SupabaseReader[RowT: BaseModel]:
         rows = self._run(
             lambda: build_query()
             .order(self.order_column, desc=self.order_descending)
+            .order(self.tie_breaker_column)
             .range(offset, offset + limit - 1)
             .execute(),
             "list",

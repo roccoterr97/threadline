@@ -2,22 +2,36 @@
 
 The repositories read and write Threadline's own rows. Setting up a project
 needs a few other things: seeing whether a table, column or value exists yet,
-finding or creating the dashboard login, and recording who owns the dashboard.
-All of it goes through the same service-key client, over HTTPS.
+finding or creating the dashboard login, recording who owns the dashboard, and
+switching on the on-time morning start (the daily time, and the timer's
+address and key, which the database keeps in Vault). All of it goes through
+the same service-key client, over HTTPS.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Final, cast
+from datetime import date, time
+from typing import Any, Final, cast
 
 import httpx
 from postgrest import APIError
+from pydantic import SecretStr
 from supabase import Client, SupabaseException
 from supabase_auth.errors import AuthError
 
-from tracker.shared.constants.setup import AUTH_USERS_MAX_PAGES, AUTH_USERS_PAGE_SIZE
-from tracker.shared.errors import DatabaseUnavailableError, SourceAuthError
+from tracker.domain.daily_start import DailyStartStatus
+from tracker.shared.constants.setup import (
+    AUTH_USERS_MAX_PAGES,
+    AUTH_USERS_PAGE_SIZE,
+    DAILY_START_SAVE_FUNCTION,
+    DAILY_START_STATUS_FUNCTION,
+)
+from tracker.shared.errors import (
+    DatabaseStructureMissingError,
+    DatabaseUnavailableError,
+    SourceAuthError,
+)
 from tracker.shared.logging import get_logger
 
 #: Error codes the data API answers when a table, a column or an enum value
@@ -38,8 +52,18 @@ EMAIL_EXISTS_CODE: Final[str] = "email_exists"
 #: Auth server statuses meaning the key is not the secret one.
 REFUSED_KEY_STATUSES: Final[frozenset[int]] = frozenset({401, 403})
 
+#: Error codes meaning a newer structure file has not been applied: a missing
+#: table, column or database function.
+STRUCTURE_MISSING_CODES: Final[frozenset[str]] = frozenset(
+    {"42P01", "42703", "42883", "PGRST202", "PGRST204", "PGRST205"}
+)
+
 _OWNER_TABLE: Final[str] = "app_owner"
 _OWNER_COLUMN: Final[str] = "user_id"
+_SETTINGS_TABLE: Final[str] = "app_settings"
+_SINGLETON_COLUMN: Final[str] = "singleton"
+#: How a daily time is written for Postgres' ``time`` column.
+_TIME_FORMAT: Final[str] = "%H:%M"
 
 _log = get_logger(__name__)
 
@@ -236,6 +260,75 @@ class SupabaseAdmin:
         """
         self._auth(lambda: self._client.auth.admin.list_users(page=1, per_page=1))
 
+    def save_daily_schedule(self, run_at: time, time_zone: str) -> None:
+        """Write the daily time and its zone into the one settings row.
+
+        Args:
+            run_at: The daily run's time of day.
+            time_zone: The IANA zone it is read in, already checked.
+
+        Raises:
+            DatabaseStructureMissingError: If the database lacks the daily time (0016).
+            DatabaseUnavailableError: If the database could not answer.
+        """
+        row = {
+            _SINGLETON_COLUMN: True,
+            "time_zone": time_zone,
+            "daily_run_time": run_at.strftime(_TIME_FORMAT),
+        }
+        self._structure_call(
+            "daily_schedule",
+            lambda: (
+                self._client.table(_SETTINGS_TABLE)
+                .upsert([row], on_conflict=_SINGLETON_COLUMN)
+                .execute()
+            ),
+        )
+
+    def save_daily_start(self, function_url: str, key: SecretStr) -> None:
+        """Save the timer's address and key in Vault, and make sure the timer exists.
+
+        Args:
+            function_url: The function's scheduled path, where the timer calls.
+            key: The shared key; it goes to the database function only.
+
+        Raises:
+            DatabaseStructureMissingError: If the database lacks the function (0016).
+            DatabaseUnavailableError: If the database could not answer or refused.
+        """
+        arguments = {"function_url": function_url, "shared_key": key.get_secret_value()}
+        self._structure_call(
+            "daily_start", lambda: self._client.rpc(DAILY_START_SAVE_FUNCTION, arguments).execute()
+        )
+
+    def daily_start_status(self) -> DailyStartStatus:
+        """Read whether the on-time morning start is switched on.
+
+        Returns:
+            Its state, as the database reports it.
+
+        Raises:
+            DatabaseStructureMissingError: If the database lacks the function (0016).
+            DatabaseUnavailableError: If the database could not answer.
+        """
+        response = self._structure_call(
+            "daily_start_status",
+            lambda: self._client.rpc(DAILY_START_STATUS_FUNCTION, {}).execute(),
+        )
+        return _read_daily_start(response.data)
+
+    def _structure_call[T](self, operation: str, action: Callable[[], T]) -> T:
+        """Run one data call; a missing object means a structure file is not applied."""
+        try:
+            return action()
+        except APIError as error:
+            if str(error.code) in STRUCTURE_MISSING_CODES:
+                message = "the database does not have the on-time morning start yet"
+                raise DatabaseStructureMissingError(message) from error
+            raise _unavailable(operation, error) from error
+        except (SupabaseException, httpx.HTTPError) as error:
+            raise _unavailable(operation, error) from error
+
     def _answers(self, action: Callable[[], object]) -> bool:
         """Run a probe; a "does not exist" answer means ``False``."""
         try:
@@ -269,6 +362,23 @@ class SupabaseAdmin:
             raise _unavailable("auth", error) from error
         except httpx.HTTPError as error:
             raise _unavailable("auth", error) from error
+
+
+def _read_daily_start(data: object) -> DailyStartStatus:
+    """Read the status the database function returns, refusing any other shape."""
+    if not isinstance(data, dict):
+        _log.error("supabase_admin_failed", operation="daily_start_status", error_type="shape")
+        message = "Supabase answered the daily_start_status request with something unexpected"
+        raise DatabaseUnavailableError(message)
+    row = cast("dict[str, Any]", data)
+    run_at, zone, last = row.get("daily_run_time"), row.get("time_zone"), row.get("last_started_on")
+    return DailyStartStatus(
+        job_scheduled=row.get("job_scheduled") is True,
+        switched_on=row.get("switched_on") is True,
+        run_at=time.fromisoformat(run_at) if isinstance(run_at, str) else None,
+        time_zone=zone if isinstance(zone, str) else None,
+        last_started_on=date.fromisoformat(last) if isinstance(last, str) else None,
+    )
 
 
 class _ExistingUserError(Exception):

@@ -266,3 +266,27 @@ def test_an_owner_with_no_weekend_counts_every_day() -> None:
 def test_a_week_with_no_working_day_is_refused() -> None:
     with pytest.raises(ValidationFailedError):
         OwnerCalendar(zone=UTC, weekend=frozenset(Day))
+
+
+def test_a_noise_verdict_about_someone_the_owner_judged_keeps_his_corrections() -> None:
+    """The person is kept, so the stored state must show the owner's values."""
+    corrections = OwnerCorrections(status=ContactStatus.IN_PROCESS, next_action="Prepare the demo")
+    values = _values(
+        relevance=Relevance.NOISE, status=ContactStatus.CLOSED, waiting_on=WaitingOn.NOBODY
+    )
+
+    state = decide(values, ContactTiming(), corrections, NOW, UTC_CALENDAR, kept_by_owner=True)
+
+    assert state.is_noise
+    assert state.needs_review, "the disagreement must be put to the owner"
+    assert state.status is ContactStatus.IN_PROCESS
+    assert state.next_action == "Prepare the demo"
+
+
+def test_a_kept_noise_verdict_gets_a_due_date_like_any_other() -> None:
+    corrections = OwnerCorrections(waiting_on=WaitingOn.ME)
+    values = _values(relevance=Relevance.NOISE, waiting_on=WaitingOn.ME)
+
+    state = decide(values, ContactTiming(), corrections, NOW, UTC_CALENDAR, kept_by_owner=True)
+
+    assert state.due_date == TODAY

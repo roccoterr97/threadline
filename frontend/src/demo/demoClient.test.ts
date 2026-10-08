@@ -28,6 +28,8 @@ import { startDemo } from './startDemo';
 /** A Tuesday mid-morning, so "today", "overdue" and "this week" are all fixed. */
 const DEMO_NOW = new Date(2026, 8, 29, 10, 0);
 const clock = fixedClock(DEMO_NOW);
+/** The people on the list: everyone but the two the assistant is still asking about. */
+const LISTED_PEOPLE = 12;
 
 beforeEach(() => {
   startDemo(clock);
@@ -38,7 +40,7 @@ beforeEach(() => {
 describe('demo data — the same contracts as the real database', () => {
   it('lists the invented people with their contact history', async () => {
     const people = await fetchPeople();
-    expect(people).toHaveLength(14);
+    expect(people).toHaveLength(LISTED_PEOPLE);
     expect(people.every((person) => person.message_count > 0)).toBe(true);
     const lastContacts = people.map((person) => person.last_contact_at ?? '');
     expect(lastContacts).toEqual([...lastContacts].sort().reverse());
@@ -130,8 +132,9 @@ describe('demo data — changes last for the page load only', () => {
   it('drops an answered question and a person marked as noise', async () => {
     await answerReviewItem('demo-r01', 'yes', DEMO_NOW);
     expect(await fetchOpenReviewItems()).toHaveLength(2);
+    expect(await fetchPeople()).toHaveLength(LISTED_PEOPLE + 1);
     await markPersonAsNoise('demo-p14');
-    expect(await fetchPeople()).toHaveLength(13);
+    expect(await fetchPeople()).toHaveLength(LISTED_PEOPLE);
   });
 
   it('adds, renames and removes categories with the database rules', async () => {
@@ -178,7 +181,7 @@ describe('demo data — changes last for the page load only', () => {
   it('starts from the invented data again on the next load', async () => {
     await markPersonAsNoise('demo-p01');
     startDemo(clock);
-    expect(await fetchPeople()).toHaveLength(14);
+    expect(await fetchPeople()).toHaveLength(LISTED_PEOPLE);
   });
 });
 
@@ -210,6 +213,25 @@ describe('demo "Refresh now"', () => {
     await expect(fetchRunSince(DEMO_NOW)).resolves.toMatchObject({ status: 'success' });
     const [newest] = await fetchRecentRuns();
     expect(newest?.run_step_logs.some((step) => step.step === 'summary_email')).toBe(false);
+  });
+
+  it('reports only what it actually added: nothing new', async () => {
+    let now = DEMO_NOW;
+    startDemo({ now: () => now });
+    const messageCount = async () =>
+      (await fetchPeople()).reduce((total, person) => total + person.message_count, 0);
+    const before = await messageCount();
+
+    await requestRefresh();
+    now = new Date(DEMO_NOW.getTime() + DEMO_REFRESH_SECONDS * 1_000);
+    const [newest] = await fetchRecentRuns();
+
+    expect(newest?.status).toBe('success');
+    expect(newest?.run_step_logs.length).toBeGreaterThan(0);
+    expect(newest?.run_step_logs.map((step) => step.items_new)).toEqual(
+      newest?.run_step_logs.map(() => 0),
+    );
+    expect(await messageCount()).toBe(before);
   });
 });
 

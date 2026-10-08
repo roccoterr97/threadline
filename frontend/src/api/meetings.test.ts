@@ -46,7 +46,7 @@ describe('fetchUpcomingMeetings', () => {
     await fetchUpcomingMeetings(NOW);
     expect(calls).toEqual([
       ['from', 'conversations'],
-      ['select', 'id, subject, meeting_at, person_id, people(full_name, organisations(name))'],
+      ['select', 'id, subject, meeting_at, person_id, people(full_name, relevance, organisations(name))'],
       ['eq', 'channel', 'calendar'],
       ['neq', 'relevance', 'noise'],
       ['gte', 'meeting_at', '2026-03-12T09:00:00.000Z'],

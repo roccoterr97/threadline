@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchCategories } from '../api/categories';
+import { upcomingMeetingsQueryKey } from '../api/meetings';
 import { clearOverride, fetchOverride, markPersonAsNoise, saveOverride } from '../api/overrides';
 import { peopleQueryKey } from '../api/people';
 import { fetchPerson, fetchPersonConversations } from '../api/person';
@@ -74,6 +75,29 @@ function renderPerson(personId = PERSON.person_id) {
 async function openCorrection(user: ReturnType<typeof renderPerson>['user']) {
   await screen.findByRole('heading', { level: 1, name: PERSON.full_name });
   await user.click(screen.getByText(copy.override.title));
+}
+
+/** Sets one field, so the form carries a correction worth saving. */
+async function pickStatus(user: ReturnType<typeof renderPerson>['user']) {
+  await user.selectOptions(screen.getByLabelText(copy.override.statusLabel), 'meeting_planned');
+}
+
+/** Hands every field back to the assistant. */
+async function blankEveryField(user: ReturnType<typeof renderPerson>['user']) {
+  for (const label of [
+    copy.override.statusLabel,
+    copy.override.waitingOnLabel,
+    copy.override.personTypeLabel,
+  ]) {
+    await user.selectOptions(screen.getByLabelText(label), '');
+  }
+  for (const label of [
+    copy.override.nextActionLabel,
+    copy.override.dueDateLabel,
+    copy.override.noteLabel,
+  ]) {
+    await user.clear(screen.getByLabelText(label));
+  }
 }
 
 /** The badges under the person's name, away from the form's options. */
@@ -210,6 +234,7 @@ describe('PersonPage — layout', () => {
   it('keeps the save result on screen when the form is folded again', async () => {
     const { user } = renderPerson();
     await openCorrection(user);
+    await pickStatus(user);
     await user.click(screen.getByRole('button', { name: copy.override.save }));
     await user.click(screen.getByText(copy.override.title));
 
@@ -278,6 +303,7 @@ describe('PersonPage — corrections', () => {
 
     const { user } = renderPerson();
     await openCorrection(user);
+    await pickStatus(user);
     await user.click(screen.getByRole('button', { name: copy.override.save }));
 
     const banner = await screen.findByRole('alert');
@@ -322,6 +348,7 @@ describe('PersonPage — corrections', () => {
 
     const { user } = renderPerson();
     await openCorrection(user);
+    await pickStatus(user);
     await user.click(screen.getByRole('button', { name: copy.override.save }));
 
     expect(
@@ -344,6 +371,43 @@ describe('PersonPage — corrections', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.override.clearFailed);
     expect(screen.queryByText(copy.override.saved)).not.toBeInTheDocument();
+  });
+
+  it('removes the correction instead of storing an empty one when every field is blank', async () => {
+    fetchOverrideMock.mockResolvedValue(sampleOverride);
+    const { user } = renderPerson();
+    await openCorrection(user);
+    await screen.findByRole('button', { name: copy.override.clear });
+
+    await blankEveryField(user);
+    await user.click(screen.getByRole('button', { name: copy.override.save }));
+
+    expect(await screen.findByText(copy.override.cleared)).toBeInTheDocument();
+    expect(clearOverrideMock).toHaveBeenCalledWith(PERSON.person_id);
+    expect(saveOverrideMock).not.toHaveBeenCalled();
+  });
+
+  it('still saves when only one field is left set', async () => {
+    fetchOverrideMock.mockResolvedValue(sampleOverride);
+    const { user } = renderPerson();
+    await openCorrection(user);
+    await screen.findByRole('button', { name: copy.override.clear });
+
+    await blankEveryField(user);
+    await user.type(screen.getByLabelText(copy.override.noteLabel), 'Call back in May');
+    await user.click(screen.getByRole('button', { name: copy.override.save }));
+
+    expect(await screen.findByText(copy.override.saved)).toBeInTheDocument();
+    expect(saveOverrideMock).toHaveBeenCalledWith({
+      person_id: PERSON.person_id,
+      status: null,
+      waiting_on: null,
+      next_action: null,
+      due_date: null,
+      person_type: null,
+      note: 'Call back in May',
+    });
+    expect(clearOverrideMock).not.toHaveBeenCalled();
   });
 
   it('offers "clear my correction" only when there is one', async () => {
@@ -478,6 +542,17 @@ describe('PersonPage — not relevant', () => {
     expect(kept.map((person) => person.person_id)).toEqual(
       samplePeople.filter((person) => person.person_id !== PERSON.person_id).map((p) => p.person_id),
     );
+  });
+
+  it('refreshes the meetings strip, so it stops opening this person\'s page', async () => {
+    const { user, queryClient } = renderPerson();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    await user.click(await screen.findByRole('button', { name: copy.person.markNoise.button }));
+    await user.click(screen.getByRole('button', { name: copy.person.markNoise.confirm }));
+
+    await waitFor(() => {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: upcomingMeetingsQueryKey });
+    });
   });
 
   it('stays on the page and says so when hiding fails', async () => {

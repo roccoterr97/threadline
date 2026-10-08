@@ -130,7 +130,7 @@ class FakeQuery:
         self._client = client
         self._table = table
         self._filters: list[tuple[str, str, Any]] = []
-        self._order: tuple[str, bool] | None = None
+        self._order: list[tuple[str, bool]] = []
         self._range: tuple[int, int] | None = None
         self._limit: int | None = None
         self._operation = "select"
@@ -174,14 +174,19 @@ class FakeQuery:
         self._filters.append((column, "in", list(values)))
         return self
 
+    def gte(self, column: str, value: Any) -> Self:
+        """Keep rows whose timestamp column is at or after ``value``."""
+        self._filters.append((column, "gte", value))
+        return self
+
     def is_(self, column: str, value: Any) -> Self:
         """Keep rows whose column is null or the given literal."""
         self._filters.append((column, "is", value))
         return self
 
     def order(self, column: str, *, desc: bool = False, **_options: Any) -> Self:
-        """Sort the result."""
-        self._order = (column, desc)
+        """Sort the result; a later call breaks ties left by an earlier one."""
+        self._order.append((column, desc))
         return self
 
     def limit(self, size: int, **_options: Any) -> Self:
@@ -244,14 +249,17 @@ class FakeQuery:
             return str(actual) == str(value)
         if operator == "in":
             return str(actual) in {str(item) for item in value}
+        if operator == "gte":
+            return actual is not None and _instant(actual) >= _instant(value)
         return actual is None if value is None else str(actual) == str(value)
 
     def _page(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Apply ordering, range and limit."""
         result = list(rows)
-        if self._order is not None:
-            column, desc = self._order
-            result.sort(key=lambda row: str(row.get(column) or ""), reverse=desc)
+        # Sorting by the last key first, then stably by each earlier one, gives
+        # the same order as one multi-column ORDER BY.
+        for column, desc in reversed(self._order):
+            result.sort(key=lambda row, c=column: str(row.get(c) or ""), reverse=desc)
         if self._range is not None:
             start, end = self._range
             result = result[start : end + 1]
@@ -330,6 +338,13 @@ UNIQUE_VIOLATION_CODE: Final[str] = "23505"
 
 #: The data API's code for a table the database does not have (yet).
 MISSING_TABLE_CODE: Final[str] = "PGRST205"
+
+
+def _instant(value: object) -> datetime:
+    """Read a stored or filtered timestamp as an instant, as Postgres compares them."""
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value))
 
 
 def _comparable(value: object) -> str:

@@ -134,6 +134,9 @@ export default defineConfig(({ mode }) => ({
       // data layer, so nothing ever reaches the network.
       VITE_SUPABASE_URL: 'http://supabase.test',
       VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+      // Day boundaries ("yesterday") depend on the browser's zone. Pinning one
+      // zone makes those tests mean the same on any machine.
+      TZ: 'Europe/Paris',
     },
   },
 }));

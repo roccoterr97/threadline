@@ -355,14 +355,13 @@ class GraphMailbox:
         # The slot is held through the retries too: a request waiting because
         # Microsoft said "slow down" must not make room for another one.
         async with self._slots:
-            token = await self._tokens.access_token()
-            request_headers = {"Authorization": f"Bearer {token}", **(headers or {})}
             try:
                 response = await get_with_retries(
                     self._http,
                     url,
                     params=params,
-                    headers=request_headers,
+                    headers=headers,
+                    fresh_headers=self._authorisation,
                     source="mailbox",
                 )
             except httpx.HTTPError as error:
@@ -370,6 +369,10 @@ class GraphMailbox:
                 message = "the mailbox could not be reached"
                 raise SourceUnavailableError(message) from error
         return _read(response, allow_missing=allow_missing)
+
+    async def _authorisation(self) -> dict[str, str]:
+        """The authorisation header, with a key valid at this very attempt."""
+        return {"Authorization": f"Bearer {await self._tokens.access_token()}"}
 
 
 def _read(response: httpx.Response, *, allow_missing: bool) -> dict[str, Any]:

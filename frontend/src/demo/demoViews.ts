@@ -79,6 +79,7 @@ export function conversationsWithPeople(tables: DemoTables): ConversationWithPer
           ? null
           : {
               full_name: person.full_name,
+              relevance: person.relevance,
               organisations: organisation === null ? null : { name: organisation },
             },
     };

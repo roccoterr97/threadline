@@ -42,9 +42,14 @@ export const ROUTINE_REFRESH_TEXT = 'mode: refresh';
 /** The workflow input value that selects a quick refresh. */
 export const WORKFLOW_REFRESH_MODE = 'refresh';
 
+/** The workflow input value that selects the whole daily run, with the e-mail. */
+export const WORKFLOW_DAILY_MODE = 'daily';
+
+/** GitHub's REST API. */
+export const GITHUB_API_ORIGIN = 'https://api.github.com';
+
 const MILLISECONDS_PER_MINUTE = 60_000;
 const MILLISECONDS_PER_SECOND = 1_000;
-const GITHUB_API_ORIGIN = 'https://api.github.com';
 const USER_AGENT = 'threadline-refresh-now';
 
 // Strict shapes, so a mistyped secret can never send the token somewhere else.
@@ -118,9 +123,10 @@ export class StoreError extends Error {
   }
 }
 
-// PostgREST / Postgres codes: a missing table or function means migration 0013
-// (or 0002) has not been applied; PGRST301 is an expired or invalid sign-in.
-const NOT_SET_UP_DATABASE_CODES = new Set(['42P01', '42883', 'PGRST202', 'PGRST205']);
+// PostgREST / Postgres codes: a missing table, column or function means a
+// migration (0013, 0016, or 0002) has not been applied; PGRST301 is an
+// expired or invalid sign-in.
+const NOT_SET_UP_DATABASE_CODES = new Set(['42P01', '42703', '42883', 'PGRST202', 'PGRST204', 'PGRST205']);
 const NOT_SIGNED_IN_DATABASE_CODES = new Set(['PGRST301', 'PGRST302']);
 
 /** Postgres "exclusion_violation": another request already holds the cool-down. */
@@ -137,8 +143,16 @@ export function codeForDatabaseError(code: string | undefined): RefreshCode {
 // Configuration
 // ---------------------------------------------------------------------------
 
+/** The settings for the GitHub workflow, the main runner. */
+export interface GitHubConfig {
+  target: RefreshTarget.GitHub;
+  token: string;
+  repository: string;
+  ref: string;
+}
+
 export type RefreshConfig =
-  | { target: RefreshTarget.GitHub; token: string; repository: string; ref: string }
+  | GitHubConfig
   | { target: RefreshTarget.ClaudeRoutine; token: string; fireUrl: string };
 
 /** Reads one function secret; `Deno.env.get` in production. */
@@ -256,23 +270,41 @@ export interface DispatchRequest {
   init: { method: 'POST'; headers: Record<string, string>; body: string };
 }
 
+/** The headers every call to GitHub's API carries; the token goes nowhere else. */
+export function githubHeaders(token: string): Record<string, string> {
+  return {
+    Accept: 'application/vnd.github+json',
+    Authorization: `Bearer ${token}`,
+    'User-Agent': USER_AGENT,
+    'X-GitHub-Api-Version': GITHUB_API_VERSION,
+  };
+}
+
+/** The workflow's address in GitHub's API, below which its runs and dispatches are. */
+export function workflowApiUrl(config: GitHubConfig): string {
+  return `${GITHUB_API_ORIGIN}/repos/${config.repository}/actions/workflows/${GITHUB_WORKFLOW_FILE}`;
+}
+
+/**
+ * The HTTP call that starts the GitHub workflow once, in one mode: a quick
+ * refresh for the dashboard's button, the whole daily run for the on-time
+ * morning start (`daily.ts`).
+ */
+export function buildWorkflowDispatch(config: GitHubConfig, mode: string): DispatchRequest {
+  return {
+    url: `${workflowApiUrl(config)}/dispatches`,
+    init: {
+      method: 'POST',
+      headers: { ...githubHeaders(config.token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ref: config.ref, inputs: { mode } }),
+    },
+  };
+}
+
 /** The HTTP call that starts one quick run on the configured runner. */
 export function buildDispatch(config: RefreshConfig): DispatchRequest {
   if (config.target === RefreshTarget.GitHub) {
-    return {
-      url: `${GITHUB_API_ORIGIN}/repos/${config.repository}/actions/workflows/${GITHUB_WORKFLOW_FILE}/dispatches`,
-      init: {
-        method: 'POST',
-        headers: {
-          Accept: 'application/vnd.github+json',
-          Authorization: `Bearer ${config.token}`,
-          'Content-Type': 'application/json',
-          'User-Agent': USER_AGENT,
-          'X-GitHub-Api-Version': GITHUB_API_VERSION,
-        },
-        body: JSON.stringify({ ref: config.ref, inputs: { mode: WORKFLOW_REFRESH_MODE } }),
-      },
-    };
+    return buildWorkflowDispatch(config, WORKFLOW_REFRESH_MODE);
   }
   return {
     url: config.fireUrl,

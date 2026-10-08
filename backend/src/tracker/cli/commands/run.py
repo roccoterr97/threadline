@@ -45,8 +45,9 @@ from tracker.services.runs.run_recorder import (
     unconfigured_steps,
 )
 from tracker.services.summary.builder import SummaryBuilder
+from tracker.services.summary.once_a_day import OnceADay, skipped_line
 from tracker.services.summary.send_once import SendOnce
-from tracker.services.summary.sender import SummarySender, smtp_account
+from tracker.services.summary.sender import SkippedSummary, SummarySender, smtp_account
 from tracker.shared.clock import SystemClock
 from tracker.shared.config import Settings, get_settings, in_project
 from tracker.shared.constants.summary import SUMMARY_FILE
@@ -153,6 +154,14 @@ FileOption = Annotated[
     ),
 ]
 
+SendAgainOption = Annotated[
+    bool,
+    typer.Option(
+        "--send-again",
+        help="Build or send it even though another daily run already sent today's summary.",
+    ),
+]
+
 
 def register(cli: typer.Typer) -> None:
     """Attach the daily-run commands to the root application.
@@ -224,13 +233,24 @@ def finish_run(
 
 
 @summary_app.command("build")
-def build_summary(out: OutOption = SUMMARY_FILE, run: ReportedRunOption = None) -> None:
+def build_summary(
+    out: OutOption = SUMMARY_FILE,
+    run: ReportedRunOption = None,
+    send_again: SendAgainOption = False,
+) -> None:
     """Write the morning summary to a file, ready for the session to send."""
     settings = get_settings()
     repositories = _repositories(settings)
-    builder = SummaryBuilder(repositories, settings, SystemClock(settings.owner_zone))
+    clock = SystemClock(settings.owner_zone)
+    builder = SummaryBuilder(repositories, settings, clock)
     target = builder.run_to_report(run)
-    SendOnce(_recorder(settings, repositories), out).refuse_a_new_summary(target)
+    once = SendOnce(_recorder(settings, repositories), out)
+    once.refuse_a_new_summary(target)
+    today = OnceADay(repositories, clock)
+    earlier = once.skip_when_sent_today(target, today, send_again=send_again)
+    if earlier is not None:
+        typer.echo(skipped_line(earlier))
+        return
     email = builder.build_for(target)
     _write(email, out)
     typer.echo(str(out))
@@ -241,7 +261,9 @@ def build_summary(out: OutOption = SUMMARY_FILE, run: ReportedRunOption = None) 
 
 
 @summary_app.command("send")
-def send_summary(file: FileOption = SUMMARY_FILE, run: RunOption = None) -> None:
+def send_summary(
+    file: FileOption = SUMMARY_FILE, run: RunOption = None, send_again: SendAgainOption = False
+) -> None:
     """Send the summary file from your own mailbox, and record that it went."""
     settings = get_settings()
     repositories = _repositories(settings)
@@ -251,7 +273,12 @@ def send_summary(file: FileOption = SUMMARY_FILE, run: RunOption = None) -> None
         password = saved_app_password(store, imap_account(settings))
         return SmtpMailer(smtp_account(settings), password)
 
-    sent = SummarySender(settings, mailer, _recorder(settings, repositories)).send(file, run)
+    once_a_day = OnceADay(repositories, SystemClock(settings.owner_zone))
+    sender = SummarySender(settings, mailer, _recorder(settings, repositories), once_a_day)
+    sent = sender.send(file, run, send_again=send_again)
+    if isinstance(sent, SkippedSummary):
+        typer.echo(skipped_line(sent.earlier))
+        return
     typer.echo(f"summary sent · to: {sent.summary.recipient}")
     if sent.step_error_code is not None:
         typer.echo(f"step not recorded · code={sent.step_error_code}")

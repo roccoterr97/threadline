@@ -23,6 +23,7 @@ from tracker.domain.enums import RunStatus, RunStep
 from tracker.domain.models import RunLog
 from tracker.services.assessment.work_files import remove_work_file
 from tracker.services.runs.run_recorder import RunRecorder
+from tracker.services.summary.once_a_day import OnceADay, summary_went_out
 from tracker.shared.errors import ValidationFailedError
 from tracker.shared.logging import get_logger
 
@@ -66,12 +67,13 @@ class SendOnce:
 
         Returns:
             ``True`` when the marker names this run or the run recorded a
-            successful ``summary_email`` step.
+            ``summary_email`` step that went out. A summary skipped because
+            today's had already gone (see :mod:`once_a_day`) did not go out.
         """
         if self._marked(run_id):
             return True
         step = self._recorder.find_step(run_id, RunStep.SUMMARY_EMAIL)
-        return step is not None and step.status is RunStatus.SUCCESS
+        return step is not None and summary_went_out(step)
 
     def remember(self, run_id: UUID) -> None:
         """Note on disk that this run's summary was accepted by the mail server.
@@ -106,6 +108,31 @@ class SendOnce:
         _log.info("summary_already_sent", run_id=str(run.id))
         message = "this run's summary was already sent, so no new one was built"
         raise ValidationFailedError(message)
+
+    def skip_when_sent_today(
+        self, run: RunLog | None, once_a_day: OnceADay, *, send_again: bool
+    ) -> RunLog | None:
+        """Build no summary for a run still open when another daily run sent today's.
+
+        The skip is recorded as this run's ``summary_email`` step, and the
+        copy built earlier is removed, so neither route has a file to send.
+        A run already closed may still be reported on, by hand.
+
+        Args:
+            run: The run the summary would report on.
+            once_a_day: Finds today's summary and records the skip.
+            send_again: The owner asked for another copy on purpose.
+
+        Returns:
+            The run whose summary already went out today, when this one was
+            skipped; ``None`` when the summary should be built.
+        """
+        if run is None or run.status is not RunStatus.RUNNING:
+            return None
+        earlier = once_a_day.skip_if_sent_today(run, self._recorder, send_again=send_again)
+        if earlier is not None:
+            remove_work_file(self._summary_file)
+        return earlier
 
     def _marked(self, run_id: UUID) -> bool:
         """Whether the marker beside the summary file names this run."""

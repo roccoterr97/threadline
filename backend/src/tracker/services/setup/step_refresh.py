@@ -6,9 +6,13 @@ in place with no extra program installed: GitHub's token page opens already
 filled in, a harmless read proves the token can see the workflow (nothing is
 started), and Supabase's Management API saves the function's settings and
 deploys it from this repository's files. Both tokens are pasted hidden, kept
-in memory for this run only, and never written to ``.env``. Last, the function
+in memory for this run only, and never written to ``.env``. Then the function
 is called without a sign-in: a deployed one refuses that, which shows it is
 there and guarding.
+
+Last, the same step switches on the on-time morning start
+(``daily_start.py``): a fresh key for the database's timer goes into the
+function's settings and, with the service key, into the database's Vault.
 """
 
 from __future__ import annotations
@@ -19,6 +23,7 @@ from pydantic import SecretStr
 
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.daily_start import daily_start_ready, switch_on_daily_start
 from tracker.services.setup.github_copy import LinkedCopy, linked_copy
 from tracker.services.setup.models import StepName
 from tracker.shared.constants.github import (
@@ -55,7 +60,7 @@ class RefreshStep:
     title = "The Refresh now button"
 
     async def is_done(self, ctx: SetupContext) -> bool:
-        """Done when the function is deployed and refuses a caller with no sign-in."""
+        """Done when the function refuses a caller with no sign-in and the timer is on."""
         project_url = ctx.env.get(_SUPABASE_URL)
         if project_url is None:
             return False
@@ -63,13 +68,15 @@ class RefreshStep:
             status = await ctx.gateways.status_of_post(function_url(project_url))
         except SourceUnavailableError:
             return False
-        return status in REFRESH_GUARD_STATUSES
+        return status in REFRESH_GUARD_STATUSES and daily_start_ready(ctx)
 
     async def run(self, ctx: SetupContext) -> None:
         """Collect both tokens, save the settings, deploy, then check."""
         io = ctx.io
         io.say("The dashboard's Refresh now button starts one extra, quick run whenever you")
         io.say("want. It needs a small helper in your Supabase project, which this step adds.")
+        io.say("The same helper also starts your daily run on time: GitHub's own timer is often")
+        io.say("hours late.")
         copy = _ready_copy(ctx)
         # A copy that could not be checked is switched on only by a typed yes.
         if copy is None or not io.confirm(
@@ -79,10 +86,13 @@ class RefreshStep:
             return
         repository = copy.name
         project_url = ctx.require(_SUPABASE_URL, StepName.SUPABASE)
-        settings = _function_settings(ctx, repository, await _github_token(ctx, repository))
+        daily_key = SecretStr(ctx.gateways.make_daily_start_key())
+        github_token = await _github_token(ctx, repository)
+        settings = _function_settings(ctx, repository, github_token, daily_key)
         ref = values.project_ref(project_url)
         await _save_and_deploy(ctx, ref, settings)
         await _check_deployed(ctx, project_url)
+        switch_on_daily_start(ctx, function_url(project_url), daily_key)
 
 
 def function_url(project_url: str) -> str:
@@ -172,7 +182,7 @@ async def _read_workflow(ctx: SetupContext, repository: str, raw: str) -> tuple[
 
 
 def _function_settings(
-    ctx: SetupContext, repository: str, token: SecretStr
+    ctx: SetupContext, repository: str, token: SecretStr, daily_key: SecretStr
 ) -> dict[str, SecretStr]:
     """The function's settings; the GitHub token goes nowhere else."""
     dashboard = urlsplit(ctx.require(_DASHBOARD_URL, StepName.DASHBOARD))
@@ -182,6 +192,7 @@ def _function_settings(
         RefreshSetting.BRANCH: SecretStr(REFRESH_BRANCH),
         RefreshSetting.DASHBOARD_ORIGIN: SecretStr(f"{dashboard.scheme}://{dashboard.netloc}"),
         RefreshSetting.GITHUB_TOKEN: token,
+        RefreshSetting.DAILY_START_KEY: daily_key,
     }
 
 

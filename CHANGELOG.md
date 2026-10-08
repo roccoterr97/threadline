@@ -26,6 +26,25 @@ All notable changes to this project are recorded here. The format follows
   in the menu; on a phone a People / Organisations switch at the top of both
   pages leads between them. Every way back from a person returns to the
   list it was opened from.
+- The on-time morning start. GitHub often started the scheduled daily run five
+  or six hours late; now the owner's Supabase project starts it at its time. A
+  pg_cron job (migration `0017_daily_start`) calls the `refresh-now` function's
+  new scheduled path, `…/refresh-now/daily-start`, every 15 minutes with a
+  shared key kept in Vault; once the owner's daily time has passed in the
+  owner's time zone, the function asks GitHub to start the workflow in daily
+  mode. It starts at most one run per owner-local day: the day is claimed in
+  the new `daily_starts` table (one row per date, so two overlapping calls
+  cannot both start one), a daily run already in `run_logs` or already on
+  GitHub that day counts as done, and a refused or failed request gives the
+  day back so the next call retries. It does nothing for owners on the Claude
+  cloud routine. GitHub's own schedule stays as a backup: a run it starts
+  stops early when a daily run of the owner's day already started (or
+  finished well), and the once-a-day e-mail rule remains the last net.
+  `tracker setup refresh` switches it on (a fresh key in the function's
+  settings and in Vault, the timer made sure of), `tracker setup schedule` and
+  `tracker setup timezone` keep the daily time in the database in step with
+  the workflow, and `tracker doctor` gains an **On-time morning start** line.
+  Free on Supabase's free plan: pg_cron, pg_net and Vault are built in.
 
 ### Changed
 
@@ -223,6 +242,17 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- The daily run starts at 07:00 Paris time instead of 07:00 UTC.
+  `uv run tracker setup schedule` sets your own time and zone.
+
+- The daily run asks the database less often. Tidying people no longer looks
+  up every pair an earlier merge already joined; saving the assessment looks a
+  file's organisations up together and reads the categories once; a collector
+  reads the whole people list only when somebody new turns up; and the calendar
+  reads a shared calendar's invitation threads, and who is on record for your
+  own interview entries, once instead of once per entry. The same rows are
+  stored and the same lines printed.
+
 - The daily run collects every source in one step. `tracker collect all
   --record` reads LinkedIn, the mailboxes and the calendar at the same time,
   stores them one after the other, records each as its own step of the run and
@@ -288,6 +318,55 @@ All notable changes to this project are recorded here. The format follows
   `profile/assessment-guide.template.md`, the preset and your categories.
 
 ### Fixed
+
+- Morning e-mail: a reply is no longer left out of every summary when the
+  previous morning's e-mail did not go out, and a busy day of Refresh now
+  presses no longer shortens the "replied" window. Running the morning a second
+  time the same day (GitHub's "Re-run job", or starting it by hand) no longer
+  sends a second e-mail: the run says "summary skipped" and the Runs page
+  "not sent", unless `--send-again` asks for another copy on purpose.
+
+- Set-up: one Ctrl-C now stops it at once, before anything else is saved.
+  `.env` is made readable by you alone on every write, not only when it is
+  created. A name written twice in `.env` gets the new value on every line,
+  quotes are read the way the app reads them, and a value holding ` #` or edge
+  spaces is quoted so it is not cut short. Changing your time zone also moves
+  the daily run's `timezone` line, so the run keeps its hour. The `/setup`
+  recipe now names the right `.env` file and says plainly that Claude sees the
+  set-up page's address.
+
+- `tracker sample load` moves the sample dates to today, so the sample
+  dashboard no longer looks weeks old and overdue.
+
+- Demo: answering a "part of your outreach?" question now adds or removes the
+  person, as in the real app; "Refresh now" no longer claims new messages it
+  never adds; the "same person?" question names two records.
+
+- CI: the secret scan no longer fails on the first push of a new copy, whose
+  first commit has no parent.
+
+- Collecting: a conversation the assistant or you kept no longer loses its
+  stored text when a later message makes the rules call it noise, and a
+  message that could not be read again never blanks out stored text. A noise
+  conversation keeps its earliest and latest dates. In LinkedIn group threads a
+  name with a comma ("Jane Doe, CFA") no longer moves every name onto the wrong
+  person; a name that cannot be paired is filled in from that person's own
+  reply. The Microsoft key is fetched again for every retry, so a long retry no
+  longer ends with a false "sign in again".
+
+- People and verdicts: merging two records no longer fails in the database or
+  loses "same person?" answers, answers chained through one record join all
+  three, and a merge never leaves the same question twice. A company record is
+  never joined to someone you said is a different person. A "noise" verdict no
+  longer overrules your own corrections: the person stays on your list and you
+  are asked. A verdict never undoes a "not relevant" you gave after the export.
+  Paged reads no longer skip or repeat rows that share a timestamp.
+
+- Dashboard: "yesterday" means the previous calendar day; due dates no longer
+  show a day early west of Greenwich; a failed review answer brings back only
+  its own card; "Coming up" never links to a person who is not on your list;
+  saving a blank correction removes it; the headline counters wait for the
+  data instead of showing 0.
 
 - The Microsoft sign-in key is renewed once when several requests find it
   expired at the same moment. Each renewal replaces the stored key, so two

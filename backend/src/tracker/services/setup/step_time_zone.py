@@ -4,6 +4,10 @@ The time zone decides what "today" is for due dates and the summary, and the
 daily run's time is read in it. The computer's own zone is offered, so pressing
 Return is usually enough. The name is optional: it helps only when your
 addresses do not spell it (``jd123@`` rather than ``sam.rivera@``).
+
+A new zone is also written into the GitHub Actions workflow's ``timezone``
+line, so the daily run keeps starting at the owner's chosen hour, and into the
+database, where the on-time morning start reads it.
 """
 
 from __future__ import annotations
@@ -12,7 +16,17 @@ from typing import Final
 
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.daily_start import save_schedule_in_database
 from tracker.services.setup.models import StepName
+from tracker.services.setup.workflow_schedule import (
+    WORKFLOW_PATH,
+    Schedule,
+    offer_push,
+    read_schedule,
+    show_changes,
+    write_schedule,
+)
+from tracker.shared.errors import ValidationFailedError
 from tracker.shared.time_zones import canonical_zone_name
 
 OWNER_TIME_ZONE: Final[str] = "OWNER_TIME_ZONE"
@@ -33,7 +47,8 @@ class TimeZoneStep:
         """Ask the zone, offering the computer's, then the optional name."""
         ctx.io.say("Dates are read in your time zone: what 'today' is, and when the daily")
         ctx.io.say("run starts. The one this computer uses is offered; keep it unless it is wrong.")
-        ask_time_zone(ctx)
+        zone = ask_time_zone(ctx)
+        _follow_in_workflow(ctx, zone)
         _ask_display_name(ctx)
 
 
@@ -78,6 +93,37 @@ def saved_time_zone(ctx: SetupContext) -> str | None:
         ctx.env.set(OWNER_TIME_ZONE, canonical)
         ctx.io.say(f"Saved {OWNER_TIME_ZONE}={canonical} in .env, spelled the way GitHub needs.")
     return canonical
+
+
+def _follow_in_workflow(ctx: SetupContext, zone: str) -> None:
+    """Write the zone into the workflow's schedule, keeping its time of day.
+
+    Nothing happens when there is no workflow file, it holds no daily time, or
+    the time is already read in this zone. A workflow changed by hand beyond
+    one daily time is left as it is, with a note: the zone is already saved.
+    """
+    workflow = ctx.gateways.workflow
+    try:
+        before = workflow.read()
+    except FileNotFoundError:
+        return
+    current = read_schedule(before)
+    if current is None or current.zone == zone:
+        return
+    schedule = Schedule(current.at, zone)
+    try:
+        after = write_schedule(before, schedule)
+    except ValidationFailedError:
+        ctx.io.say(
+            f"{WORKFLOW_PATH} was changed by hand, so its schedule was left as it is."
+            f" Change its timezone line to {zone} yourself."
+        )
+        return
+    show_changes(ctx, before, after)
+    workflow.write(after)
+    ctx.io.say(f"Saved {WORKFLOW_PATH}: the daily run now starts at {schedule.describe()}.")
+    save_schedule_in_database(ctx, schedule)
+    offer_push(ctx)
 
 
 def _ask_display_name(ctx: SetupContext) -> None:

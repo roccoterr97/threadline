@@ -40,6 +40,12 @@ class DatabaseUnavailableError(TrackerError):
     code = "database_unavailable"
 
 
+class DatabaseStructureMissingError(TrackerError):
+    """The database lacks a table, column or function a newer structure file adds."""
+
+    code = "database_structure_missing"
+
+
 class SourceUnavailableError(TrackerError):
     """An external message source (LinkedIn, Microsoft Graph) is unreachable."""
 

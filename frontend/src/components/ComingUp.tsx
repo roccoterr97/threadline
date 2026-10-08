@@ -30,9 +30,19 @@ function MeetingDetails({ meeting }: { meeting: UpcomingMeetingRow }) {
   );
 }
 
-/** One meeting; it opens the person page when the meeting is linked to someone. */
+/**
+ * The person a meeting opens, or null. Only people judged relevant have a page;
+ * anyone unsure or marked as noise would open "not found".
+ */
+function linkedPersonId(meeting: UpcomingMeetingRow): string | null {
+  if (meeting.people?.relevance !== 'relevant') return null;
+  return meeting.person_id;
+}
+
+/** One meeting; it opens the person page when that person is on the list. */
 function MeetingItem({ meeting }: { meeting: UpcomingMeetingRow }) {
-  if (meeting.person_id === null) {
+  const personId = linkedPersonId(meeting);
+  if (personId === null) {
     return (
       <div className={`${CARD} border-line`}>
         <MeetingDetails meeting={meeting} />
@@ -41,7 +51,7 @@ function MeetingItem({ meeting }: { meeting: UpcomingMeetingRow }) {
   }
   return (
     <PersonLink
-      personId={meeting.person_id}
+      personId={personId}
       className={`${CARD} border-line transition-colors hover:border-accent`}
     >
       <MeetingDetails meeting={meeting} />

@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import signal
+import threading
+from collections.abc import Coroutine, Iterator
+from contextlib import contextmanager
+from types import FrameType
 from typing import Annotated, Final
 
 import typer
@@ -78,7 +83,7 @@ def setup(step: StepArgument = None, browser: BrowserOption = False) -> None:
 
 def _run_in_terminal(step: StepName | None) -> bool:
     """Run here, with the final check printed after a full run."""
-    if not asyncio.run(_run(step)):
+    if not run_interruptible(_run(step)):
         return False
     if step is not None:
         return True
@@ -90,7 +95,7 @@ def _run_in_terminal(step: StepName | None) -> bool:
 
 def _run_with(io: SetupIO, step: StepName | None) -> bool:
     """Run through the page, with the final check shown there after a full run."""
-    if not asyncio.run(_run(step, io)):
+    if not run_interruptible(_run(step, io)):
         return False
     if step is not None:
         return True
@@ -98,6 +103,48 @@ def _run_with(io: SetupIO, step: StepName | None) -> bool:
     io.say("Final check of every connection:")
     config.reset_settings_cache()
     return print_doctor_report(io.say)
+
+
+def run_interruptible[T](main: Coroutine[object, object, T]) -> T:
+    """Run the wizard so that a single Ctrl-C stops it at once.
+
+    ``asyncio.run`` swaps Python's own Ctrl-C handler for one that only asks
+    the running task to stop at its next pause. A question waiting for typing,
+    here or on the page, never pauses, so that first Ctrl-C was lost and the
+    answer typed after it was still saved. ``asyncio.run`` leaves a handler of
+    our own in place, and this one stops the set-up where it is.
+
+    Args:
+        main: The wizard's run.
+
+    Returns:
+        What the run returned.
+
+    Raises:
+        KeyboardInterrupt: When Ctrl-C is pressed.
+    """
+    with _interrupt_at_once():
+        return asyncio.run(main)
+
+
+@contextmanager
+def _interrupt_at_once() -> Iterator[None]:
+    """Raise ``KeyboardInterrupt`` on Ctrl-C, then put the previous handler back."""
+    previous = signal.getsignal(signal.SIGINT)
+    owns_signals = threading.current_thread() is threading.main_thread()
+    if not owns_signals or previous is not signal.default_int_handler:
+        yield
+        return
+    signal.signal(signal.SIGINT, _raise_interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def _raise_interrupt(_signum: int, _frame: FrameType | None) -> None:
+    """Stop where the program is, as Python's own Ctrl-C handler does."""
+    raise KeyboardInterrupt
 
 
 def _ending(step: StepName | None, *, finished: bool) -> str:

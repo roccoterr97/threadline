@@ -3,6 +3,7 @@ import type {
   Channel,
   ContactStatus,
   Direction,
+  Relevance,
   Signal,
   WaitingOn,
 } from '../types/database';
@@ -39,6 +40,11 @@ export interface PersonSeed {
   role: string | null;
   organisation: string | null;
   type: CategoryKey;
+  /**
+   * Whether they belong on the list. Most do; someone the assistant is not
+   * sure about stays off it until the owner answers its question.
+   */
+  relevance: Relevance;
   status: ContactStatus;
   waitingOn: WaitingOn;
   signal: Signal;
@@ -55,6 +61,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Operations Lead',
     organisation: 'Harbourline Logistics',
     type: 'prospect',
+    relevance: 'relevant',
     status: 'meeting_planned',
     waitingOn: 'nobody',
     signal: 'positive',
@@ -86,6 +93,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Head of Procurement',
     organisation: 'Quillstone Foods',
     type: 'prospect',
+    relevance: 'relevant',
     status: 'in_process',
     waitingOn: 'me',
     signal: 'positive',
@@ -112,6 +120,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'IT Director',
     organisation: 'Bellwether Clinics',
     type: 'prospect',
+    relevance: 'relevant',
     status: 'contacted_no_reply',
     waitingOn: 'them',
     signal: 'neutral',
@@ -134,6 +143,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Founder',
     organisation: 'Tidewater Studio',
     type: 'prospect',
+    relevance: 'relevant',
     status: 'gone_quiet',
     waitingOn: 'them',
     signal: 'cold',
@@ -159,6 +169,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Finance Manager',
     organisation: 'Cobalt & Pine',
     type: 'customer',
+    relevance: 'relevant',
     status: 'in_conversation',
     waitingOn: 'me',
     signal: 'positive',
@@ -181,6 +192,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Customer Success Lead',
     organisation: 'Lumen Freight',
     type: 'customer',
+    relevance: 'relevant',
     status: 'meeting_planned',
     waitingOn: 'nobody',
     signal: 'positive',
@@ -210,6 +222,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Office Manager',
     organisation: 'Brightmoor Dental',
     type: 'customer',
+    relevance: 'relevant',
     status: 'closed',
     waitingOn: 'nobody',
     signal: 'positive',
@@ -233,6 +246,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Partnerships Manager',
     organisation: 'Stackbridge Integrations',
     type: 'partner',
+    relevance: 'relevant',
     status: 'in_process',
     waitingOn: 'me',
     signal: 'positive',
@@ -263,6 +277,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Sales Engineer',
     organisation: 'Stackbridge Integrations',
     type: 'partner',
+    relevance: 'relevant',
     status: 'meeting_planned',
     waitingOn: 'nobody',
     signal: 'neutral',
@@ -284,6 +299,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Agency Director',
     organisation: 'Fernhill Digital',
     type: 'partner',
+    relevance: 'relevant',
     status: 'in_conversation',
     waitingOn: 'them',
     signal: 'neutral',
@@ -307,6 +323,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Former colleague',
     organisation: null,
     type: 'partner',
+    relevance: 'relevant',
     status: 'in_conversation',
     waitingOn: 'me',
     signal: 'positive',
@@ -329,6 +346,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Consultant',
     organisation: 'Haddad Advisory',
     type: 'partner',
+    relevance: 'unsure',
     status: 'contacted_no_reply',
     waitingOn: 'them',
     signal: 'neutral',
@@ -351,6 +369,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: 'Chief Operating Officer',
     organisation: 'Bellwether Clinics',
     type: 'prospect',
+    relevance: 'relevant',
     status: 'closed',
     waitingOn: 'nobody',
     signal: 'cold',
@@ -374,6 +393,7 @@ export const DEMO_PEOPLE: readonly PersonSeed[] = [
     role: null,
     organisation: null,
     type: 'unknown',
+    relevance: 'unsure',
     status: 'in_conversation',
     waitingOn: 'me',
     signal: 'neutral',

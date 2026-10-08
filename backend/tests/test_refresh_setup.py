@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from tests.setup_world import (
+    DAILY_START_KEY,
     GOOD_GITHUB_TOKEN,
     GOOD_TOKEN,
     PROJECT_REF,
@@ -55,8 +56,11 @@ async def test_refresh_now_is_switched_on_end_to_end() -> None:
         "GITHUB_REF": "main",
         "DASHBOARD_ORIGIN": "https://you.vercel.app",
         "GITHUB_TOKEN_REFRESH": GOOD_GITHUB_TOKEN,
+        "DAILY_START_KEY": DAILY_START_KEY,
     }
-    assert world.platform.deployed == [("refresh-now", ("index.ts", "refresh.ts"), False)]
+    assert world.platform.deployed == [
+        ("refresh-now", ("index.ts", "refresh.ts", "daily.ts"), False)
+    ]
     assert world.posts == [FUNCTION_URL, FUNCTION_URL]
     assert world.waits == [REFRESH_PROBE_WAIT_SECONDS]
     assert "Refreshing…" in world.io.text()
@@ -70,6 +74,7 @@ async def test_neither_token_is_shown_or_written_to_env() -> None:
     assert world.env.values == refresh_env()
     assert GOOD_GITHUB_TOKEN not in world.io.text()
     assert GOOD_TOKEN not in world.io.text()
+    assert DAILY_START_KEY not in world.io.text()
     assert len(world.io.secret_prompts) == 2
 
 
@@ -211,9 +216,17 @@ async def test_a_function_that_never_guards_stops_the_step() -> None:
     assert len(world.waits) == REFRESH_PROBE_ATTEMPTS - 1
 
 
-@pytest.mark.parametrize(("status", "done"), [(401, True), (403, True), (404, False)])
-async def test_the_step_is_done_when_the_function_guards(status: int, *, done: bool) -> None:
+@pytest.mark.parametrize(
+    ("status", "timer_on", "done"),
+    [(401, True, True), (403, True, True), (404, True, False), (401, False, False)],
+)
+async def test_the_step_is_done_when_the_function_guards_and_the_timer_is_on(
+    status: int, *, timer_on: bool, done: bool
+) -> None:
     world = refresh_world([], statuses=[status])
+    if timer_on:
+        world.admin.daily_start = (f"{FUNCTION_URL}/daily-start", DAILY_START_KEY)
+        world.admin.job_scheduled = True
 
     assert await RefreshStep().is_done(world.context()) is done
 

@@ -177,7 +177,10 @@ short list of the words it uses (IMAP, app password, secrets…). In brief:
    ([part 7](./docs/setup-your-accounts.md#7-publish-the-dashboard-vercel)),
    then run `uv run tracker setup` again: it carries on from there with the
    daily time, your settings on GitHub and the Refresh now button
-   ([part 8](./docs/setup-your-accounts.md#8-run-it-every-day-on-github)), and
+   ([part 8](./docs/setup-your-accounts.md#8-run-it-every-day-on-github)),
+   which also switches on the on-time morning start (GitHub often starts its
+   scheduled runs hours late, so your Supabase project starts the daily run
+   at your time instead, and GitHub's own schedule stays as a backup), and
    ends with `tracker doctor`'s check of every connection.
 4. Start the first run by hand on GitHub (**Actions → Threadline run → Run
    workflow**), as part 8 describes.
@@ -201,12 +204,12 @@ information.
 | `tracker setup <step>` | Re-run one step of the set-up. The steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `linkedin`, `dashboard`, `schedule`, `github`, `refresh` and `cloud` |
 | `tracker setup [<step>] --browser` | The same, asked on a page in your web browser instead of the terminal; what is said and asked is still shown in the terminal, answers never are |
 | `tracker setup mailbox` | Choose the mailbox to read; for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
-| `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow; commit and push it only after a yes |
+| `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow, and into the database for the on-time morning start; commit and push the workflow only after a yes |
 | `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. It only ever uses your own private copy |
-| `tracker setup refresh` | Switch on the dashboard's Refresh now button: deploy the `refresh-now` function and its settings through Supabase's Management API, with a GitHub key that can only start your workflow |
+| `tracker setup refresh` | Switch on the dashboard's Refresh now button: deploy the `refresh-now` function and its settings through Supabase's Management API, with a GitHub key that can only start your workflow. It also switches on the on-time morning start: a timer in your database that starts the daily run at its time, every 15 minutes checking whether it is due |
 | `tracker setup cloud` | The alternative route: what a Claude cloud routine needs |
 | `tracker doctor` | Check that every account and setting is in order |
-| `tracker sample load` | Write made-up sample records; running it twice changes nothing |
+| `tracker sample load` | Write made-up sample records, their dates moved so they look as fresh today as on the day the sample was written; running it twice changes nothing |
 | `tracker sample clear` | Remove the made-up sample records, leaving real data untouched |
 
 ### Collecting
@@ -259,13 +262,16 @@ See [`docs/customising.md`](./docs/customising.md).
 | `tracker healthcheck` | The daily run's own check of the configuration, the database and the secret store, run by `run start --prepare`. By hand, `tracker doctor` says more |
 | `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID \| --refresh]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `assess` or `summary_email`. `--refresh` records into the refresh that is open rather than the daily run |
 | `tracker run finish [--run ID \| --refresh] [--clean]` | Close the run with the status its steps add up to. `--refresh` closes the refresh that is open rather than the daily run. `--clean` then removes the exchanged files, as `tracker ai clean` does — this is how the daily run closes |
-| `tracker summary build [--out PATH] [--run ID]` | Write the morning summary to a file, ready to send, and say how it is sent (`delivery: smtp` or `gmail_connector`) |
-| `tracker summary send [--file PATH] [--run ID]` | Send that file from your own mailbox by SMTP, exactly as built and only to your configured recipient, and record the step |
+| `tracker summary build [--out PATH] [--run ID] [--send-again]` | Write the morning summary to a file, ready to send, and say how it is sent (`delivery: smtp` or `gmail_connector`). When another daily run already sent today's summary it writes nothing, records the e-mail as skipped and prints `summary skipped · …`; `--send-again` builds it anyway |
+| `tracker summary send [--file PATH] [--run ID] [--send-again]` | Send that file from your own mailbox by SMTP, exactly as built and only to your configured recipient, and record the step. Like `summary build`, it skips the e-mail when today's summary already went out with another daily run, unless given `--send-again` |
 
 The workflow [`.github/workflows/threadline-run.yml`](./.github/workflows/threadline-run.yml)
 runs `/daily-run` every day, or by hand with mode `daily` or `refresh` (new
 messages only, no e-mail). Without its secrets it finishes green and does
-nothing.
+nothing. With the on-time morning start switched on, your Supabase project
+starts the daily run at its time, and a run started by GitHub's own (often
+late) schedule stops by itself when the day's run already started
+([`docs/refresh-now.md`](./docs/refresh-now.md)).
 
 ## Customising
 

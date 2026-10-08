@@ -8,6 +8,12 @@
 # The dashboard's "Refresh now" starts this workflow through GitHub's API by
 # its file name, threadline-run.yml, with the input mode=refresh. Keep both.
 #
+# GitHub often starts the schedule below hours late. Once the on-time morning
+# start is switched on (`uv run tracker setup refresh`), your Supabase
+# database starts the daily run at its time, through the same API with
+# mode=daily, and the schedule below is only the backup: its gate stops when
+# the day's run has already started. Guide: docs/refresh-now.md.
+#
 # Set-up: `uv run tracker setup schedule` writes the daily time below;
 # `uv run tracker setup github` fills in the secrets and variables.
 # Guide: docs/setup-your-accounts.md, "Run it every day on GitHub".
@@ -22,7 +28,7 @@ on:
   schedule:
     # The daily time. 'uv run tracker setup schedule' rewrites these two lines.
     - cron: "0 7 * * *"
-      timezone: "UTC"
+      timezone: "Europe/Paris"
   workflow_dispatch:
     inputs:
       mode:
@@ -70,6 +76,8 @@ jobs:
         id: gate
         env:
           MODE: ${{ inputs.mode }}
+          EVENT: ${{ github.event_name }}
+          OWNER_TIME_ZONE: ${{ vars.OWNER_TIME_ZONE }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
@@ -101,12 +109,18 @@ jobs:
           lookup_attempts=3
           lookup_pause_seconds=10
           lookup_timeout_seconds=30
-          going() {
-            local attempt count
+          # Runs read when looking for today's daily run: one daily run and a
+          # few dozen refreshes a day at most.
+          runs_read_limit=100
+          # count_runs FILTER [gh options]: how many other runs match a jq
+          # condition, asked the way described above.
+          count_runs() {
+            local filter=$1 attempt count
+            shift
             for attempt in $(seq "$lookup_attempts"); do
               if count=$(timeout "$lookup_timeout_seconds" gh run list --workflow threadline-run.yml \
-                --status in_progress --json databaseId,displayTitle \
-                --jq "[.[] | select(.databaseId != $RUN_ID and .displayTitle == \"$1\")] | length") \
+                "$@" --json databaseId,displayTitle,status,conclusion,createdAt \
+                --jq "[.[] | select(.databaseId != $RUN_ID) | select($filter)] | length") \
                 && [[ "$count" =~ ^[0-9]+$ ]]; then
                 echo "$count"
                 return 0
@@ -114,6 +128,23 @@ jobs:
               if [ "$attempt" -lt "$lookup_attempts" ]; then sleep "$lookup_pause_seconds"; fi
             done
             echo unknown
+          }
+          going() {
+            count_runs ".displayTitle == \"$1\"" --status in_progress
+          }
+          # Daily runs created on the owner's today that are waiting, going or
+          # finished well (a failed or cancelled one does not count). Each run's
+          # time is moved by the zone's offset from UTC now, so this needs no
+          # date arithmetic that differs between machines.
+          daily_runs_today() {
+            local zone=$1 today offset sign
+            today=$(TZ="$zone" date +%F)
+            offset=$(TZ="$zone" date +%z)
+            sign=1
+            if [ "${offset:0:1}" = "-" ]; then sign=-1; fi
+            offset=$((sign * (10#${offset:1:2} * 3600 + 10#${offset:3:2} * 60)))
+            count_runs ".displayTitle == \"Threadline daily run\" and (.status != \"completed\" or .conclusion == \"success\") and ((((.createdAt | fromdateiso8601) + ($offset)) | strftime(\"%Y-%m-%d\")) == \"$today\")" \
+              --limit "$runs_read_limit"
           }
           if [ "$trigger" = refresh ]; then
             daily=$(going 'Threadline daily run')
@@ -124,6 +155,22 @@ jobs:
             fi
             if [ "$daily" -gt 0 ]; then
               echo "::notice::The daily run is going and reads everything new, so this refresh stops here."
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          # GitHub's own schedule is the backup for the on-time morning start,
+          # which normally started the day's run from Supabase hours earlier.
+          # A scheduled run therefore stops when a daily run of the owner's
+          # day already started. Not knowing is not "nothing started": it goes
+          # ahead, and no second summary e-mail goes out on the same day.
+          # A daily run started by hand or by Supabase always goes ahead.
+          if [ "$trigger" = github ] && [ "$EVENT" = schedule ]; then
+            started=$(daily_runs_today "${OWNER_TIME_ZONE:-UTC}")
+            if [ "$started" = unknown ]; then
+              echo "::notice::GitHub could not say whether today's daily run already started, so this scheduled run goes ahead. No second summary e-mail goes out today."
+            elif [ "$started" -gt 0 ]; then
+              echo "::notice::Today's daily run already started on time, so GitHub's own later start stops here. Nothing is wrong."
               echo "ready=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi

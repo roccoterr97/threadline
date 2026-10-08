@@ -398,7 +398,10 @@ answered **n** by mistake, run `uv run tracker setup categories` again.
 offers it, such as `Your time zone [Europe/Paris]:`. Your time zone decides what
 "today" is for due dates and the summary, and the daily run's time (part 8) is
 read in it. It is saved as `OWNER_TIME_ZONE` and later sent to GitHub with your
-other settings.
+other settings. When the zone differs from the one in the daily run's workflow
+file (`.github/workflows/threadline-run.yml`), it writes the new zone there
+too, keeping the time, shows the line it changed and offers to save it in git
+for you, exactly as in part 8b.
 
 **What you do:**
 
@@ -925,7 +928,8 @@ uv run tracker setup schedule
 reads it in the time zone you gave in part 4c, writes both into the workflow
 file `.github/workflows/threadline-run.yml`, and shows you the two lines it
 changed. GitHub follows your summer and winter time by itself. To use a
-different zone, run `uv run tracker setup timezone` first. It then asks whether to
+different zone, run `uv run tracker setup timezone`: it updates the workflow's
+zone too. This step then asks whether to
 run `git add`, `git commit` and `git push` for you; it only does so after you
 answer yes.
 
@@ -1118,9 +1122,18 @@ until you run `uv run tracker setup refresh` again with a new key.
 The set-up then saves the helper's settings in Supabase (your GitHub key goes
 straight there), puts the helper in place, and checks that it answers.
 
-**✅ Check:** the set-up ends with `Refresh now is switched on`. Open your
-dashboard and press **Refresh now** (on a phone: **Refresh**): the line under
-the header says "Refreshing… new messages will appear in a few minutes."
+Last, it switches on the **on-time morning start**. GitHub often starts the
+daily run hours after the time you chose; now your Supabase project checks
+every 15 minutes and starts it as soon as your time has passed, at most once a
+day. GitHub's own schedule stays as a backup and stops by itself when the
+day's run already started. It is free and needs nothing more from you
+([`refresh-now.md`](refresh-now.md), "The on-time morning start").
+
+**✅ Check:** the set-up says `Refresh now is switched on` and ends with
+`On-time morning start is switched on: Supabase starts the daily run at …`
+with your time. Open your dashboard and press **Refresh now** (on a phone:
+**Refresh**): the line under the header says "Refreshing… new messages will
+appear in a few minutes."
 
 **If not:**
 
@@ -1133,6 +1146,8 @@ the header says "Refreshing… new messages will appear in a few minutes."
   and click **Enable workflow**.
 - *The dashboard still says "not switched on yet":* close the dashboard tab and
   open it again (it remembers that answer until the tab is closed).
+- *`your database does not have the on-time morning start yet`:* run
+  `uv run tracker setup database`, then `uv run tracker setup refresh` again.
 - Anything else: the manual way in [`docs/refresh-now.md`](refresh-now.md)
   does the same by hand.
 

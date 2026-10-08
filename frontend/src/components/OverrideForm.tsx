@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { contactStatusSchema, waitingOnSchema } from '../api/schemas';
 import * as copy from '../copy/en';
-import type { OverrideValues } from '../domain/overrides';
+import { hasAnyOverride, type OverrideValues } from '../domain/overrides';
 import type { Vocabulary } from '../domain/vocabulary';
 import type { PersonOverrideRow } from '../types/database';
 import { Button } from './Button';
@@ -55,7 +55,13 @@ export function OverrideForm({
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        onSave(values);
+        // A correction with every field left to the assistant is no correction:
+        // storing it would keep "Corrected by you" showing over nothing.
+        if (hasAnyOverride(values)) {
+          onSave(values);
+          return;
+        }
+        onClear();
       }}
     >
       <p className="text-sm text-ink-muted">{copy.override.intro}</p>

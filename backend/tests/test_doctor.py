@@ -573,11 +573,19 @@ async def test_a_database_at_0014_is_offered_everything_after_it() -> None:
     assert _pending_when_applied_up_to("0014_refresh_cooldown") == [
         "0015_category_names",
         "0016_person_notes",
+        "0017_daily_start",
     ]
 
 
-async def test_a_database_at_0015_is_offered_0016() -> None:
-    assert _pending_when_applied_up_to("0015_category_names") == ["0016_person_notes"]
+async def test_a_database_at_0015_is_offered_0016_and_0017() -> None:
+    assert _pending_when_applied_up_to("0015_category_names") == [
+        "0016_person_notes",
+        "0017_daily_start",
+    ]
+
+
+async def test_a_database_at_0016_is_offered_only_the_on_time_start() -> None:
+    assert _pending_when_applied_up_to("0016_person_notes") == ["0017_daily_start"]
 
 
 async def test_the_doctor_says_0016_is_missing_from_a_database_at_0015() -> None:
@@ -626,13 +634,13 @@ async def test_a_file_that_leaves_no_mark_is_offered_when_nothing_after_it_shows
 
 
 async def test_a_file_that_leaves_no_mark_is_taken_as_applied_when_a_later_one_shows() -> None:
-    assert _pending_when_applied_up_to("0016_person_notes") == []
+    assert _pending_when_applied_up_to("0017_daily_start") == []
 
 
 async def test_a_file_this_version_does_not_know_is_offered(tmp_path: Path) -> None:
     future = MigrationFile("0099_future", tmp_path / "0099_future.sql")
 
-    assert _pending_when_applied_up_to("0016_person_notes", future) == ["0099_future"]
+    assert _pending_when_applied_up_to("0017_daily_start", future) == ["0099_future"]
 
 
 async def test_the_newest_migration_can_be_seen_from_outside() -> None:

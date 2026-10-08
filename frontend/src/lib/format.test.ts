@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as copy from '../copy/en';
 import { NOW } from '../test/__fixtures__/sampleData';
 import { fixedClock } from './clock';
@@ -30,6 +30,24 @@ describe('formatDate', () => {
   });
 });
 
+describe('formatDate west of Greenwich', () => {
+  const pinnedZone = process.env.TZ;
+
+  afterEach(() => {
+    process.env.TZ = pinnedZone;
+    vi.resetModules();
+  });
+
+  it('keeps a due date on its own day for an owner in New York', async () => {
+    process.env.TZ = 'America/New_York';
+    vi.resetModules();
+    // Imported afresh, so its formatters are built in the New York zone.
+    const fresh = await import('./format');
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('America/New_York');
+    expect(fresh.formatDate('2026-03-14')).toBe('14 Mar 2026');
+  });
+});
+
 describe('formatWeekday and formatClockTime', () => {
   // Built from local parts, so the test holds in whatever time zone it runs.
   const localMeeting = new Date(2026, 2, 13, 14, 30).toISOString();
@@ -55,6 +73,42 @@ describe('formatRelative', () => {
 
   it('says "yesterday" for the day before', () => {
     expect(formatRelative('2026-03-11T08:00:00.000Z', clock)).toBe(copy.time.daysAgo(1));
+  });
+
+  it('runs in a pinned time zone, so the day boundaries below are Paris midnights', () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe('Europe/Paris');
+  });
+
+  // Paris is UTC+2 in early October, so 22:00Z is midnight there.
+  it('says "2 days ago" for Friday evening seen on Sunday morning, though under 48 hours passed', () => {
+    const sundayMorning = fixedClock(new Date('2026-10-04T06:00:00Z'));
+    expect(formatRelative('2026-10-02T20:00:00Z', sundayMorning)).toBe(copy.time.daysAgo(2));
+  });
+
+  it('says "yesterday" for Saturday 23:00 seen on Sunday evening', () => {
+    const sundayEvening = fixedClock(new Date('2026-10-04T20:00:00Z'));
+    expect(formatRelative('2026-10-03T21:00:00Z', sundayEvening)).toBe(copy.time.daysAgo(1));
+  });
+
+  it('says "yesterday" for 23:00 seen two hours later, after midnight', () => {
+    const sundayOneAm = fixedClock(new Date('2026-10-03T23:00:00Z'));
+    expect(formatRelative('2026-10-03T21:00:00Z', sundayOneAm)).toBe(copy.time.daysAgo(1));
+  });
+
+  it('keeps counting in minutes for something half an hour old, even across midnight', () => {
+    const sundayOneAm = fixedClock(new Date('2026-10-03T23:00:00Z'));
+    expect(formatRelative('2026-10-03T22:30:00Z', sundayOneAm)).toBe(copy.time.minutesAgo(30));
+  });
+
+  it('counts calendar days across the change to winter time', () => {
+    // Clocks go back on Sunday 25 October 2026; Tuesday 27th is two days after.
+    const tuesdayMorning = fixedClock(new Date('2026-10-27T08:00:00Z'));
+    expect(formatRelative('2026-10-25T08:00:00Z', tuesdayMorning)).toBe(copy.time.daysAgo(2));
+  });
+
+  it('falls back to a plain date once it is a week old by the calendar', () => {
+    const sundayMorning = fixedClock(new Date('2026-10-11T06:00:00Z'));
+    expect(formatRelative('2026-10-04T20:00:00Z', sundayMorning)).toBe('4 Oct 2026');
   });
 
   it('falls back to a plain date once it is more than a week old', () => {
@@ -144,5 +198,11 @@ describe('describeStepCounts', () => {
     expect(describeStepCounts({ step: 'summary_email', items_found: 0, items_new: 0 })).toEqual(
       [],
     );
+  });
+
+  it('says a skipped morning e-mail was not sent, not "sent"', () => {
+    expect(describeStepCounts({ step: 'summary_email', items_found: 1, items_new: 0 })).toEqual([
+      copy.runs.emailSkipped,
+    ]);
   });
 });

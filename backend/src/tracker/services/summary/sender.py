@@ -18,9 +18,11 @@ from uuid import UUID
 from pydantic import ValidationError
 
 from tracker.domain.enums import RunStep
+from tracker.domain.models import RunLog
 from tracker.infrastructure.smtp import SmtpAccount
 from tracker.schemas.summary import SummaryEmail
 from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
+from tracker.services.summary.once_a_day import OnceADay, sent_outcome
 from tracker.services.summary.send_once import SendOnce
 from tracker.shared.config import Settings
 from tracker.shared.constants.mailbox import IMAP_PRESETS, DeliveryRoute
@@ -122,11 +124,26 @@ class SentSummary:
     step_error_code: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SkippedSummary:
+    """A summary not sent because another daily run sent today's already.
+
+    Attributes:
+        earlier: The run whose summary already went out today.
+    """
+
+    earlier: RunLog
+
+
 class SummarySender:
     """Sends the summary file to the configured recipient and records the step."""
 
     def __init__(
-        self, settings: Settings, mailer_for: Callable[[], Mailer], recorder: RunRecorder
+        self,
+        settings: Settings,
+        mailer_for: Callable[[], Mailer],
+        recorder: RunRecorder,
+        once_a_day: OnceADay,
     ) -> None:
         """Bind the sender to the settings, a mail server and the run log.
 
@@ -135,22 +152,30 @@ class SummarySender:
             mailer_for: Builds the mailer; called only once the file passed its
                 checks, so a missing password is recorded like any failure.
             recorder: Records the ``summary_email`` step.
+            once_a_day: Finds a summary another daily run sent earlier today.
         """
         self._settings = settings
         self._mailer_for = mailer_for
         self._recorder = recorder
+        self._once_a_day = once_a_day
 
-    def send(self, path: Path, run_id: UUID | None = None) -> SentSummary:
+    def send(
+        self, path: Path, run_id: UUID | None = None, *, send_again: bool = False
+    ) -> SentSummary | SkippedSummary:
         """Send the summary and record the step, whether it went or not.
 
         Args:
             path: The summary file.
             run_id: The run to record against; the daily run still open when
                 omitted.
+            send_again: Send even when another daily run already sent
+                today's summary.
 
         Returns:
             What was sent, and the code that kept the step from being recorded
-            when the mail went but the run log could not say so.
+            when the mail went but the run log could not say so; or, when
+            today's summary already went out with another run, the skip,
+            already recorded.
 
         Raises:
             ValidationFailedError: If this run's summary already went out; nothing
@@ -164,6 +189,9 @@ class SummarySender:
             _log.info("summary_already_sent", run_id=str(run.id))
             message = "this run's summary was already sent, so it was not sent again"
             raise ValidationFailedError(message)
+        earlier = self._once_a_day.skip_if_sent_today(run, self._recorder, send_again=send_again)
+        if earlier is not None:
+            return SkippedSummary(earlier=earlier)
         try:
             summary = self._checked(read_summary(path))
             self._mailer_for().send(compose(summary, self._sender()))
@@ -183,9 +211,8 @@ class SummarySender:
         reported, never raised: an error would read as "not sent" and invite a
         second copy. The marker beside the file still stops one.
         """
-        outcome = StepOutcome(RunStep.SUMMARY_EMAIL, StepResult.SUCCESS, items_found=1, items_new=1)
         try:
-            self._recorder.record_step(run_id, outcome)
+            self._recorder.record_step(run_id, sent_outcome())
         except TrackerError as error:
             _log.error("summary_sent_step_not_recorded", run_id=str(run_id), code=error.code)
             return error.code

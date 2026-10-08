@@ -9,9 +9,13 @@ const meetingsSchema = z.array(upcomingMeetingRowSchema);
 
 const DAY_MS = 86_400_000;
 
-/** Only the columns the strip shows, with the person and organisation embedded. */
+/**
+ * Only the columns the strip shows, with the person and organisation embedded.
+ * The person's relevance comes along because only relevant people have a page
+ * to open (`people_overview` lists nobody else).
+ */
 const MEETING_COLUMNS =
-  'id, subject, meeting_at, person_id, people(full_name, organisations(name))';
+  'id, subject, meeting_at, person_id, people(full_name, relevance, organisations(name))';
 
 export const upcomingMeetingsQueryKey = ['meetings', 'upcoming'] as const;
 

@@ -214,3 +214,40 @@ def test_timestamps_are_read_as_utc() -> None:
 )
 def test_every_spelling_of_one_profile_compares_equal(spelling: str) -> None:
     assert normalise_profile_url(spelling) == "linkedin.com/in/sam"
+
+
+def _group_row(urls: str, names: str) -> dict[str, str]:
+    """A group-thread row with the given recipient columns."""
+    return {**row(), "RECIPIENT PROFILE URLS": urls, "TO": names}
+
+
+def test_a_name_with_a_comma_stays_one_name_when_the_links_use_another_separator() -> None:
+    parsed = parse_row(
+        _group_row(
+            "https://www.linkedin.com/in/jane-doe;https://www.linkedin.com/in/bob",
+            "Jane Doe, CFA;Bob Smith",
+        )
+    )
+
+    assert parsed is not None
+    assert parsed.recipient_names == ("Jane Doe, CFA", "Bob Smith")
+
+
+def test_a_lone_recipient_keeps_a_name_that_holds_a_comma() -> None:
+    parsed = parse_row(_group_row("https://www.linkedin.com/in/jane-doe", "Jane Doe, CFA"))
+
+    assert parsed is not None
+    assert parsed.recipient_names == ("Jane Doe, CFA",)
+
+
+def test_names_that_do_not_line_up_with_the_links_are_left_out() -> None:
+    parsed = parse_row(
+        _group_row(
+            "https://www.linkedin.com/in/jane-doe, https://www.linkedin.com/in/bob",
+            "Jane Doe, CFA, Bob Smith",
+        )
+    )
+
+    assert parsed is not None
+    assert parsed.recipient_profile_urls == ("linkedin.com/in/jane-doe", "linkedin.com/in/bob")
+    assert parsed.recipient_names == ()

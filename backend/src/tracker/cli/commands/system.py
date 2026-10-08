@@ -83,8 +83,9 @@ def clear_sample(file: FileOption = SAMPLE_DATA_FILE) -> None:
 
 def _sample_service() -> SampleDataService:
     """Build the sample-data service on a fresh database client."""
-    client = create_database_client(get_settings())
-    return SampleDataService(build_repositories(client))
+    settings = get_settings()
+    client = create_database_client(settings)
+    return SampleDataService(build_repositories(client), SystemClock(settings.owner_zone))
 
 
 def _check_secret_store(settings: Settings, client: Client) -> None:

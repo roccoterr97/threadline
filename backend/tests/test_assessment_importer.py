@@ -816,3 +816,77 @@ def test_a_name_with_a_quotation_mark_still_finds_its_organisation(
     assert stored is not None
     assert stored.organisation_id == awkward.id
     assert len(fake_client.tables["organisations"]) == 1
+
+
+def test_a_kept_noise_verdict_stores_the_correction_and_asks_the_owner(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """Keeping the person is only half the promise: the owner must be asked too."""
+    person = talkative_person(repositories)
+    seed(repositories, overrides=[make_override(person, status=ContactStatus.IN_PROCESS)])
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    chain.answer(
+        verdict_payload(
+            person.id,
+            relevance=Relevance.NOISE.value,
+            confidence=0.95,
+            status="closed",
+            waiting_on="nobody",
+            due_date=None,
+        )
+    )
+
+    result = chain.importer.import_all()
+
+    assert result.sent_to_review == 1
+    state = repositories.person_states.find_for_person(person.id)
+    assert state is not None
+    assert state.status is ContactStatus.IN_PROCESS
+    questions = repositories.review_items.list_for_people([person.id])
+    assert [item.kind for item in questions] == [ReviewKind.RELEVANCE]
+    kept = repositories.people.get(person.id)
+    assert kept is not None
+    assert kept.relevance is Relevance.RELEVANT
+
+
+def test_a_noise_verdict_on_a_confirmed_person_counts_no_question_it_did_not_ask(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """The run's "sent to review" figure counts questions actually asked."""
+    person = talkative_person(repositories)
+    seed(repositories, review_items=[make_answer(person, answer=ReviewAnswer.YES)])
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    chain.answer(verdict_payload(person.id, relevance=Relevance.NOISE.value, confidence=0.95))
+
+    result = chain.importer.import_all()
+
+    assert result.sent_to_review == 0
+    assert len(repositories.review_items.list_for_people([person.id])) == 1
+    kept = repositories.people.get(person.id)
+    assert kept is not None
+    assert kept.relevance is Relevance.RELEVANT
+
+
+def test_a_no_given_after_the_export_is_not_undone_by_the_import(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """The verdict was written before the owner answered; his answer stands."""
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    seed(repositories, review_items=[make_answer(person, answer=ReviewAnswer.NO)])
+    repositories.people.bulk_upsert([person.model_copy(update={"relevance": Relevance.NOISE})])
+    chain.answer(verdict_payload(person.id))
+
+    result = chain.importer.import_all()
+
+    assert result.assessed == 0
+    after = repositories.people.get(person.id)
+    assert after is not None
+    assert after.relevance is Relevance.NOISE
+    assert repositories.person_states.find_for_person(person.id) is None

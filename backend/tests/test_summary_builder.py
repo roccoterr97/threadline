@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from tests.conftest import JOB_SEARCH_RULES, as_client
+from tests.conftest import JOB_SEARCH_RULES, FakeSupabaseClient, as_client
 from tests.summary_world import (
     NOW,
     TODAYS_RUN,
@@ -25,7 +25,7 @@ from tracker.services.summary.builder import SummaryBuilder
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
 from tracker.shared.constants.runs import RUN_INTERRUPTED_CODE
-from tracker.shared.constants.summary import KEY_REMINDER_DAYS
+from tracker.shared.constants.summary import KEY_REMINDER_DAYS, RECENT_RUNS_SCANNED
 from tracker.shared.errors import ValidationFailedError
 
 
@@ -391,3 +391,130 @@ def test_the_summary_reads_no_message_row_at_all(settings: Settings) -> None:
     SummaryBuilder(repositories, settings, FixedClock(NOW)).build(TODAYS_RUN)
 
     assert "messages" not in {table for table, _ in client.executed}
+
+
+# --- the "replied since" window counts from the last summary that went out ------
+
+#: Greta Lindqvist, who wrote back in the sample data.
+GRETA = "b0000000-0000-4000-8000-000000000007"
+
+
+def _greta_replied_at(client: FakeSupabaseClient, moment: str) -> None:
+    """Move Greta's latest reply to ``moment``."""
+    for row in client.tables["conversations"]:
+        if row.get("person_id") == GRETA:
+            row["last_inbound_at"] = moment
+
+
+def _add_daily_run(client: FakeSupabaseClient, started_at: str, *, summary: str | None) -> str:
+    """Add a finished daily run, with a ``summary_email`` step that went as told.
+
+    ``summary`` is ``"sent"``, ``"failed"``, ``"skipped"`` or ``None`` for no step.
+    """
+    run_id = str(uuid4())
+    client.tables["run_logs"].append(
+        {
+            "id": run_id,
+            "started_at": started_at,
+            "finished_at": started_at,
+            "status": "success",
+            "trigger": RunTrigger.GITHUB.value,
+        }
+    )
+    if summary is not None:
+        client.tables["run_step_logs"].append(_summary_step(run_id, summary))
+    return run_id
+
+
+def _summary_step(run_id: str, how: str) -> dict[str, object]:
+    """One ``summary_email`` step row, recorded the way each outcome records it."""
+    return {
+        "id": str(uuid4()),
+        "run_id": run_id,
+        "step": RunStep.SUMMARY_EMAIL.value,
+        "status": "failed" if how == "failed" else "success",
+        "items_found": None if how == "failed" else 1,
+        "items_new": {"sent": 1, "skipped": 0}.get(how),
+        "error_code": "source_unavailable" if how == "failed" else None,
+        "error_detail": None,
+    }
+
+
+def _yesterdays_summary_went(client: FakeSupabaseClient, how: str) -> None:
+    """Rewrite yesterday's ``summary_email`` step as ``"failed"`` or ``"skipped"``."""
+    for index, row in enumerate(client.tables["run_step_logs"]):
+        if row["run_id"] == str(YESTERDAYS_RUN) and row["step"] == RunStep.SUMMARY_EMAIL.value:
+            client.tables["run_step_logs"][index] = _summary_step(str(YESTERDAYS_RUN), how)
+
+
+def _replied(client: FakeSupabaseClient, settings: Settings) -> list[str]:
+    builder = SummaryBuilder(build_repositories(as_client(client)), settings, FixedClock(NOW))
+    return names(builder.build(TODAYS_RUN).content.replied)
+
+
+@pytest.mark.parametrize("how", ["failed", "skipped"])
+def test_a_reply_seen_before_a_summary_that_never_went_out_is_still_reported(
+    settings: Settings, how: str
+) -> None:
+    """Yesterday's run finished but sent nothing, so today's e-mail covers its replies."""
+    client = sample_client()
+    _add_daily_run(client, "2026-09-16T05:00:00Z", summary="sent")
+    _greta_replied_at(client, "2026-09-16T20:00:00Z")
+    _yesterdays_summary_went(client, how)
+
+    assert _replied(client, settings) == ["Greta Lindqvist"]
+
+
+def test_a_reply_before_the_last_summary_that_went_out_is_not_repeated(
+    settings: Settings,
+) -> None:
+    client = sample_client()
+    _add_daily_run(client, "2026-09-16T05:00:00Z", summary="sent")
+    _greta_replied_at(client, "2026-09-16T20:00:00Z")
+
+    assert _replied(client, settings) == []
+
+
+def _add_refreshes(client: FakeSupabaseClient, day: str, count: int) -> None:
+    """Add ``count`` finished refreshes on ``day``, one an hour from 09:00."""
+    for hour in range(9, 9 + count):
+        client.tables["run_logs"].append(
+            {
+                "id": str(uuid4()),
+                "started_at": f"{day}T{hour:02d}:00:00Z",
+                "finished_at": f"{day}T{hour:02d}:03:00Z",
+                "status": "success",
+                "trigger": RunTrigger.REFRESH.value,
+            }
+        )
+
+
+def test_a_day_of_refreshes_does_not_shrink_the_window_to_one_day(settings: Settings) -> None:
+    client = sample_client()
+    _greta_replied_at(client, "2026-09-17T06:00:00Z")  # after yesterday's run began
+    _add_refreshes(client, "2026-09-17", RECENT_RUNS_SCANNED)
+
+    assert _replied(client, settings) == ["Greta Lindqvist"]
+
+
+def test_an_interrupted_run_is_still_explained_after_a_day_of_refreshes(
+    settings: Settings,
+) -> None:
+    client = sample_client()
+    interrupted = _add_daily_run(client, "2026-09-17T08:00:00Z", summary=None)
+    client.tables["run_step_logs"].append(
+        {
+            "id": str(uuid4()),
+            "run_id": interrupted,
+            "step": RunStep.ASSESS.value,
+            "status": "failed",
+            "error_code": RUN_INTERRUPTED_CODE,
+            "error_detail": None,
+        }
+    )
+    _add_refreshes(client, "2026-09-17", RECENT_RUNS_SCANNED)
+    builder = SummaryBuilder(build_repositories(as_client(client)), settings, FixedClock(NOW))
+
+    problems = builder.build(TODAYS_RUN).content.problems
+
+    assert [problem.step for problem in problems].count(RunStep.ASSESS) == 1

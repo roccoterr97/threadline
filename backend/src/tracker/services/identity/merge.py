@@ -19,14 +19,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from uuid import UUID, uuid4
 
 from tracker.domain.enums import ReviewAnswer, ReviewKind
 from tracker.domain.identity import is_shown_as_address
-from tracker.domain.models import Person, ReviewItem
+from tracker.domain.models import Person, PersonOverride, PersonState, ReviewItem
 from tracker.repositories import Repositories
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
+
+# A "same person?" question is about two different records.
+_PAIR_SIZE = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,8 +63,9 @@ class PersonMerger:
         """
         questions = self._same_person_questions()
         report = MergeReport()
+        merged_into: dict[UUID, UUID] = {}
         for item in _confirmed_pairs(questions):
-            report = self._apply_one(item, report)
+            report = self._apply_one(item, merged_into, report)
         if report.merged:
             # A merge points questions at the record that survived, so what
             # was read before it no longer says which ones name one record twice.
@@ -81,13 +86,15 @@ class PersonMerger:
         return self._repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
 
     def _close_settled_questions(self, questions: Sequence[ReviewItem]) -> int:
-        """Remove unanswered "same person?" questions that name one record twice.
+        """Remove unanswered "same person?" questions a merge made pointless.
 
         A merge points every question at the surviving record. One still
-        waiting for an answer then asks whether somebody is the same person as
-        themselves, and would sit in the review list for ever. It is removed
-        rather than marked "yes", because the owner never gave that answer;
-        answered ones stay as the record of the owner's decision.
+        waiting for an answer then either asks whether somebody is the same
+        person as themselves, or repeats a question about the same two records
+        that is already on file. Either would sit in the review list for ever,
+        or ask the owner twice. It is removed rather than marked "yes", because
+        the owner never gave that answer; answered ones stay as the record of
+        the owner's decision.
 
         Args:
             questions: The "same person?" questions, read after the last merge.
@@ -95,26 +102,50 @@ class PersonMerger:
         Returns:
             How many questions were removed.
         """
-        settled = [
-            item.id
-            for item in questions
-            if item.answer is None
-            and item.person_id is not None
-            and item.person_id == item.other_person_id
-        ]
-        return self._repositories.review_items.delete_by_ids(settled)
+        # Answered questions first, so a repeat is the unanswered copy.
+        ordered = sorted(questions, key=lambda item: item.answer is None)
+        seen: set[frozenset[UUID]] = set()
+        pointless: list[UUID] = []
+        for item in ordered:
+            pair = frozenset(person for person in (item.person_id, item.other_person_id) if person)
+            if item.answer is None and (len(pair) < _PAIR_SIZE or pair in seen):
+                pointless.append(item.id)
+            seen.add(pair)
+        return self._repositories.review_items.delete_by_ids(pointless)
 
-    def _apply_one(self, item: ReviewItem, report: MergeReport) -> MergeReport:
-        """Merge the two people one answered question names."""
-        if item.person_id == item.other_person_id:
-            # An earlier run merged this pair and left the question naming the
-            # survivor twice. Every answer ever given stays in the list, so
-            # asking the database about each of them again would cost one
-            # request per old answer, every day, to learn nothing.
+    def _apply_one(
+        self,
+        item: ReviewItem,
+        merged_into: dict[UUID, UUID],
+        report: MergeReport,
+    ) -> MergeReport:
+        """Merge the two people one answered question names.
+
+        The questions were read before this run merged anything, so a record
+        an earlier answer absorbed is followed to the record it became: "b is
+        a" and then "c is b" must end with all three as one.
+
+        Args:
+            item: The answered question.
+            merged_into: Absorbed record -> survivor, for merges made this run.
+                Updated with the merge made here.
+            report: The tally so far.
+
+        Returns:
+            The tally including this question.
+        """
+        wanted = {
+            _current(person_id, merged_into)
+            for person_id in (item.person_id, item.other_person_id)
+            if person_id
+        }
+        if len(wanted) < 2:  # noqa: PLR2004 - a pair names two records
+            # An earlier merge left the question naming the survivor twice.
+            # Every answer ever given stays in the list, so asking the
+            # database about each of them again would cost one request per
+            # old answer, every day, to learn nothing.
             return replace(report, skipped=report.skipped + 1)
-        people = self._repositories.people.list_by_ids(
-            [person_id for person_id in (item.person_id, item.other_person_id) if person_id]
-        )
+        people = self._repositories.people.list_by_ids(list(wanted))
         if len(people) != 2:  # noqa: PLR2004 - one of them is already gone
             return MergeReport(
                 report.merged,
@@ -122,7 +153,9 @@ class PersonMerger:
                 report.conversations_moved,
                 report.skipped + 1,
             )
-        identities, conversations = self.join(*_order(people[0], people[1]))
+        survivor, absorbed = _order(people[0], people[1])
+        identities, conversations = self.join(survivor, absorbed)
+        merged_into[absorbed.id] = survivor.id
         return MergeReport(
             report.merged + 1,
             report.identities_moved + identities,
@@ -181,17 +214,22 @@ class PersonMerger:
 
         Only one of each may exist per person, so nothing is overwritten: the
         absorbed record's values are taken only where the survivor has none.
+
+        The copy gets a new primary key. The absorbed record's own row still
+        exists at this point (the database removes it only when the record
+        itself goes, at the end of :meth:`join`), so reusing its key would
+        collide with it.
         """
         if not self._repositories.person_states.list_for_people([survivor.id]):
-            for state in self._repositories.person_states.list_for_people([absorbed.id]):
-                self._repositories.person_states.bulk_upsert(
-                    [state.model_copy(update={"person_id": survivor.id})]
-                )
+            states = self._repositories.person_states.list_for_people([absorbed.id])
+            self._repositories.person_states.bulk_upsert(
+                [_moved_to(state, survivor) for state in states]
+            )
         if not self._repositories.person_overrides.list_for_people([survivor.id]):
-            for override in self._repositories.person_overrides.list_for_people([absorbed.id]):
-                self._repositories.person_overrides.bulk_upsert(
-                    [override.model_copy(update={"person_id": survivor.id})]
-                )
+            overrides = self._repositories.person_overrides.list_for_people([absorbed.id])
+            self._repositories.person_overrides.bulk_upsert(
+                [_moved_to(override, survivor) for override in overrides]
+            )
 
     def _move_notes(self, survivor: Person, absorbed: Person) -> None:
         """Give the survivor the notes the owner typed on the absorbed record.
@@ -205,29 +243,44 @@ class PersonMerger:
     def _repoint_questions(self, survivor: Person, absorbed: Person) -> None:
         """Keep the owner's answers by moving them onto the surviving record.
 
-        A question still naming the absorbed record would be removed with it,
-        and the owner's answer would be lost. A settled "same person?" ends up
+        A question still naming the absorbed record, on either side, would be
+        removed with it, and the owner's answer would be lost. A settled "same person?" ends up
         naming the survivor on both sides: the database requires the question
         to name a second person, and a question about one record and itself is
         exactly what a finished merge means. A later run sees one record
         named twice and leaves it alone, without asking the database about it.
         """
-        items = self._repositories.review_items.list_for_people([absorbed.id])
+        items = self._repositories.review_items.list_naming_people([absorbed.id])
         if not items:
             return
         self._repositories.review_items.bulk_upsert(
             [
                 item.model_copy(
                     update={
-                        "person_id": survivor.id,
-                        "other_person_id": survivor.id
-                        if item.other_person_id in (absorbed.id, survivor.id)
-                        else item.other_person_id,
+                        "person_id": _swap(item.person_id, absorbed, survivor),
+                        "other_person_id": _swap(item.other_person_id, absorbed, survivor),
                     }
                 )
                 for item in items
             ]
         )
+
+
+def _swap(person_id: UUID | None, absorbed: Person, survivor: Person) -> UUID | None:
+    """Replace the absorbed record's identifier with the survivor's."""
+    return survivor.id if person_id == absorbed.id else person_id
+
+
+def _current(person_id: UUID, merged_into: dict[UUID, UUID]) -> UUID:
+    """Follow a record through the merges made this run to the one that holds it now."""
+    while person_id in merged_into:
+        person_id = merged_into[person_id]
+    return person_id
+
+
+def _moved_to[RowT: (PersonState, PersonOverride)](row: RowT, survivor: Person) -> RowT:
+    """Copy one per-person row onto the survivor under a fresh primary key."""
+    return row.model_copy(update={"id": uuid4(), "person_id": survivor.id})
 
 
 def _confirmed_pairs(questions: Sequence[ReviewItem]) -> list[ReviewItem]:

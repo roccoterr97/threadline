@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import stat
 import webbrowser
 from datetime import UTC, date, datetime
@@ -13,6 +14,7 @@ import httpx
 import pytest
 import respx
 from cryptography.fernet import Fernet
+from dotenv import dotenv_values
 from postgrest import APIError
 from pydantic import SecretStr
 from structlog.testing import capture_logs
@@ -92,6 +94,76 @@ def test_setting_a_value_keeps_every_other_line(tmp_path: Path) -> None:
 def test_a_value_on_several_lines_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValidationFailedError):
         EnvFile(tmp_path / ".env").set("A", "one\ntwo")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="file modes are a POSIX feature")
+def test_an_existing_env_file_readable_by_others_is_closed_before_a_key_goes_in(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / ".env"
+    path.write_text("APP_ENV=development\n", encoding="utf-8")
+    path.chmod(0o644)
+
+    EnvFile(path).set("SUPABASE_SERVICE_ROLE_KEY", "sb_secret_made_up")
+
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_a_name_written_twice_gets_the_new_value_on_every_line(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    path.write_text("OWNER_TIME_ZONE=UTC\n# later\nOWNER_TIME_ZONE=Europe/Rome\n", encoding="utf-8")
+
+    EnvFile(path).set("OWNER_TIME_ZONE", "America/New_York")
+
+    assert EnvFile(path).get("OWNER_TIME_ZONE") == "America/New_York"
+    assert dotenv_values(path)["OWNER_TIME_ZONE"] == "America/New_York"
+    assert path.read_text(encoding="utf-8").count("OWNER_TIME_ZONE=America/New_York") == 2
+
+
+def test_the_last_of_two_lines_is_the_value_read(tmp_path: Path) -> None:
+    path = tmp_path / ".env"
+    path.write_text("A=first\nA=second\n", encoding="utf-8")
+
+    assert EnvFile(path).get("A") == "second"
+
+
+@pytest.mark.parametrize(
+    ("written", "read"),
+    [
+        ("'quoted'", "quoted"),
+        ('"quoted"', "quoted"),
+        ("Jane O'Brien", "Jane O'Brien"),
+        ('Jane "JJ"', 'Jane "JJ"'),
+    ],
+)
+def test_quotes_are_removed_only_when_one_kind_wraps_both_ends(
+    tmp_path: Path, written: str, read: str
+) -> None:
+    path = tmp_path / ".env"
+    path.write_text(f"NAME={written}\n", encoding="utf-8")
+
+    assert EnvFile(path).get("NAME") == read
+    assert dotenv_values(path)["NAME"] == read
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["pa ss #word", "  edge spaces  ", '"wrapped"', "plain-value", "abcd efgh ijkl mnop"],
+)
+def test_a_written_value_is_read_back_unchanged_by_both_readers(
+    tmp_path: Path, value: str
+) -> None:
+    path = tmp_path / ".env"
+
+    EnvFile(path).set("NAME", value)
+
+    assert EnvFile(path).get("NAME") == value
+    assert dotenv_values(path)["NAME"] == value
+
+
+def test_a_value_that_cannot_be_written_safely_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(ValidationFailedError):
+        EnvFile(tmp_path / ".env").set("NAME", "it's #1")
 
 
 # --- Typed answers -------------------------------------------------------------

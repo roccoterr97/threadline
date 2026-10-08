@@ -372,3 +372,30 @@ def _organisation(repositories: Repositories, name: str) -> Organisation:
     organisation = Organisation(name=name)
     repositories.organisations.bulk_upsert([organisation])
     return organisation
+
+
+def test_a_company_record_the_owner_said_no_about_is_never_joined(
+    repositories: Repositories,
+) -> None:
+    """A "no" outranks the rule, even once that person is the only match left."""
+    record = _company_record(repositories, "Orbita Hiring Team", "Orbita")
+    lena = make_person("Lena Hoffman-Adler")
+    anil = make_person("Anil Shah")
+    repositories.people.bulk_upsert([lena, anil])
+    repositories.person_identities.bulk_upsert(
+        [_email(lena, "lena.h@orbita.example"), _email(anil, "anil.s@orbita.example")]
+    )
+    PeopleLinker(repositories, JOB_SEARCH_RULES).link()
+    declined = [
+        item.model_copy(update={"answer": ReviewAnswer.NO, "answered_at": SENT})
+        for item in repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
+        if lena.id in (item.person_id, item.other_person_id)
+    ]
+    repositories.review_items.bulk_upsert(declined)
+    repositories.people.bulk_upsert([anil.model_copy(update={"relevance": Relevance.NOISE})])
+
+    report = PeopleLinker(repositories, JOB_SEARCH_RULES).link()
+
+    assert report.joined == 0
+    assert repositories.people.get(record.id) is not None
+    assert repositories.people.get(lena.id) is not None

@@ -43,6 +43,7 @@ from tracker.services.collection.mailboxes import imap_account, saved_app_passwo
 from tracker.services.database_structure import list_migration_files
 from tracker.services.doctor.checks import (
     CalendarCheck,
+    DailyStartCheck,
     DashboardCheck,
     DatabaseCheck,
     ImapMailboxCheck,
@@ -57,15 +58,19 @@ from tracker.services.doctor.checks import (
     SecretStoreCheck,
     SignUpsCheck,
     SmtpLoginCheck,
+    WorkflowTime,
 )
 from tracker.services.doctor.models import Check, CheckResult, CheckStatus, ok, problem, skipped
 from tracker.services.doctor.service import DoctorReport, DoctorService
+from tracker.services.setup.daily_start import daily_start_url
 from tracker.services.setup.step_refresh import function_url
 from tracker.services.setup.values import project_ref
+from tracker.services.setup.workflow_schedule import read_schedule
 from tracker.services.summary.sender import smtp_account
 from tracker.shared.clock import SystemClock
 from tracker.shared.config import Settings, get_settings
 from tracker.shared.constants.collection import INITIAL_WINDOW_DAYS
+from tracker.shared.constants.github import WORKFLOW_FILE
 from tracker.shared.constants.mailbox import IMAP_PRESETS, DeliveryRoute
 from tracker.shared.constants.retry import HEALTHCHECK_ATTEMPTS, HEALTHCHECK_DELAY_SECONDS
 from tracker.shared.constants.setup import (
@@ -97,6 +102,7 @@ DEPENDENT_CHECKS: Final[tuple[str, ...]] = (
     "LinkedIn expiry date",
     "Dashboard address",
     "Refresh now",
+    "On-time morning start",
     "Sign-ups switched off",
 )
 
@@ -208,6 +214,12 @@ def _checks(settings: Settings, clients: _Clients) -> tuple[Check, ...]:
         LinkedInExpiryCheck(token is not None, settings.linkedin_token_expires_on, SystemClock()),
         DashboardCheck(WebProbe().status_of, settings.dashboard_base_url),
         RefreshNowCheck(WebProbe().status_of_post, function_url(settings.supabase_url)),
+        DailyStartCheck(
+            admin.daily_start_status,
+            WebProbe().status_of_post,
+            daily_start_url(function_url(settings.supabase_url)),
+            _workflow_time(),
+        ),
         SignUpsCheck(signups_disabled, _sign_in_page(settings.supabase_url)),
     )
 
@@ -270,6 +282,15 @@ def _linkedin_check(token: SecretStr) -> Callable[[], Awaitable[None]]:
             await client.check_access()
 
     return check
+
+
+def _workflow_time() -> WorkflowTime | None:
+    """The daily time in this copy's workflow file, or ``None`` when it cannot be read."""
+    try:
+        schedule = read_schedule(WORKFLOW_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    return WorkflowTime(schedule.at, schedule.zone) if schedule is not None else None
 
 
 def _sign_in_page(url: str) -> str:

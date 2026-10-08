@@ -188,6 +188,20 @@ function buildOverrides(now: Date): PersonOverrideRow[] {
   ];
 }
 
+/**
+ * Rafael Ortega's mailbox record, kept apart until the owner says they are the
+ * same person. It is not on the list: the assistant is not sure about it yet,
+ * and joining the two waits for the next daily run, as it does for real.
+ */
+const MAILBOX_ORTEGA: DemoPerson = {
+  id: 'demo-p15',
+  full_name: 'R. Ortega',
+  role_title: null,
+  organisation_name: null,
+  person_type: 'unknown',
+  relevance: 'unsure',
+};
+
 function reviewItem(
   now: Date,
   id: string,
@@ -216,8 +230,7 @@ function buildReviewItems(now: Date): ReviewItemRow[] {
     reviewItem(now, 'demo-r02', {
       kind: 'same_person',
       person_id: 'demo-p08',
-      // The mailbox copy has not been saved as a person of its own yet.
-      other_person_id: null,
+      other_person_id: MAILBOX_ORTEGA.id,
       question:
         'Are Rafael Ortega on LinkedIn and R. Ortega in your mailbox the same person?',
     }),
@@ -280,14 +293,17 @@ function buildRuns(now: Date): RunWithSteps[] {
 /** Builds the demo's tables around `now`. */
 export function createDemoData(now: Date): DemoTables {
   return {
-    people: DEMO_PEOPLE.map((seed) => ({
-      id: seed.id,
-      full_name: seed.fullName,
-      role_title: seed.role,
-      organisation_name: seed.organisation,
-      person_type: seed.type,
-      relevance: 'relevant',
-    })),
+    people: [
+      ...DEMO_PEOPLE.map((seed) => ({
+        id: seed.id,
+        full_name: seed.fullName,
+        role_title: seed.role,
+        organisation_name: seed.organisation,
+        person_type: seed.type,
+        relevance: seed.relevance,
+      })),
+      { ...MAILBOX_ORTEGA },
+    ],
     states: DEMO_PEOPLE.map((seed) => buildState(seed, now)),
     conversations: DEMO_PEOPLE.flatMap((seed) =>
       seed.threads.map((thread, index) => buildThread(seed, thread, index, now)),

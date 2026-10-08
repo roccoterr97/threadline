@@ -476,21 +476,21 @@ export const sampleMeetings: UpcomingMeetingRow[] = [
     subject: 'Coffee with Ana (Northwind)',
     meeting_at: '2026-03-13T10:00:00.000Z',
     person_id: 'p-01',
-    people: { full_name: 'Ana Ruiz', organisations: { name: 'Northwind Labs' } },
+    people: { full_name: 'Ana Ruiz', relevance: 'relevant', organisations: { name: 'Northwind Labs' } },
   },
   {
     id: 'c-21',
     subject: 'Intro with Brightfield',
     meeting_at: '2026-03-16T14:30:00.000Z',
     person_id: 'p-03',
-    people: { full_name: 'Carla Mendes', organisations: { name: 'Brightfield Ventures' } },
+    people: { full_name: 'Carla Mendes', relevance: 'relevant', organisations: { name: 'Brightfield Ventures' } },
   },
   {
     id: 'c-22',
     subject: null,
     meeting_at: '2026-03-18T08:00:00.000Z',
     person_id: 'p-10',
-    people: { full_name: 'Jonas Berg', organisations: null },
+    people: { full_name: 'Jonas Berg', relevance: 'relevant', organisations: null },
   },
 ];
 

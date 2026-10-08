@@ -151,8 +151,9 @@ REFRESH_FUNCTION_DIRECTORY: Final[Path] = (
     REPOSITORY_ROOT / "supabase" / "functions" / REFRESH_FUNCTION_SLUG
 )
 
-#: The files deployed, the first being the one Supabase starts.
-REFRESH_FUNCTION_FILES: Final[tuple[str, ...]] = ("index.ts", "refresh.ts")
+#: The files deployed, the first being the one Supabase starts. ``daily.ts`` is
+#: the on-time morning start, which lives in the same function.
+REFRESH_FUNCTION_FILES: Final[tuple[str, ...]] = ("index.ts", "refresh.ts", "daily.ts")
 
 #: Where a project serves an Edge Function, below the project address.
 FUNCTION_PATH: Final[str] = "/functions/v1/{slug}"
@@ -190,7 +191,32 @@ class RefreshSetting(StrEnum):
     BRANCH = "GITHUB_REF"
     DASHBOARD_ORIGIN = "DASHBOARD_ORIGIN"
     GITHUB_TOKEN = "GITHUB_TOKEN_REFRESH"
+    #: The key the database's timer proves itself with (the on-time morning start).
+    DAILY_START_KEY = "DAILY_START_KEY"
 
 
 #: The runner the set-up switches on: the GitHub workflow.
 REFRESH_TARGET_GITHUB: Final[str] = "github"
+
+# --- The on-time morning start ------------------------------------------------
+
+#: The function's scheduled path, below its address, which the database's
+#: timer calls. ``daily.ts`` and migration 0016 use the same path.
+DAILY_START_PATH: Final[str] = "/daily-start"
+
+#: Bytes of randomness in the key the timer sends; it becomes 43 characters,
+#: above the 32 the function and the database require.
+DAILY_START_KEY_BYTES: Final[int] = 32
+
+#: The database function that saves the address and key in Vault and makes
+#: sure the timer exists (migration 0016).
+DAILY_START_SAVE_FUNCTION: Final[str] = "save_daily_start_settings"
+
+#: The database function the doctor and the set-up read the state from.
+DAILY_START_STATUS_FUNCTION: Final[str] = "daily_start_status"
+
+#: How often the timer looks, in minutes, as said to the owner (migration 0016's job).
+DAILY_START_INTERVAL_MINUTES: Final[int] = 15
+
+#: Where the set-up and the doctor point the owner for the on-time morning start.
+DAILY_START_GUIDE_SECTION: Final[str] = "docs/refresh-now.md, 'The on-time morning start'"

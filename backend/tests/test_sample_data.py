@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
+from typing import Any, cast
+from zoneinfo import ZoneInfo
 
 import pytest
+from typer.testing import CliRunner
 
-from tests.conftest import FakeSupabaseClient
+from tests.conftest import FakeSupabaseClient, as_client
+from tests.summary_world import overview_rows, sample_data
+from tracker.cli.main import build_cli
 from tracker.domain.enums import Channel, ContactStatus, Relevance, RunStatus, WaitingOn
 from tracker.repositories import Repositories
 from tracker.services.sample_data import (
@@ -16,9 +21,14 @@ from tracker.services.sample_data import (
     SampleDataSet,
     read_sample_data,
 )
+from tracker.shared.clock import FixedClock
+from tracker.shared.config import Settings
 
 #: The day the sample set was written; "overdue" is judged against it.
 WRITTEN_ON = date(2026, 9, 18)
+
+#: A moment on that day, for loading the set exactly as the file holds it.
+WRITTEN_AT = datetime(2026, 9, 18, 7, 0, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -111,7 +121,7 @@ def test_loading_writes_every_table(
     repositories: Repositories,
     fake_client: FakeSupabaseClient,
 ) -> None:
-    counts = SampleDataService(repositories).load(dataset)
+    counts = SampleDataService(repositories, FixedClock(WRITTEN_AT)).load(dataset)
 
     assert {count.table for count in counts} == set(fake_client.tables)
     assert len(fake_client.tables["people"]) == 12
@@ -122,7 +132,7 @@ def test_loading_twice_creates_no_duplicates(
     repositories: Repositories,
     fake_client: FakeSupabaseClient,
 ) -> None:
-    service = SampleDataService(repositories)
+    service = SampleDataService(repositories, FixedClock(WRITTEN_AT))
     service.load(dataset)
     service.load(dataset)
 
@@ -135,7 +145,7 @@ def test_clearing_removes_exactly_what_was_loaded(
     repositories: Repositories,
     fake_client: FakeSupabaseClient,
 ) -> None:
-    service = SampleDataService(repositories)
+    service = SampleDataService(repositories, FixedClock(WRITTEN_AT))
     service.load(dataset)
 
     service.clear(dataset)
@@ -148,7 +158,7 @@ def test_clearing_leaves_other_rows_alone(
     repositories: Repositories,
     fake_client: FakeSupabaseClient,
 ) -> None:
-    service = SampleDataService(repositories)
+    service = SampleDataService(repositories, FixedClock(WRITTEN_AT))
     service.load(dataset)
     real_person = {"id": "99999999-9999-4999-8999-999999999999", "full_name": "Real Person"}
     fake_client.tables["people"].append(real_person)
@@ -166,3 +176,91 @@ def test_a_missing_file_is_reported(tmp_path: object) -> None:
     assert isinstance(tmp_path, Path)
     with pytest.raises(ValidationFailedError, match="could not be read"):
         read_sample_data(tmp_path / "absent.json")
+
+
+# --- loading moves the sample's dates to the owner's today ----------------------
+
+#: A later day to load the sample on: 16 days after it was written.
+LOADED_ON = datetime(2026, 10, 4, 7, 0, tzinfo=UTC)
+
+
+def _counts_on(tables: dict[str, list[dict[str, object]]], today: date) -> tuple[int, int]:
+    """How many people are overdue and how many are due a chase, seen on ``today``."""
+    rows = overview_rows(cast("dict[str, list[dict[str, Any]]]", tables), today=today)
+    return sum(row["is_overdue"] for row in rows), sum(row["is_chase_due"] for row in rows)
+
+
+def test_loaded_later_the_sample_is_exactly_as_overdue_as_on_the_day_it_was_written(
+    dataset: SampleDataSet, repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    SampleDataService(repositories, FixedClock(LOADED_ON)).load(dataset)
+
+    later = _counts_on(fake_client.tables, LOADED_ON.date())
+
+    assert later == _counts_on(sample_data(), WRITTEN_ON)
+    assert later != _counts_on(sample_data(), LOADED_ON.date())  # unmoved, it would look stale
+
+
+def test_loading_moves_every_date_by_whole_days(
+    dataset: SampleDataSet, repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    SampleDataService(repositories, FixedClock(LOADED_ON)).load(dataset)
+
+    started = sorted(str(row["started_at"]) for row in fake_client.tables["run_logs"])
+    loaded = _due_dates(fake_client.tables["person_states"])
+    written = _due_dates(sample_data()["person_states"])
+
+    assert [moment[:19] for moment in started] == ["2026-10-03T05:00:00", "2026-10-04T05:00:00"]
+    assert written
+    assert loaded == {key: day + timedelta(days=16) for key, day in written.items()}
+
+
+def _due_dates(rows: list[dict[str, object]]) -> dict[str, date]:
+    """Each person's follow-up date, for the people who have one."""
+    return {
+        str(row["person_id"]): date.fromisoformat(str(row["due_date"]))
+        for row in rows
+        if row.get("due_date") is not None
+    }
+
+
+def test_the_day_moved_to_is_the_owners_today(
+    dataset: SampleDataSet, repositories: Repositories, fake_client: FakeSupabaseClient
+) -> None:
+    """Late evening in UTC is already the next day in Tokyo."""
+    evening = datetime(2026, 9, 18, 22, 0, tzinfo=UTC)
+    SampleDataService(repositories, FixedClock(evening, ZoneInfo("Asia/Tokyo"))).load(dataset)
+
+    started = sorted(str(row["started_at"]) for row in fake_client.tables["run_logs"])
+
+    assert started[-1].startswith("2026-09-19T05:00:00")
+
+
+def test_loading_leaves_the_file_and_the_set_it_read_unmoved(
+    dataset: SampleDataSet, repositories: Repositories
+) -> None:
+    before = dataset.model_dump()
+
+    SampleDataService(repositories, FixedClock(LOADED_ON)).load(dataset)
+
+    assert dataset.model_dump() == before
+    assert read_sample_data().run_logs[-1].started_at.date() == WRITTEN_ON
+
+
+def test_the_command_loads_the_sample_dated_as_of_today(
+    monkeypatch: pytest.MonkeyPatch, fake_client: FakeSupabaseClient, settings: Settings
+) -> None:
+    monkeypatch.setattr(
+        "tracker.cli.commands.system.create_database_client",
+        lambda _settings: as_client(fake_client),
+    )
+    monkeypatch.setattr(
+        "tracker.cli.commands.system.SystemClock",
+        lambda zone=UTC: FixedClock(LOADED_ON, zone),
+    )
+
+    result = CliRunner().invoke(build_cli(), ["sample", "load"])
+
+    assert result.exit_code == 0
+    assert settings.supabase_url
+    assert _counts_on(fake_client.tables, LOADED_ON.date()) == _counts_on(sample_data(), WRITTEN_ON)

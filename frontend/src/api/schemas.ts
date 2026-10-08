@@ -149,6 +149,7 @@ export const upcomingMeetingRowSchema = z.object({
   people: z
     .object({
       full_name: z.string(),
+      relevance: relevanceSchema,
       organisations: z.object({ name: z.string() }).nullable(),
     })
     .nullable(),

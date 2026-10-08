@@ -8,12 +8,13 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 
 from pydantic import SecretStr
 
 from tracker.domain.categories import Category
+from tracker.domain.daily_start import DailyStartStatus
 from tracker.infrastructure.github_cli import GitHubRepository
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
@@ -25,9 +26,12 @@ from tracker.services.profile.applier import ApplyReport, CategoryChanges
 from tracker.services.profile.choice import Choice, Effect, SavedChoice
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.ports import SetupGateways
+from tracker.services.setup.workflow_schedule import Schedule, write_schedule
 from tracker.shared.clock import FixedClock
 from tracker.shared.constants.github import WORKFLOW_FILE
 from tracker.shared.errors import (
+    DatabaseStructureMissingError,
+    DatabaseUnavailableError,
     MailboxPasswordError,
     SourceAuthError,
     SourceRequestRejectedError,
@@ -43,6 +47,8 @@ GOOD_LINKEDIN = "linkedin-good"
 OWNER_EMAIL = "you@example.com"
 GOOD_APP_PASSWORD = "wxyzwxyzwxyzwxyz"
 GOOD_GITHUB_TOKEN = "github_pat_good"
+#: The key the set-up makes for the on-time morning start's timer.
+DAILY_START_KEY = "daily-start-key-0123456789abcdefghijklmnopqrstuv"
 
 
 class ScriptedIO:
@@ -133,6 +139,14 @@ class FakeAdmin:
     owners: list[str] = field(default_factory=list)
     users: dict[str, str] = field(default_factory=dict)
     key_ok: bool = True
+    #: The on-time morning start: the daily time and zone the database holds,
+    #: the timer's saved address and key, and whether its job exists.
+    schedule: tuple[time, str] | None = None
+    daily_start: tuple[str, str] | None = None
+    job_scheduled: bool = False
+    last_started_on: date | None = None
+    #: Makes the next database call fail as an outage.
+    daily_start_down: bool = False
 
     def has_columns(self, table: str, columns: str) -> bool:
         return self._marker_present(table, columns)
@@ -172,6 +186,33 @@ class FakeAdmin:
             return None
         self.users[email] = f"user-{len(self.users) + 1}"
         return self.users[email]
+
+    def save_daily_schedule(self, run_at: time, time_zone: str) -> None:
+        self._daily_start_reachable()
+        self.schedule = (run_at, time_zone)
+
+    def save_daily_start(self, function_url: str, key: SecretStr) -> None:
+        self._daily_start_reachable()
+        self.daily_start = (function_url, key.get_secret_value())
+        self.job_scheduled = True
+
+    def daily_start_status(self) -> DailyStartStatus:
+        self._daily_start_reachable()
+        return DailyStartStatus(
+            job_scheduled=self.job_scheduled,
+            switched_on=self.daily_start is not None,
+            run_at=self.schedule[0] if self.schedule else None,
+            time_zone=self.schedule[1] if self.schedule else None,
+            last_started_on=self.last_started_on,
+        )
+
+    def _daily_start_reachable(self) -> None:
+        if self.daily_start_down:
+            message = "Supabase did not answer the daily_start request"
+            raise DatabaseUnavailableError(message)
+        if "0017_daily_start" not in self.present:
+            message = "the database does not have the on-time morning start yet"
+            raise DatabaseStructureMissingError(message)
 
     def _marker_present(self, table: str, detail: str) -> bool:
         for name, marker in KNOWN_MIGRATIONS.items():
@@ -347,11 +388,18 @@ class FakeChoices:
         return SavedChoice(changes=changes, effect=effect, profile_file_wins=self.profile_file_wins)
 
 
+#: The schedule every test starts from, whatever time the owner chose for the
+#: repository's own workflow file.
+TEST_SCHEDULE = Schedule(time(7, 0), "UTC")
+
+
 class FakeWorkflow:
-    """The workflow file, in memory; starts as the real one."""
+    """The workflow file, in memory; starts as the real one at the test schedule."""
 
     def __init__(self, text: str | None = None) -> None:
-        self.text = WORKFLOW_FILE.read_text(encoding="utf-8") if text is None else text
+        if text is None:
+            text = write_schedule(WORKFLOW_FILE.read_text(encoding="utf-8"), TEST_SCHEDULE)
+        self.text = text
         self.writes = 0
 
     def read(self) -> str:
@@ -516,7 +564,12 @@ class World:
             sleep=sleep,
             local_time_zone=lambda: self.local_zone,
             github_api=self.github_api,
-            refresh_function=lambda: {"index.ts": b"serve()", "refresh.ts": b"export {}"},
+            refresh_function=lambda: {
+                "index.ts": b"serve()",
+                "refresh.ts": b"export {}",
+                "daily.ts": b"export {}",
+            },
+            make_daily_start_key=lambda: DAILY_START_KEY,
         )
         return SetupContext(io=self.io, env=self.env, gateways=gateways)
 

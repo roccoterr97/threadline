@@ -354,3 +354,28 @@ def test_a_name_the_client_cannot_list_is_asked_for_by_itself(
         plain.name: plain.id,
     }
     assert len(fake_client.executed) == 3
+
+
+def test_rows_sharing_a_timestamp_are_paged_in_a_stable_order(
+    repositories: Repositories,
+) -> None:
+    """One bulk upsert stamps every row with the same moment.
+
+    Sorting on that moment alone leaves the database free to return the rows
+    in a different order per request, so a page could repeat a row and skip
+    another. The primary key settles the tie.
+    """
+    people = [
+        Person(full_name=f"Person {index}", relevance=Relevance.RELEVANT) for index in range(5)
+    ]
+    # Written in reverse key order, so insertion order alone cannot pass.
+    repositories.people.bulk_upsert(sorted(people, key=lambda person: str(person.id), reverse=True))
+
+    pages = [
+        repositories.people.list_by_relevance(Relevance.RELEVANT, limit=2, offset=offset)
+        for offset in (0, 2, 4)
+    ]
+
+    paged = [str(person.id) for page in pages for person in page]
+    assert paged == sorted(str(person.id) for person in people)
+    assert [str(person.id) for person in repositories.people.list_every()] == paged

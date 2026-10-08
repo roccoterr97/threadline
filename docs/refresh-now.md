@@ -8,6 +8,11 @@ want one: it reads new messages and works out where each person stands. It does
 Until you switch it on, the button tells you that it is not switched on yet.
 Nothing else changes.
 
+Switching it on also switches on the **on-time morning start**: GitHub often
+starts the daily update hours later than the time you chose, so your Supabase
+project starts it on time instead. See
+[The on-time morning start](#the-on-time-morning-start) below.
+
 ## How it works, in one paragraph
 
 The button cannot hold a secret key, because anyone can read what a web page
@@ -39,6 +44,61 @@ you press it many times a day on GitHub, keep an eye on your monthly minutes
 
 ---
 
+## The on-time morning start
+
+**The problem.** GitHub decides itself when to start a scheduled workflow. For
+some copies of Threadline it starts the daily update five or six hours after
+the time you chose, every day.
+
+**The fix.** Your Supabase project has a built-in timer. Every 15 minutes it
+asks the same `refresh-now` helper: "is it time?" The helper looks at your time
+zone and your daily time (both kept in your database), and once that time has
+passed it asks GitHub to start the daily update straight away, the same way
+the button starts a refresh. It does this at most once per day, counted in
+your time zone, so a morning never runs twice:
+
+- before your daily time, it does nothing;
+- once a day's update has started (by the timer, by GitHub's own schedule or
+  by you pressing **Run workflow**), it does nothing more that day;
+- if GitHub refuses or cannot be reached, it tries again 15 minutes later.
+
+So the update starts at most about 15 minutes after your time, usually within
+a few minutes.
+
+**GitHub's own schedule stays, as a backup.** When it finally starts its own
+late run, that run sees that today's update already started and stops after a
+few seconds, with the note "Today's daily run already started on time". If
+your Supabase project was down that morning, GitHub's run goes ahead as
+before, only later. And Threadline never sends the morning e-mail twice on
+the same day, whatever happens.
+
+**If the on-time update fails** (a red cross on GitHub), GitHub's own later
+start tries the morning once more.
+
+**What it costs: nothing.** The timer (`pg_cron`), the web calls it makes
+(`pg_net`) and the safe it keeps its key in (Vault) are built into every
+Supabase project, the free plan included. About 100 calls a day to the helper
+are a tiny part of the 500,000 a month the free plan includes. On GitHub it
+uses the same minutes as before: one daily update a day, plus a few seconds
+for the backup run that stops.
+
+**The daily time lives in two places**, the workflow file (for GitHub's
+backup) and your database (for the timer). `uv run tracker setup schedule` and
+`uv run tracker setup timezone` change both, so they never drift apart.
+`uv run tracker doctor` shows an **On-time morning start** line that says
+`ok` with the time it uses, and warns if the two places disagree.
+
+**Using a Claude cloud routine instead of GitHub?** Then nothing changes for
+you: the timer sees that your updates do not run on GitHub and does nothing.
+Your routine keeps its own schedule.
+
+**The key.** The timer proves itself to the helper with a long random key that
+the set-up makes. It is kept in your Supabase project only (in the helper's
+settings and in Vault), never on your computer and never shown. Anyone else
+who calls the helper's timer address is turned away.
+
+---
+
 ## The quick way: one command
 
 If your daily update runs on **GitHub** (the main way), switch it on with:
@@ -54,8 +114,14 @@ set-up guide](./setup-your-accounts.md) walks through it, with what to tick on
 each page. If you set Threadline up before Refresh now existed, run
 `uv run tracker setup database` first (step 1).
 
-**✅ Check:** the set-up ends with `Refresh now is switched on`, and
-`uv run tracker doctor` shows `ok` on its **Refresh now** line.
+**✅ Check:** the set-up says `Refresh now is switched on` and ends with
+`On-time morning start is switched on: Supabase starts the daily run at …`.
+`uv run tracker doctor` shows `ok` on its **Refresh now** and
+**On-time morning start** lines.
+
+If you switched Refresh now on before the on-time morning start existed, run
+`uv run tracker setup database` and then `uv run tracker setup refresh` once
+more: that is all it takes.
 
 **If not:** follow the line the set-up printed. If it keeps failing, or your
 daily update runs as a **Claude routine**, use the manual way below.
@@ -78,7 +144,7 @@ every step there are two lines:
 
 ## 1. Update the database
 
-Refresh now needs a few small additions to your database, in three files.
+Refresh now needs a few small additions to your database, in five files.
 `tracker setup database` adds every one you do not have yet (and any later
 file you are missing, in the same go):
 
@@ -91,6 +157,9 @@ file you are missing, in the same go):
   makes sure no two of your categories share a name, whatever the capitals.
 - `0016_person_notes`: not about this button either. It adds the notes you can
   type on a person's page.
+- `0017_daily_start`: the on-time morning start. It adds your daily time to
+  the database, a list of the days it started an update, and the timer that
+  calls the helper every 15 minutes (it does nothing until step 6).
 
 **What you do:** in Terminal, in the `backend` folder of your copy, run:
 
@@ -107,7 +176,8 @@ already, `Every structure file is already applied.`).
 **If not:** open **Supabase → SQL Editor → New query**, paste the whole of
 `supabase/migrations/0013_refresh_requests.sql`, click **Run**, and wait for
 `Success. No rows returned`. Then do the same with `0014_refresh_cooldown.sql`,
-`0015_category_names.sql` and `0016_person_notes.sql`, in that order.
+`0015_category_names.sql`, `0016_person_notes.sql` and `0017_daily_start.sql`,
+in that order.
 
 ---
 
@@ -197,6 +267,11 @@ project.
 | `GITHUB_REPOSITORY` | your repository, e.g. `your-name/threadline` |
 | `GITHUB_REF` | the branch, usually `main` (you can leave this out for `main`) |
 | `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://threadline-you.vercel.app` |
+| `DAILY_START_KEY` | a long random key for the on-time morning start (see below) |
+
+For `DAILY_START_KEY`, make a key of at least 32 letters and digits. In
+Terminal, `openssl rand -hex 32` prints one. Keep it on the screen until
+step 6, which needs the same key; then close the window.
 
 **For the Claude routine (2B):**
 
@@ -236,7 +311,9 @@ Choose **one** of the two ways.
    `supabase/functions/refresh-now/index.ts` from your copy of Threadline.
 4. Add a second file with the editor's **add file** button (usually a `+`
    next to the file list), name it exactly `refresh.ts`, and paste the whole
-   of `supabase/functions/refresh-now/refresh.ts`.
+   of `supabase/functions/refresh-now/refresh.ts`. Add a third file the same
+   way, named exactly `daily.ts`, with the whole of
+   `supabase/functions/refresh-now/daily.ts`.
 5. Click **Deploy function** and wait 10 to 30 seconds.
 6. Open the function's **Details** (or **Settings**) and switch
    **Enforce JWT verification** (sometimes called **Verify JWT**) **off**.
@@ -247,9 +324,9 @@ Choose **one** of the two ways.
 **✅ Check:** `refresh-now` appears in the Edge Functions list with a green
 status.
 
-**If not:** if the editor has no way to add a second file, use 4B instead.
-If the deploy fails with a message about `refresh.ts`, check that the second
-file's name is exactly `refresh.ts`.
+**If not:** if the editor has no way to add more files, use 4B instead.
+If the deploy fails with a message about `refresh.ts` or `daily.ts`, check
+that the file's name is exactly that.
 
 > The website editor keeps no history. That is fine here: the files in your
 > copy of Threadline are the originals, and you can paste them again at any
@@ -307,6 +384,33 @@ says what to do.
 
 ---
 
+## 6. Switch on the on-time morning start
+
+Only for GitHub (2A); with a Claude routine, skip this step.
+
+Open **Supabase → SQL Editor → New query**, paste the lines below, and change
+three things: `<project-id>` (the part before `.supabase.co` in your Supabase
+address), `<the key>` (the `DAILY_START_KEY` from step 3, between the quotes),
+and `07:00` (your daily time, as in the workflow file). Then click **Run**.
+
+```sql
+update public.app_settings set daily_run_time = '07:00' where singleton;
+select public.save_daily_start_settings(
+  'https://<project-id>.supabase.co/functions/v1/refresh-now/daily-start',
+  '<the key>'
+);
+```
+
+**✅ Check:** Supabase shows one result row and no error. Run
+`uv run tracker doctor`: the **On-time morning start** line says `ok`.
+
+**If not:** `function public.save_daily_start_settings does not exist` means
+step 1 was not finished: apply `0017_daily_start.sql`. `the on-time start key
+must be at least 32 characters` means the key is too short: make a longer
+one, and change `DAILY_START_KEY` in step 3 to the same key.
+
+---
+
 ## Renew the key
 
 GitHub keys expire on the date you chose in step 2A; a Claude routine key
@@ -334,4 +438,15 @@ it, and saved. Then try once more.
 
 Delete the `refresh-now` function in **Supabase → Edge Functions**, and delete
 the key on GitHub (**Fine-grained tokens**) or on the routine (remove the API
-trigger). The button then says that Refresh now is not switched on.
+trigger). The button then says that Refresh now is not switched on, and the
+on-time morning start stops too: GitHub's own schedule starts the daily
+update, as before (often late).
+
+To switch off **only** the on-time morning start and keep the button, run this
+in **Supabase → SQL Editor**:
+
+```sql
+select cron.unschedule('threadline-daily-start');
+```
+
+`uv run tracker setup refresh` switches it back on.

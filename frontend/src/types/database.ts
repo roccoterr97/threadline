@@ -155,6 +155,7 @@ export interface UpcomingMeetingRow {
   person_id: string | null;
   people: {
     full_name: string;
+    relevance: Relevance;
     organisations: { name: string } | null;
   } | null;
 }

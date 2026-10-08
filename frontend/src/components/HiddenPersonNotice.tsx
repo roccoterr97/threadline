@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { upcomingMeetingsQueryKey } from '../api/meetings';
 import { markPersonAsRelevant } from '../api/overrides';
 import { peopleQueryKey } from '../api/people';
 import * as copy from '../copy/en';
@@ -30,7 +31,12 @@ export function HiddenPersonNotice() {
 
   const undo = useMutation({
     mutationFn: (id: string) => markPersonAsRelevant(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: peopleQueryKey }),
+    // Back on the list, so their meetings in "Coming up" open their page again.
+    onSuccess: () =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: peopleQueryKey }),
+        queryClient.invalidateQueries({ queryKey: upcomingMeetingsQueryKey }),
+      ]),
   });
 
   const hasState = readHiddenPerson(location.state) !== null;

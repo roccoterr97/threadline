@@ -70,6 +70,7 @@ async def request_with_retries(
     *,
     params: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
+    fresh_headers: Callable[[], Awaitable[dict[str, str]]] | None = None,
     data: dict[str, str] | None = None,
     json_body: object | None = None,
     files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
@@ -87,6 +88,9 @@ async def request_with_retries(
         url: The address to call.
         params: Query parameters, or ``None`` for a ready-made link.
         headers: Headers to send, including authorisation.
+        fresh_headers: Builds headers again before every attempt, such as an
+            access key: a retry can outlast the key's renewal margin, and a
+            key read once before the first attempt would then be refused.
         data: Form fields, for a request that carries a body.
         json_body: A JSON body, for a request that carries one instead.
         files: Files to upload as ``(field, (file name, content, type))``;
@@ -119,12 +123,15 @@ async def request_with_retries(
     sleep = asyncio.sleep if sleep is None else sleep
     last_error: httpx.HTTPError | None = None
     for attempt in range(1, max(attempts, 1) + 1):
+        attempt_headers = headers
+        if fresh_headers is not None:
+            attempt_headers = {**(headers or {}), **await fresh_headers()}
         try:
             response = await client.request(
                 method,
                 url,
                 params=params,
-                headers=headers,
+                headers=attempt_headers,
                 data=data,
                 json=json_body,
                 files=files,
@@ -163,6 +170,7 @@ async def get_with_retries(
     *,
     params: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
+    fresh_headers: Callable[[], Awaitable[dict[str, str]]] | None = None,
     source: str,
     attempts: int | None = None,
     delay: float | None = None,
@@ -182,6 +190,7 @@ async def get_with_retries(
         url,
         params=params,
         headers=headers,
+        fresh_headers=fresh_headers,
         source=source,
         attempts=attempts,
         delay=delay,

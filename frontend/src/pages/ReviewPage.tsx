@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { upcomingMeetingsQueryKey } from '../api/meetings';
 import { fetchPeople, peopleQueryKey } from '../api/people';
 import { answerReviewItem, fetchOpenReviewItems, reviewQueryKey } from '../api/review';
 import { EmptyState } from '../components/EmptyState';
@@ -15,6 +16,14 @@ interface AnswerInput {
   itemId: string;
   kind: ReviewItemRow['kind'];
   answer: ReviewAnswer;
+}
+
+const answerMutationKey = ['review', 'answer'] as const;
+
+/** Puts one card back in its place in the oldest-first list, unless it is already there. */
+function restoreItem(items: ReviewItemRow[], item: ReviewItemRow): ReviewItemRow[] {
+  if (items.some((existing) => existing.id === item.id)) return items;
+  return [...items, item].sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
 /**
@@ -65,31 +74,45 @@ export function ReviewPage() {
   // Only for the links to each person; the questions show fine without it.
   const people = useQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
 
-  const answer = useMutation<void, Error, AnswerInput, ReviewItemRow[] | undefined>({
+  const answer = useMutation<void, Error, AnswerInput, ReviewItemRow | undefined>({
+    mutationKey: answerMutationKey,
     mutationFn: ({ itemId, answer: value }) => answerReviewItem(itemId, value, clock.now()),
     onMutate: async ({ itemId }) => {
       setFailedItemId(null);
       setAnswered(null);
       await queryClient.cancelQueries({ queryKey: reviewQueryKey });
-      const previous = queryClient.getQueryData<ReviewItemRow[]>(reviewQueryKey);
+      const answeredItem = queryClient
+        .getQueryData<ReviewItemRow[]>(reviewQueryKey)
+        ?.find((item) => item.id === itemId);
       // The answered card disappears straight away; the count in the navigation
       // reads the same list, so it drops at the same moment.
       queryClient.setQueryData<ReviewItemRow[]>(
         reviewQueryKey,
         (current) => current?.filter((item) => item.id !== itemId) ?? [],
       );
-      return previous;
+      return answeredItem;
     },
-    onError: (_error, { itemId }, previous) => {
-      queryClient.setQueryData(reviewQueryKey, previous);
+    onError: (_error, { itemId }, answeredItem) => {
+      // Only the failed card comes back. Restoring the whole list as it was
+      // before would also bring back cards answered since then.
+      if (answeredItem !== undefined) {
+        queryClient.setQueryData<ReviewItemRow[]>(reviewQueryKey, (current) =>
+          restoreItem(current ?? [], answeredItem),
+        );
+      }
       setFailedItemId(itemId);
     },
     onSuccess: async (_result, { kind, answer: value }) => {
       setAnswered(copy.review.answered[kind][value]);
-      // An answer can change who counts as relevant, so both lists are refreshed.
+      // An answer can change who counts as relevant, so every list that
+      // depends on it is refreshed. The questions themselves are refetched
+      // only once no other answer is on its way: a refetch now would bring
+      // back a card whose answer the database has not stored yet.
+      const isLastAnswer = queryClient.isMutating({ mutationKey: answerMutationKey }) === 1;
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: reviewQueryKey }),
+        isLastAnswer && queryClient.invalidateQueries({ queryKey: reviewQueryKey }),
         queryClient.invalidateQueries({ queryKey: peopleQueryKey }),
+        queryClient.invalidateQueries({ queryKey: upcomingMeetingsQueryKey }),
       ]);
     },
   });

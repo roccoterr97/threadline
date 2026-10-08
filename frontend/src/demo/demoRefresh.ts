@@ -27,15 +27,21 @@ export function startedRefreshRun(sequence: number, now: Date): RunWithSteps {
   };
 }
 
-/** What the pretend refresh finds: a few new messages, no e-mail sent. */
-const REFRESH_STEPS: readonly (readonly [step: RunStep, found: number, added: number])[] = [
-  ['collect_linkedin', 3, 1],
-  ['collect_email', 6, 2],
-  ['assess', 3, 3],
+/**
+ * What the pretend refresh finds: the latest messages again, all of them
+ * already saved, so nothing new and no e-mail sent. It adds no data, so it
+ * must not claim to.
+ */
+const REFRESH_STEPS: readonly (readonly [step: RunStep, found: number])[] = [
+  ['collect_linkedin', 3],
+  ['collect_email', 6],
+  ['assess', 0],
 ];
 
+const NOTHING_NEW = 0;
+
 function finishedSteps(run: RunWithSteps): RunWithSteps['run_step_logs'] {
-  return REFRESH_STEPS.map(([step, found, added], index) => ({
+  return REFRESH_STEPS.map(([step, found], index) => ({
     id: `${run.id}-s${index}`,
     created_at: run.started_at,
     updated_at: run.started_at,
@@ -43,13 +49,13 @@ function finishedSteps(run: RunWithSteps): RunWithSteps['run_step_logs'] {
     step,
     status: 'success',
     items_found: found,
-    items_new: added,
+    items_new: NOTHING_NEW,
     error_code: null,
     error_detail: null,
   }));
 }
 
-/** The run as it looks at `now`: still running, or finished with a few new messages. */
+/** The run as it looks at `now`: still running, or finished having found nothing new. */
 export function settledRun(run: RunWithSteps, now: Date): RunWithSteps {
   if (!run.id.startsWith(REFRESH_ID_PREFIX) || run.status !== 'running') return run;
   const finishAt =

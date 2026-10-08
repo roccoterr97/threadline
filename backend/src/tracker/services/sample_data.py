@@ -4,6 +4,12 @@ The sample set lets the dashboard, the assessment and the morning e-mail be
 built and demonstrated before any real message has been collected. Every record
 carries a fixed identifier, so loading it twice changes nothing and clearing it
 removes exactly what it added — no real data is ever touched.
+
+The file is written as if today were :data:`SAMPLE_REFERENCE_DAY`. Loading it
+moves every date and time forward by the whole days between that day and the
+owner's today, so the sample looks as fresh as it did then: the same people
+are overdue, the same ones are due a chase, and yesterday's run is yesterday.
+The file itself is never changed, so tests that read it see the fixed dates.
 """
 
 from __future__ import annotations
@@ -11,6 +17,7 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Final, Protocol
 from uuid import UUID
@@ -31,6 +38,7 @@ from tracker.domain.models import (
     RunStepLog,
 )
 from tracker.repositories import Repositories
+from tracker.shared.clock import Clock
 from tracker.shared.errors import ValidationFailedError
 from tracker.shared.logging import get_logger
 
@@ -38,6 +46,10 @@ from tracker.shared.logging import get_logger
 SAMPLE_DATA_FILE: Final[Path] = (
     Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "sample_data.json"
 )
+
+#: The day the sample file is written as if it were today: its follow-up
+#: dates, messages and runs are all placed relative to it.
+SAMPLE_REFERENCE_DAY: Final[date] = date(2026, 9, 18)
 
 _log = get_logger(__name__)
 
@@ -113,34 +125,78 @@ def read_sample_data(path: Path = SAMPLE_DATA_FILE) -> SampleDataSet:
         raise ValidationFailedError(message) from error
 
 
+def shifted_to(dataset: SampleDataSet, today: date) -> SampleDataSet:
+    """Move every date and time of the sample set so its reference day becomes ``today``.
+
+    The move is in whole days, so a message sent at 09:12 on the reference
+    day is sent at 09:12 today, and every gap between two dates is kept.
+
+    Args:
+        dataset: The sample set as the file holds it.
+        today: The owner's today.
+
+    Returns:
+        A copy with every date and time moved; the same set when ``today`` is
+        the reference day.
+    """
+    offset = today - SAMPLE_REFERENCE_DAY
+    if not offset:
+        return dataset
+    moved = {
+        name: tuple(_shifted(record, offset) for record in getattr(dataset, name))
+        for name in SampleDataSet.model_fields
+    }
+    return SampleDataSet.model_validate(moved)
+
+
+def _shifted[RecordT: Record](record: RecordT, offset: timedelta) -> RecordT:
+    """Move every date and time field of one record by ``offset``.
+
+    A ``datetime`` is also a ``date``, so one check covers both kinds.
+    """
+    moved = {
+        name: value + offset
+        for name in type(record).model_fields
+        if isinstance(value := getattr(record, name), date)
+    }
+    return record.model_copy(update=moved)
+
+
 class SampleDataService:
     """Writes the sample set into the database and takes it out again."""
 
-    def __init__(self, repositories: Repositories) -> None:
+    def __init__(self, repositories: Repositories, clock: Clock) -> None:
         """Bind the service to the repositories it writes through.
 
         Args:
             repositories: The repository container.
+            clock: Decides the owner's today, which the sample's dates move to.
         """
         self._repositories = repositories
+        self._clock = clock
 
     def load(self, dataset: SampleDataSet) -> tuple[TableCount, ...]:
-        """Write every record, parents before children.
+        """Write every record, parents before children, dated as of today.
 
         Writes are upserts on fixed identifiers, so running this twice leaves
         the same rows behind.
 
         Args:
-            dataset: The sample set to write.
+            dataset: The sample set to write, as the file holds it.
 
         Returns:
             How many rows each table received, in write order.
         """
+        today = self._clock.today()
         written = tuple(
             TableCount(table.name, len(table.repository.bulk_upsert(table.records)))
-            for table in self._plan(dataset)
+            for table in self._plan(shifted_to(dataset, today))
         )
-        _log.info("sample_data_loaded", rows=sum(count.rows for count in written))
+        _log.info(
+            "sample_data_loaded",
+            rows=sum(count.rows for count in written),
+            days_moved=(today - SAMPLE_REFERENCE_DAY).days,
+        )
         return written
 
     def clear(self, dataset: SampleDataSet) -> tuple[TableCount, ...]:

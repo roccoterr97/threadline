@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, time
 from typing import Final, Protocol
 
+from tracker.domain.daily_start import DailyStartStatus
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.services.database_structure import (
     MigrationFile,
@@ -22,6 +23,7 @@ from tracker.shared.clock import Clock
 from tracker.shared.constants.collection import INITIAL_WINDOW_DAYS
 from tracker.shared.constants.setup import FUNCTION_MISSING_STATUS, REFRESH_GUARD_STATUSES
 from tracker.shared.constants.summary import KEY_REMINDER_DAYS
+from tracker.shared.errors import DatabaseStructureMissingError
 
 #: The command that repairs a step, shown in every fix.
 SETUP_COMMAND: Final[str] = "uv run tracker setup"
@@ -322,6 +324,59 @@ class RefreshNowCheck:
         if status == FUNCTION_MISSING_STATUS:
             return warning(self.name, "not switched on yet (optional)", self.fix)
         return problem(self.name, f"the helper answered status {status}", self.fix)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowTime:
+    """The daily time the GitHub workflow holds, and the zone it is read in."""
+
+    at: time
+    zone: str
+
+
+@dataclass(slots=True)
+class DailyStartCheck:
+    """The on-time morning start is switched on, reachable and in step with the workflow.
+
+    It is optional: without it GitHub's own timer starts the daily run, often
+    hours late. Its absence is a warning, a half-done set-up a problem.
+    """
+
+    read_status: Callable[[], DailyStartStatus]
+    status_of_post: Callable[[str], Awaitable[int]]
+    address: str
+    workflow_time: WorkflowTime | None
+    name: str = "On-time morning start"
+    fix: str = _setup("refresh")
+
+    async def run(self) -> CheckResult:
+        """Read the database's timer, call the function's scheduled path once, compare times."""
+        try:
+            status = self.read_status()
+        except DatabaseStructureMissingError:
+            detail = "not switched on: the database needs the newest structure file first"
+            return warning(self.name, detail, f"{_setup('database')}, then {self.fix}")
+        if not status.switched_on:
+            detail = "not switched on (optional): GitHub alone starts the daily run, often late"
+            return warning(self.name, detail, self.fix)
+        if not status.job_scheduled:
+            return problem(self.name, "the database's timer is missing or paused", self.fix)
+        answer = await self.status_of_post(self.address)
+        if answer not in REFRESH_GUARD_STATUSES:
+            return problem(self.name, f"the helper answered status {answer}", self.fix)
+        return self._compare_times(status)
+
+    def _compare_times(self, status: DailyStartStatus) -> CheckResult:
+        """Warn when the database's daily time is not the workflow's."""
+        held = f"{status.run_at:%H:%M} ({status.time_zone})" if status.run_at else "no time"
+        wanted = self.workflow_time
+        if wanted is not None and not status.matches(wanted.at, wanted.zone):
+            in_workflow = f"{wanted.at:%H:%M} ({wanted.zone})"
+            detail = f"the database starts it at {held}, the workflow at {in_workflow}"
+            return warning(self.name, detail, _setup("schedule"))
+        last = status.last_started_on
+        since = f"; last started a run on {last.isoformat()}" if last else ""
+        return ok(self.name, f"on: Supabase starts the daily run at {held}{since}")
 
 
 @dataclass(slots=True)

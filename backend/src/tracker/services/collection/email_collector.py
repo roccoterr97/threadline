@@ -21,6 +21,7 @@ from datetime import datetime
 
 from tracker.domain.enums import Channel, Direction, Relevance, RunStep
 from tracker.domain.mail import MailMessage
+from tracker.domain.models import Conversation
 from tracker.domain.prefilter import EmailThreadEvidence, is_relay_sender, judge_email_thread
 from tracker.domain.relay import real_sender
 from tracker.domain.rules import RulePack
@@ -35,7 +36,7 @@ from tracker.services.collection.models import (
     SaveStep,
 )
 from tracker.services.collection.window import last_collected_at, window_start
-from tracker.services.collection.writer import ConversationWriter
+from tracker.services.collection.writer import DECIDED_BEYOND_RULES, ConversationWriter
 from tracker.services.identity.matcher import IdentityMatcher
 from tracker.shared.clock import Clock
 from tracker.shared.concurrency import gather_all
@@ -233,9 +234,7 @@ class EmailCollector:
         # Threads do not depend on each other, so they are asked for together;
         # each mailbox reader decides how many requests it lets through at once.
         return await gather_all(
-            self._read_thread(
-                mailbox, conversation_id, seen, already_kept=conversation_id in already_kept
-            )
+            self._read_thread(mailbox, conversation_id, seen, already_kept.get(conversation_id))
             for conversation_id, seen in grouped.items()
         )
 
@@ -244,8 +243,7 @@ class EmailCollector:
         mailbox: MailboxReader,
         conversation_id: str,
         seen: Sequence[MailMessage],
-        *,
-        already_kept: bool,
+        kept: Conversation | None,
     ) -> RawConversation:
         """Judge one thread and, when it is kept, read it in full.
 
@@ -253,13 +251,20 @@ class EmailCollector:
             mailbox: The reader to fetch the whole thread and its bodies with.
             conversation_id: The mailbox's identifier for the thread.
             seen: The thread's messages that fell inside the window.
-            already_kept: Whether the database holds the thread as not noise.
+            kept: The stored row, when the database holds the thread as not noise.
 
         Returns:
             The thread; a noise thread carries no body.
         """
+        if kept is not None and kept.relevance_decided_by in DECIDED_BEYOND_RULES:
+            # The assessment or the owner already kept it; the rules, which
+            # only know "obvious machine mail", must not undo that answer.
+            whole = await mailbox.list_thread(conversation_id) or list(seen)
+            return self._thread(
+                conversation_id, await self._with_bodies(mailbox, whole), kept.relevance
+            )
         relevance = judge_email_thread(self._evidence(seen), self._rules)
-        if relevance is Relevance.NOISE and not already_kept:
+        if relevance is Relevance.NOISE and kept is None:
             return self._thread(conversation_id, seen, relevance)
         whole = await mailbox.list_thread(conversation_id) or list(seen)
         # The window may hold only part of a thread. Judging a thread the
@@ -273,23 +278,24 @@ class EmailCollector:
             return self._thread(conversation_id, whole, relevance)
         return self._thread(conversation_id, await self._with_bodies(mailbox, whole), relevance)
 
-    def _already_kept(self, grouped: dict[str, list[MailMessage]]) -> frozenset[str]:
-        """Thread identifiers the database does not already hold as noise.
+    def _already_kept(self, grouped: dict[str, list[MailMessage]]) -> dict[str, Conversation]:
+        """The stored threads the database does not already hold as noise.
 
         Args:
             grouped: The window's messages, by thread.
 
         Returns:
-            The identifiers worth re-reading in full before calling them noise.
+            The rows worth re-reading in full before calling them noise, by
+            thread identifier.
         """
         stored = self._repositories.conversations.list_by_sources(
             Channel.EMAIL, tuple(grouped)
         )
-        return frozenset(
-            conversation.source_conversation_id
+        return {
+            conversation.source_conversation_id: conversation
             for conversation in stored
             if conversation.relevance is not Relevance.NOISE
-        )
+        }
 
     async def _with_bodies(
         self,

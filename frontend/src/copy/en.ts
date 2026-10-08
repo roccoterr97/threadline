@@ -393,6 +393,7 @@ export const runs = {
   found: 'found',
   new: 'new',
   emailSent: 'sent',
+  emailSkipped: 'not sent: today’s email had already gone out',
   stillRunning: 'Still running',
   empty: {
     title: 'No runs yet',

@@ -20,8 +20,9 @@ from tracker.repositories import build_repositories
 from tracker.schemas.summary import SummaryEmail
 from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
 from tracker.services.summary.builder import SummaryBuilder
+from tracker.services.summary.once_a_day import OnceADay
 from tracker.services.summary.send_once import sent_marker
-from tracker.services.summary.sender import SummarySender, smtp_account
+from tracker.services.summary.sender import SentSummary, SummarySender, smtp_account
 from tracker.shared import config
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
@@ -102,10 +103,24 @@ def reopen_todays_run(client: FakeSupabaseClient) -> None:
             row["finished_at"] = None
 
 
-def sender_for(settings: Settings, client: FakeSupabaseClient, mailer: SmtpMailer) -> SummarySender:
+def sender_for(
+    settings: Settings,
+    client: FakeSupabaseClient,
+    mailer: SmtpMailer,
+    recorder: RunRecorder | None = None,
+) -> SummarySender:
     reopen_todays_run(client)
-    recorder = RunRecorder(build_repositories(as_client(client)), FixedClock(NOW))
-    return SummarySender(settings, lambda: mailer, recorder)
+    repositories = build_repositories(as_client(client))
+    recorder = recorder or RunRecorder(repositories, FixedClock(NOW))
+    once_a_day = OnceADay(repositories, FixedClock(NOW))
+    return SummarySender(settings, lambda: mailer, recorder, once_a_day)
+
+
+def sent_once(sender: SummarySender, path: Path) -> SentSummary:
+    """Send, and insist the summary went rather than being skipped."""
+    sent = sender.send(path)
+    assert isinstance(sent, SentSummary)
+    return sent
 
 
 def summary_step(client: FakeSupabaseClient) -> dict[str, object]:
@@ -165,11 +180,10 @@ def test_a_summary_sent_but_not_recorded_is_reported_and_never_sent_twice(
 ) -> None:
     client = sample_client()
     path = written_summary(imap_settings, tmp_path, client)
-    reopen_todays_run(client)
     server = FakeSmtp()
     lost = LostAfterSending(build_repositories(as_client(client)), FixedClock(NOW))
 
-    sent = SummarySender(imap_settings, lambda: mailer_on(server), lost).send(path)
+    sent = sent_once(sender_for(imap_settings, client, mailer_on(server), lost), path)
     with pytest.raises(ValidationFailedError, match="already sent"):
         sender_for(imap_settings, client, mailer_on(server)).send(path)
 
@@ -186,7 +200,7 @@ def test_a_sent_marker_for_another_run_stops_nothing(
     sent_marker(path).write_text(str(uuid4()), encoding="utf-8")
     server = FakeSmtp()
 
-    sent = sender_for(imap_settings, client, mailer_on(server)).send(path)
+    sent = sent_once(sender_for(imap_settings, client, mailer_on(server)), path)
 
     assert sent.step_error_code is None
     assert len(server.sent) == 1

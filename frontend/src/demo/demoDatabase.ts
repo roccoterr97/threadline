@@ -8,9 +8,9 @@ import {
 import type { SupabaseResult } from '../api/client';
 import { CategoryNameIndex } from '../domain/categorySettings';
 import type { Clock } from '../lib/clock';
-import type { Category } from '../types/database';
+import type { Category, Relevance, ReviewAnswer, ReviewItemRow } from '../types/database';
 import { localDate } from './demoCalendar';
-import type { DemoTables } from './demoData';
+import type { DemoPerson, DemoTables } from './demoData';
 import { changeNotes, checkNoteChanges, checkNoteInsert, newNoteRow } from './demoNotes';
 import { refreshIsRunning, settledRun, startedRefreshRun } from './demoRefresh';
 import { conversationsWithPeople, peopleOverview } from './demoViews';
@@ -106,6 +106,35 @@ function patch<T extends object>(rows: readonly T[], match: RowFilter, changes: 
   return rows.map((row) => (match(row) ? { ...row, ...changes } : row));
 }
 
+/** The relevance a person gets from the owner's answer: yes → relevant, no → noise. */
+function relevanceFor(answer: ReviewAnswer): Relevance {
+  return answer === 'yes' ? 'relevant' : 'noise';
+}
+
+/**
+ * The real database's `apply_relevance_answer` trigger: a relevance question
+ * about a person (not a conversation) whose answer has just been given or
+ * changed sets that person's relevance at once. `before` and `after` are the
+ * review items either side of one update, row for row.
+ */
+function applyRelevanceAnswers(
+  people: readonly DemoPerson[],
+  before: readonly ReviewItemRow[],
+  after: readonly ReviewItemRow[],
+): DemoPerson[] {
+  const decided = new Map<string, Relevance>();
+  after.forEach((item, index) => {
+    const { kind, person_id: personId, conversation_id: conversationId, answer } = item;
+    if (kind !== 'relevance' || personId === null || conversationId !== null) return;
+    if (answer === null || answer === before[index]?.answer) return;
+    decided.set(personId, relevanceFor(answer));
+  });
+  return people.map((person) => {
+    const relevance = decided.get(person.id);
+    return relevance === undefined ? person : { ...person, relevance };
+  });
+}
+
 export class DemoDatabase {
   private sequence = 0;
 
@@ -175,7 +204,9 @@ export class DemoDatabase {
     if (table === 'review_items') {
       const parsed = reviewAnswerChangesSchema.safeParse(changes);
       if (!parsed.success) return failure(PostgresCode.Check, BAD_REQUEST_STATUS);
-      tables.reviewItems = patch(tables.reviewItems, match, parsed.data);
+      const before = tables.reviewItems;
+      tables.reviewItems = patch(before, match, parsed.data);
+      tables.people = applyRelevanceAnswers(tables.people, before, tables.reviewItems);
       return success();
     }
     if (table === 'person_notes') {

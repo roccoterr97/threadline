@@ -64,16 +64,57 @@ jobs:
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      # gitleaks lists the commits of a pull request through the API.
-      pull-requests: read
+    env:
+      # The gitleaks release used; its archive is checked against the release's
+      # own list of checksums before it runs.
+      GITLEAKS_VERSION: 8.21.2
     steps:
       - uses: actions/checkout@v5
         with:
+          # Every commit, so any range below can be read.
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      # gitleaks-action@v2 scans a push as "<first pushed commit>^..<last>",
+      # which git refuses when that first commit has no parent: the first push
+      # of a copy made from the template. The range is chosen here instead.
+      - name: Choose the commits to scan
+        id: range
         env:
-          # The token GitHub issues to every workflow run, not a stored secret.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_COMMENTS: false
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "pull_request" ]; then
+            # Every commit of the pull request, merges included.
+            range="$PR_BASE..$PR_HEAD"
+          elif [ "$EVENT" = "push" ] \
+            && git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+            && git merge-base --is-ancestor "$BEFORE" "$AFTER"; then
+            # A normal push: every commit it added.
+            range="$BEFORE..$AFTER"
+          else
+            # A first push, a new branch or a rewritten history: the whole
+            # history behind the pushed commit, root commit included.
+            range="$AFTER"
+          fi
+          echo "Scanning: git log $range"
+          echo "log_opts=$range" >> "$GITHUB_OUTPUT"
+      - name: Install gitleaks
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/gitleaks/gitleaks/releases/download/v$GITLEAKS_VERSION"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL -o "$archive" "$base/$archive"
+          curl -sSfL -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep " $archive\$" checksums.txt | sha256sum --check --strict
+          tar -xzf "$archive" gitleaks
+      - name: Scan
+        env:
+          LOG_OPTS: ${{ steps.range.outputs.log_opts }}
+        # --redact keeps any secret found out of the log; a finding fails the job.
+        run: >-
+          "$RUNNER_TEMP/gitleaks" git --no-banner --redact --verbose --exit-code 1
+          --log-opts="$LOG_OPTS" .

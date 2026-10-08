@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection
+from datetime import datetime
 from typing import ClassVar
 
 from supabase import Client
@@ -65,6 +66,48 @@ class RunLogRepository(SupabaseRepository[RunLog]):
             "find_latest",
         )
         return self._first(rows)
+
+    def list_recent(self, triggers: Collection[RunTrigger], *, limit: int) -> list[RunLog]:
+        """Fetch the newest runs of some kinds, newest first.
+
+        The kinds are filtered in the query, so a busy afternoon of refreshes
+        can never push the morning runs out of the answer.
+
+        Args:
+            triggers: Only runs started by one of these count.
+            limit: How many runs to return at most.
+
+        Returns:
+            Up to ``limit`` runs, the most recently started first.
+        """
+        values = [trigger.value for trigger in triggers]
+        rows = self._run(
+            lambda: self._table()
+            .select(ALL_COLUMNS)
+            .in_("trigger", values)
+            .order("started_at", desc=True)
+            .limit(limit)
+            .execute(),
+            "list_recent",
+        )
+        return self._to_models(rows)
+
+    def list_started_since(self, triggers: Collection[RunTrigger], since: datetime) -> list[RunLog]:
+        """List every run of some kinds started at or after a moment.
+
+        Args:
+            triggers: Only runs started by one of these count.
+            since: The earliest start that counts; timezone-aware.
+
+        Returns:
+            The runs, oldest first.
+        """
+        values = [trigger.value for trigger in triggers]
+        rows = self._select_every(
+            lambda query: query.in_("trigger", values).gte("started_at", since.isoformat()),
+            "list_started_since",
+        )
+        return sorted(self._to_models(rows), key=lambda run: run.started_at)
 
     def list_running(self) -> list[RunLog]:
         """List the runs still marked running, oldest first.

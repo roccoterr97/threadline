@@ -25,13 +25,22 @@ from tests.test_microsoft import (
     mock_folders,
     mock_renewal,
 )
-from tracker.domain.enums import Channel, Direction, Relevance, RunStatus, RunStep, RunTrigger
+from tracker.domain.enums import (
+    Channel,
+    Direction,
+    Relevance,
+    RelevanceDecidedBy,
+    RunStatus,
+    RunStep,
+    RunTrigger,
+)
 from tracker.domain.models import Conversation, Message, RunLog, RunStepLog
 from tracker.infrastructure.secret_store import MICROSOFT_REFRESH_TOKEN, SecretStore
 from tracker.repositories import Repositories
 from tracker.services.collection.email_collector import EmailCollector
 from tracker.services.collection.linkedin_collector import LinkedInCollector
-from tracker.services.collection.models import NOT_CONFIGURED_LINE
+from tracker.services.collection.models import NOT_CONFIGURED_LINE, RawConversation, RawMessage
+from tracker.services.collection.writer import ConversationWriter
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings, get_settings, reset_settings_cache
 from tracker.shared.constants.collection import (
@@ -314,6 +323,73 @@ def test_a_group_thread_is_marked_in_its_subject(
 
     subject = conversation_named(fake_client, "2-group")["subject"]
     assert subject == f"{GROUP_SUBJECT_PREFIX} Introductions"
+
+
+def test_a_group_thread_never_puts_a_name_on_the_wrong_person(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """A comma inside a name must not shift every later name onto the wrong link."""
+    jane = "https://www.linkedin.com/in/jane-doe"
+    rows = [
+        linkedin_row(
+            "2-group-names",
+            sender=OWNER_PROFILE,
+            sender_name="Sam Rivera",
+            date="2026-09-11 08:00:00 UTC",
+            content="Introducing you two.",
+            title="Introductions",
+            recipients=f"{jane}, {ADA}",
+            recipient_names="Jane Doe, CFA, Ada Recruiter",
+        )
+    ]
+
+    collect_linkedin(repositories, settings, clock, rows)
+
+    names = {str(person["full_name"]) for person in rows_of(fake_client, "people")}
+    assert "CFA" not in names
+    assert "Jane Doe" not in names, "Jane's name cannot be told apart, so it is not guessed"
+    identities = {str(item["identifier"]) for item in rows_of(fake_client, "person_identities")}
+    assert {"linkedin.com/in/jane-doe", "linkedin.com/in/ada-recruiter"} <= identities
+
+
+def test_a_name_left_out_of_a_group_message_is_taken_from_a_later_reply(
+    repositories: Repositories,
+    fake_client: FakeSupabaseClient,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """Jane's own reply carries her name, so she is not left unnamed."""
+    jane = "https://www.linkedin.com/in/jane-doe"
+    rows = [
+        linkedin_row(
+            "2-group-reply",
+            sender=OWNER_PROFILE,
+            sender_name="Sam Rivera",
+            date="2026-09-11 08:00:00 UTC",
+            content="Introducing you two.",
+            title="Introductions",
+            recipients=f"{jane}, {ADA}",
+            recipient_names="Jane Doe, CFA, Ada Recruiter",
+        ),
+        linkedin_row(
+            "2-group-reply",
+            sender=jane,
+            sender_name="Jane Doe, CFA",
+            date="2026-09-11 09:00:00 UTC",
+            content="Thanks Sam, nice to meet you Ada.",
+            title="Introductions",
+            recipients=f"{OWNER_PROFILE}, {ADA}",
+            recipient_names="Sam Rivera, Ada Recruiter",
+        ),
+    ]
+
+    collect_linkedin(repositories, settings, clock, rows)
+
+    names = {str(person["full_name"]) for person in rows_of(fake_client, "people")}
+    assert "Jane Doe, CFA" in names
 
 
 def test_a_missing_linkedin_key_skips_linkedin_before_any_request(
@@ -766,6 +842,156 @@ def test_a_thread_already_kept_is_read_in_full_before_being_called_noise(
     assert again.relevance is not Relevance.NOISE, "a kept thread must not be flipped to noise"
     bodies = [m.body for m in repositories.messages.list_for_conversations([again.id])]
     assert any(bodies), "the stored message text must survive"
+
+
+def _store_thread(
+    repositories: Repositories,
+    conversation: Conversation,
+    messages: list[tuple[str, Direction, datetime, str | None]],
+) -> Conversation:
+    """Leave behind what an earlier run (and the assessment) stored for a thread."""
+    repositories.conversations.bulk_upsert([conversation])
+    repositories.messages.bulk_upsert(
+        [
+            Message(
+                conversation_id=conversation.id,
+                source_message_id=message_id,
+                direction=direction,
+                sent_at=sent_at,
+                body=body,
+            )
+            for message_id, direction, sent_at, body in messages
+        ]
+    )
+    return conversation
+
+
+def test_a_thread_the_assessment_kept_keeps_its_text_when_the_rules_call_it_noise(
+    repositories: Repositories,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """The rules see a machine-sent thread; the assessment knew better.
+
+    Judged on all of it, the thread still looks like noise to the rules, but
+    the assessment already said it matters. That decision stands, so the
+    thread must be read with its bodies, and the stored text must never be
+    overwritten with nothing.
+    """
+    ats = graph_message(
+        "m-ats",
+        conversation_id="t-ats",
+        address="newsletter@weekly.example",
+        name="Startup Weekly",
+        subject="This week in hiring",
+        sent="2026-09-10T09:00:00Z",
+        unsubscribe=True,
+    )
+    kept = _store_thread(
+        repositories,
+        Conversation(
+            channel=Channel.EMAIL,
+            source_conversation_id="t-ats",
+            subject="This week in hiring",
+            relevance=Relevance.RELEVANT,
+            relevance_decided_by=RelevanceDecidedBy.AI,
+        ),
+        [("m-ats", Direction.INBOUND, datetime(2026, 9, 10, 9, tzinfo=UTC), "Stored text.")],
+    )
+
+    with respx.mock:
+        _, bodies_route = mock_mailbox([ats])
+        SecretStore(repositories.app_secrets, SecretStr(TEST_ENCRYPTION_KEY), clock).put_secret(
+            MICROSOFT_REFRESH_TOKEN, "old-long-lived-key"
+        )
+        EmailCollector(repositories, settings, clock, JOB_SEARCH_RULES).collect()
+
+    again = repositories.conversations.find_by_source(Channel.EMAIL, "t-ats")
+    assert again is not None
+    assert again.relevance is Relevance.RELEVANT
+    assert again.subject == "This week in hiring"
+    bodies = [m.body for m in repositories.messages.list_for_conversations([kept.id])]
+    assert bodies == ["Made-up body text."], "the kept thread is read with its bodies"
+    assert bodies_route.called
+
+
+@pytest.mark.parametrize("unread", [None, ""])
+def test_a_stored_body_is_never_replaced_by_nothing_for_a_thread_that_keeps_text(
+    repositories: Repositories,
+    unread: str | None,
+) -> None:
+    """A thread kept by the owner, offered again without its text, keeps the text.
+
+    No text at all (``None``) and empty text (what an IMAP reader answers for a
+    message it cannot find again) both mean the run did not read it.
+    """
+    stored = _store_thread(
+        repositories,
+        Conversation(
+            channel=Channel.EMAIL,
+            source_conversation_id="t-owner",
+            subject="Offer letter",
+            relevance=Relevance.RELEVANT,
+            relevance_decided_by=RelevanceDecidedBy.OWNER,
+        ),
+        [("m-1", Direction.INBOUND, datetime(2026, 9, 10, 9, tzinfo=UTC), "Stored text.")],
+    )
+    offered = RawConversation(
+        channel=Channel.EMAIL,
+        source_conversation_id="t-owner",
+        subject=None,
+        relevance=Relevance.NOISE,
+        messages=(
+            RawMessage(
+                source_message_id="m-1",
+                sent_at=datetime(2026, 9, 10, 9, tzinfo=UTC),
+                direction=Direction.INBOUND,
+                sender_identifier="no-reply@ats.example",
+                body=unread,
+            ),
+        ),
+    )
+
+    ConversationWriter(repositories).write(Channel.EMAIL, [offered], {})
+
+    bodies = [m.body for m in repositories.messages.list_for_conversations([stored.id])]
+    assert bodies == ["Stored text."]
+
+
+def test_a_noise_thread_keeps_its_earliest_and_latest_dates(
+    repositories: Repositories,
+    settings: Settings,
+    clock: FixedClock,
+) -> None:
+    """A noise thread is rebuilt from the window only; its dates must not shrink."""
+    earliest = datetime(2026, 7, 2, 9, tzinfo=UTC)
+    owner_reply = datetime(2026, 7, 3, 9, tzinfo=UTC)
+    _store_thread(
+        repositories,
+        Conversation(
+            channel=Channel.EMAIL,
+            source_conversation_id="t-news",
+            relevance=Relevance.NOISE,
+            relevance_decided_by=RelevanceDecidedBy.AI,
+            first_message_at=earliest,
+            last_message_at=owner_reply,
+            last_inbound_at=earliest,
+            last_outbound_at=owner_reply,
+        ),
+        [
+            ("m-old", Direction.INBOUND, earliest, None),
+            ("m-reply", Direction.OUTBOUND, owner_reply, None),
+        ],
+    )
+
+    collect_email(repositories, settings, clock)
+
+    again = repositories.conversations.find_by_source(Channel.EMAIL, "t-news")
+    assert again is not None
+    assert again.first_message_at == earliest
+    assert again.last_message_at == datetime(2026, 9, 8, 6, tzinfo=UTC)
+    assert again.last_inbound_at == datetime(2026, 9, 8, 6, tzinfo=UTC)
+    assert again.last_outbound_at == owner_reply
 
 
 # --- shared senders ----------------------------------------------------------

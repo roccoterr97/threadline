@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -31,6 +32,7 @@ from tracker.shared.config import REPOSITORY_ROOT
 from tracker.shared.constants.github import WORKFLOW_FILE
 from tracker.shared.constants.profile import GUIDE_FILE, GUIDE_TEMPLATE_FILE, PROFILE_FILE
 from tracker.shared.constants.setup import (
+    DAILY_START_KEY_BYTES,
     MIGRATIONS_DIRECTORY,
     REFRESH_FUNCTION_DIRECTORY,
     REFRESH_FUNCTION_FILES,
@@ -70,6 +72,7 @@ def build_context(
         local_time_zone=detect_time_zone,
         github_api=GitHubApi(),
         refresh_function=read_refresh_function,
+        make_daily_start_key=make_daily_start_key,
     )
     return SetupContext(io=io or TerminalIO(), env=EnvFile(env_path), gateways=gateways)
 
@@ -110,3 +113,8 @@ def read_refresh_function() -> dict[str, bytes]:
 def make_encryption_key() -> str:
     """Generate a new key for the encrypted store."""
     return Fernet.generate_key().decode()
+
+
+def make_daily_start_key() -> str:
+    """Generate a new key for the on-time morning start's timer."""
+    return secrets.token_urlsafe(DAILY_START_KEY_BYTES)

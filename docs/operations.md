@@ -11,10 +11,11 @@ summary e-mail asks you to.
 
 ## What happens every morning
 
-At the time you chose (for example 07:07), GitHub starts the **Threadline
-run** workflow on your private copy, with your laptop off, and a Claude session
-runs the job on your own Claude subscription. (If you chose the alternative
-route, a Claude cloud routine does the same.) In about five to ten minutes it:
+At the time you chose (for example 07:07), the **Threadline run** workflow
+starts on your private copy on GitHub, with your laptop off, and a Claude
+session runs the job on your own Claude subscription. (If you chose the
+alternative route, a Claude cloud routine does the same.) In about five to ten
+minutes it:
 
 1. opens a new run in the database, so the morning is recorded whatever happens;
 2. checks that it can reach the database and read its stored keys;
@@ -33,6 +34,17 @@ The three results, as the dashboard's **Daily runs** page shows them:
 | **Worked** | `success` | Everything worked. |
 | **Partly worked** | `partial` | Something failed, the rest worked. The summary opens with "Something needs your attention" and says what to do. |
 | **Did not work** | `failed` | Nothing worked. The summary says so. |
+
+**Who starts it on time.** GitHub's own timer often starts the workflow hours
+late. With the **on-time morning start** switched on (it comes with
+`uv run tracker setup refresh`), your Supabase project looks every 15 minutes
+and starts the workflow as soon as your time has passed: usually within a few
+minutes, at most about 15. GitHub's own timer stays as a backup: when it
+fires later and finds today's run already started, it stops after a few
+seconds. If Supabase was down that morning, GitHub's run still goes ahead,
+only later. Either way the summary e-mail goes out once a day, never twice.
+How it works and what it costs (nothing): [`refresh-now.md`](refresh-now.md),
+"The on-time morning start".
 
 **It never silently switches to another way of working.** If LinkedIn or
 Microsoft refuses, you are told, and you decide what to do. See
@@ -272,6 +284,15 @@ same thing the dashboard's **Refresh now** does. Or, with your laptop on, open
 the project in Claude Code and type `/daily-run`: the same recipe, and the
 summary goes to the same address.
 
+**Running the morning again the same day** (GitHub's **Re-run jobs**, a second
+**Run workflow**, or `/daily-run` by hand) reads and judges everything as
+usual, but sends no second e-mail when today's summary already reached you:
+the run page shows the e-mail as skipped, naming the run that sent it. If the
+earlier e-mail never arrived because sending failed, the re-run sends it. To
+get a second copy on purpose, open the project in Claude Code and ask it to
+send today's summary again: `tracker summary build` and `tracker summary send`
+both accept `--send-again` for exactly this.
+
 **Change the time.** In the `backend` folder of your copy, run:
 
 ```bash
@@ -280,10 +301,10 @@ uv run tracker setup schedule
 
 Type the new time; it uses your saved time zone (change that with
 `uv run tracker setup timezone`). It shows the change to the workflow file and
-offers to commit and push it. GitHub uses the new time once it is pushed.
-Pick a few minutes past the hour (such as 07:07): GitHub is busiest on the hour
-and may start a run a few minutes late. (On the alternative route, edit the
-routine's schedule instead.)
+offers to commit and push it. It also saves the new time in your database,
+which is where the on-time morning start reads it, so the change counts from
+the next morning even before you push. GitHub's backup uses the new time once
+it is pushed. (On the alternative route, edit the routine's schedule instead.)
 
 **GitHub's free minutes.** A private repository on GitHub's free plan has
 2,000 minutes of Actions a month. One run takes about five to ten minutes, so a
@@ -304,10 +325,21 @@ Open **Actions → Threadline run**. Every run is one line:
 | Red cross at **Run the recipe with Claude** | The Claude key was refused or expired, or the session stopped. | [Renew the Claude key](#renew-the-claude-key-once-a-year); if it happens again, read the end of that step's log. |
 | Red cross at **Install Threadline** | GitHub could not install the tool, usually a passing outage. | Nothing; the next run tries again. |
 | Red cross at **Run the recipe with Claude** after 45 minutes of it | The run took too long and was stopped. | Nothing once; if it repeats, see [When something keeps failing](#when-something-keeps-failing). |
+| Green tick after a few seconds, with the note "Today's daily run already started on time" | GitHub's own late start found that the on-time morning start had already started today's run, so it stopped. | Nothing. This is the backup doing its job. |
 | A yellow warning at the top: "GitHub could not say whether a refresh is going" | GitHub's own service kept having a hiccup, so the daily run waited as long as a refresh can last and then went ahead. | Nothing. A refresh going at the same time keeps to its own run, so the summary still goes out. |
 
 GitHub e-mails you when a run fails, if your GitHub notification settings allow
 it. The log never contains your messages' text or any key.
+
+**The morning run still starts late?** Run `uv run tracker doctor` and read
+its **On-time morning start** line:
+
+| It says | What to do |
+|---------|------------|
+| `ok`, with your time | It is on. If one morning was still late, Supabase was probably down; GitHub's backup ran instead. Nothing to do. |
+| `not switched on` | `uv run tracker setup refresh` (and `uv run tracker setup database` first, if it says so). |
+| the database and the workflow disagree | `uv run tracker setup schedule`, and press Return to keep the time. |
+| the timer is missing, or the helper answered a status | `uv run tracker setup refresh` again. |
 
 ---
 

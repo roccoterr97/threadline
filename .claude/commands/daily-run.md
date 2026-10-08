@@ -255,6 +255,14 @@ removed the earlier one: the owner has the e-mail already. Skip step 6 and go
 to step 7. If it fails with any other line carrying a `code=`, there is nothing
 to send: note the code for your report, skip step 6 and go to step 7.
 
+If it prints `summary skipped · today's summary already went out with run …`,
+another daily run already sent today's e-mail (this run is a re-run, or a
+second run started the same day). It wrote no file and has already recorded
+the `summary_email` step itself: send nothing, record nothing, skip step 6 and
+go to step 7. In your report say "e-mail skipped — today's summary had already
+gone out". Never add `--send-again`: sending a second copy is the owner's
+decision.
+
 Read `work/summary.json`. It holds:
 
 - `recipient` — where it goes,
@@ -285,7 +293,8 @@ could not record it: never send it again, note it for your report and go on to
 step 7. If it fails it printed one line carrying a `code=` and has already
 recorded the failure: note it for your report and go on to step 7. If it says
 the summary was already sent, it sent nothing and recorded nothing: the owner
-has it already, so go on to step 7.
+has it already, so go on to step 7. If it prints `summary skipped · …`, it sent
+nothing and recorded the skip itself, as in step 5: go on to step 7.
 
 **6b. `delivery: gmail_connector`** — send one e-mail with the **Gmail
 connector** attached to this session:

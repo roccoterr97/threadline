@@ -18,6 +18,11 @@ in this order:
 4. **The owner's corrections win.** Anything he set by hand survives, whatever
    the assistant concluded; everything he did not set still updates.
 
+A noise verdict skips all four: the person is dropped. The exception is a person
+the owner has already judged himself. That person is kept, goes through the same
+four steps, and is always sent to the review list, so the disagreement between
+the owner and the assistant is put to the owner instead of being settled for him.
+
 Every function is pure: the current moment is passed in, never read.
 """
 
@@ -229,6 +234,8 @@ def decide(
     corrections: OwnerCorrections,
     now: datetime,
     calendar: OwnerCalendar,
+    *,
+    kept_by_owner: bool = False,
 ) -> AssessedState:
     """Turn one verdict into the state Threadline stores.
 
@@ -238,9 +245,13 @@ def decide(
         corrections: What the owner set by hand.
         now: The current instant.
         calendar: The owner's time zone and weekend.
+        kept_by_owner: Whether the owner has already judged this person, so a
+            noise verdict keeps them and asks instead of dropping them.
 
     Returns:
-        The state to store, with the owner's corrections already applied.
+        The state to store, with the owner's corrections already applied. A
+        noise verdict about a person the owner has not judged comes back as
+        the assistant gave it, because that person is dropped.
     """
     state = AssessedState(
         status=values.status,
@@ -254,8 +265,10 @@ def decide(
         is_noise=values.relevance is Relevance.NOISE,
         needs_review=needs_review(values),
     )
-    if state.is_noise:
+    if state.is_noise and not kept_by_owner:
         return state
+    if state.is_noise:
+        state = replace(state, needs_review=True)
     state = _apply_gone_quiet(state, timing, now)
     state = _fill_due_date(state, timing, now, calendar)
     return _apply_corrections(state, corrections)

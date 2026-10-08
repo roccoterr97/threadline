@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, time
 from typing import Protocol
 
 from pydantic import SecretStr
 
+from tracker.domain.daily_start import DailyStartStatus
 from tracker.infrastructure.github_cli import GitHubRepository
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
@@ -93,6 +94,18 @@ class SupabaseAdminPort(StructureProbe, Protocol):
 
     def create_confirmed_user(self, email: str) -> str | None:
         """Create a login; ``None`` when it already existed."""
+        ...
+
+    def save_daily_schedule(self, run_at: time, time_zone: str) -> None:
+        """Write the daily time and its zone into the settings row."""
+        ...
+
+    def save_daily_start(self, function_url: str, key: SecretStr) -> None:
+        """Save the timer's address and key, and make sure the timer exists."""
+        ...
+
+    def daily_start_status(self) -> DailyStartStatus:
+        """Read whether the on-time morning start is switched on."""
         ...
 
 
@@ -281,6 +294,7 @@ class SetupGateways:
         local_time_zone: Names the time zone this computer is set to.
         github_api: Reads the workflow with a token, without starting it.
         refresh_function: Reads the "Refresh now" function's files, entry point first.
+        make_daily_start_key: Generates a new key for the on-time morning start's timer.
     """
 
     admin_for: Callable[[str, SecretStr], SupabaseAdminPort]
@@ -301,3 +315,4 @@ class SetupGateways:
     local_time_zone: Callable[[], str]
     github_api: GitHubApiPort
     refresh_function: Callable[[], dict[str, bytes]]
+    make_daily_start_key: Callable[[], str]

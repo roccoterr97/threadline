@@ -355,23 +355,31 @@ class AssessmentImporter:
         known: _Known,
         writes: _Writes,
     ) -> ImportResult:
-        """Work out every row one verdict changes, and add it to ``writes``."""
+        """Work out every row one verdict changes, and add it to ``writes``.
+
+        A person the owner ruled out after the batch was exported is left as
+        he left them: the verdict was written without knowing his answer.
+        """
+        if _owner_declined(verdict.person_id, known):
+            return ImportResult()
         person = known.people[verdict.person_id]
         threads = known.conversations.get(verdict.person_id, [])
+        kept_by_owner = _owner_took_a_position(verdict.person_id, known)
         state = decide(
             _values(verdict),
             _timing(threads),
             _corrections(known.overrides.get(verdict.person_id)),
             self._clock.now(),
             self._calendar,
+            kept_by_owner=kept_by_owner,
         )
-        if state.is_noise and not _owner_took_a_position(verdict.person_id, known):
+        if state.is_noise and not kept_by_owner:
             _plan_noise(person, threads, writes)
             return ImportResult(marked_noise=1)
         writes.people.append(self._updated_person(person, verdict, state, known, writes))
         writes.states.append(self._state_row(person, state, threads, known))
-        _plan_review_item(person, state, known, writes, self._wording)
-        return ImportResult(assessed=1, sent_to_review=int(state.needs_review))
+        asked = _plan_review_item(person, state, known, writes, self._wording)
+        return ImportResult(assessed=1, sent_to_review=int(asked))
 
     def _updated_person(
         self,
@@ -385,7 +393,9 @@ class AssessmentImporter:
         # A "yes" from the owner settles relevance for good, whatever a later
         # verdict scores. Without this the person would quietly leave the
         # dashboard and no new question would be asked, because one already was.
-        if _owner_confirmed_relevant(verdict.person_id, known):
+        # A noise verdict against the owner's own judgement is only a doubt:
+        # the person stays on the dashboard while the owner is asked.
+        if _owner_confirmed_relevant(verdict.person_id, known) or state.is_noise:
             relevance = Relevance.RELEVANT
         else:
             relevance = Relevance.UNSURE if state.needs_review else Relevance.RELEVANT
@@ -475,6 +485,25 @@ def _organisation_id(
     return created.id
 
 
+def _owner_declined(person_id: UUID, known: _Known) -> bool:
+    """Whether the owner has answered "no" to a relevance question about them.
+
+    Any "no" counts, as it does when the exporter picks who to send: a person
+    ruled out there must not be brought back here.
+
+    Args:
+        person_id: The person to check.
+        known: What the database already holds.
+
+    Returns:
+        True when the owner has ruled this person out.
+    """
+    return any(
+        item.kind is ReviewKind.RELEVANCE and item.answer is ReviewAnswer.NO
+        for item in known.review_items.get(person_id, [])
+    )
+
+
 def _owner_confirmed_relevant(person_id: UUID, known: _Known) -> bool:
     """Whether the owner has answered "yes" to a relevance question about them.
 
@@ -530,15 +559,20 @@ def _plan_review_item(
     known: _Known,
     writes: _Writes,
     wording: Wording,
-) -> None:
-    """Ask the owner about a person the assistant was not sure about."""
+) -> bool:
+    """Ask the owner about a person the assistant was not sure about.
+
+    Returns:
+        True when a new question was added; False when none was needed or one
+        had already been asked.
+    """
     if not state.needs_review:
-        return
+        return False
     asked = any(
         item.kind is ReviewKind.RELEVANCE for item in known.review_items.get(person.id, [])
     )
     if asked:
-        return
+        return False
     writes.review_items.append(
         ReviewItem(
             kind=ReviewKind.RELEVANCE,
@@ -546,6 +580,7 @@ def _plan_review_item(
             question=wording.question_about(person.full_name),
         )
     )
+    return True
 
 
 def _values(verdict: PersonVerdict) -> VerdictValues:

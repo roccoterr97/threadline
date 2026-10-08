@@ -25,6 +25,7 @@ from tracker.infrastructure.microsoft.auth import (
     MicrosoftAuthenticator,
 )
 from tracker.infrastructure.microsoft.client import GraphMailbox
+from tracker.infrastructure.microsoft.probe import GraphProbe
 from tracker.infrastructure.secret_store import MICROSOFT_REFRESH_TOKEN, SecretStore
 from tracker.repositories import build_repositories
 from tracker.shared.clock import FixedClock
@@ -500,3 +501,69 @@ async def test_a_rejected_mailbox_key_is_reported_in_plain_words(
         async with authenticator, GraphMailbox(authenticator) as mailbox:
             with pytest.raises(SourceAuthError, match="microsoft login"):
                 await mailbox.list_messages_since(WINDOW_START)
+
+
+class _KeyThatExpires:
+    """Hands out a new access key on every call, as renewal would once one lapses."""
+
+    def __init__(self) -> None:
+        self.handed_out = 0
+
+    async def access_token(self) -> str:
+        """Return the next key."""
+        self.handed_out += 1
+        return f"key-{self.handed_out}"
+
+
+class _ExpiresDuringTheRetry:
+    """Asks for a retry once; by the time it comes, the first key has expired."""
+
+    def __init__(self) -> None:
+        self.slowed_down = False
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        """Answer one request."""
+        if request.headers["Authorization"] != "Bearer key-1":
+            return body_answer(request)
+        if self.slowed_down:
+            return httpx.Response(401, json={})
+        self.slowed_down = True
+        return httpx.Response(503, json={})
+
+
+@pytest.mark.asyncio
+async def test_a_key_that_expires_while_a_request_is_retried_is_renewed_not_reported() -> None:
+    """A retry may wait longer than the key's renewal margin.
+
+    Each attempt must carry a key that is valid at that moment; reusing the
+    first one turns a slow mailbox into a false "sign in again".
+    """
+    keys = _KeyThatExpires()
+
+    with respx.mock:
+        route = respx.get(f"{MESSAGES_URL}/m-1").mock(side_effect=_ExpiresDuringTheRetry())
+        async with GraphMailbox(keys) as mailbox:
+            body = await mailbox.fetch_body("m-1")
+
+    assert body == "body of m-1"
+    assert [call.request.headers["Authorization"] for call in route.calls] == [
+        "Bearer key-1",
+        "Bearer key-2",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_sign_in_check_renews_a_key_that_expires_during_a_retry() -> None:
+    keys = _KeyThatExpires()
+
+    with respx.mock:
+        route = respx.get(url__startswith=f"{MICROSOFT_GRAPH_URL}/").mock(
+            side_effect=_ExpiresDuringTheRetry()
+        )
+        async with GraphProbe(keys) as probe:
+            await probe.check_mailbox()
+
+    assert [call.request.headers["Authorization"] for call in route.calls] == [
+        "Bearer key-1",
+        "Bearer key-2",
+    ]

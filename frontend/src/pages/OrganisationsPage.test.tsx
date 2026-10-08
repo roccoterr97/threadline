@@ -122,7 +122,8 @@ describe('OrganisationsPage — one row', () => {
     renderPage();
     const row = await rowOf('Northwind Labs');
     expect(within(row).getByText(copy.organisations.peopleCount(2))).toBeInTheDocument();
-    expect(within(row).getByText(copy.time.hoursAgo(16))).toBeInTheDocument();
+    // Ana wrote at 16:20 the day before the frozen 09:00: a calendar day back.
+    expect(within(row).getByText(copy.time.daysAgo(1))).toBeInTheDocument();
   });
 
   it('shows the picture in the same words as the people rows, above zero only', async () => {

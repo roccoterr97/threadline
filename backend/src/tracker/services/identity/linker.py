@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from typing import Final
 from uuid import UUID
 
-from tracker.domain.enums import Channel, Relevance, ReviewKind
+from tracker.domain.enums import Channel, Relevance, ReviewAnswer, ReviewKind
 from tracker.domain.identity import organisation_key, organisation_name_from_domain
 from tracker.domain.linking import (
     LinkCandidate,
@@ -98,11 +98,14 @@ class PeopleLinker:
         identities = self._repositories.person_identities.list_every()
         organisations = self._repositories.organisations.list_every()
         candidates = link_candidates(people, identities, organisations, self._rules)
-        joined, ambiguous = self._join_company_records(candidates, people)
+        questions = self._repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
+        joined, ambiguous = self._join_company_records(
+            candidates, people, _pairs(questions, answer=ReviewAnswer.NO)
+        )
         if joined:
             return replace(self.link(), joined=joined)
         suggestions = [*suggest_links(candidates, self._thread_groups(identities)), *ambiguous]
-        asked = self._asked_pairs()
+        asked = _pairs(questions)
         new = [suggestion for suggestion in suggestions if suggestion.pair not in asked]
         questions = self._questions(new, people, identities)
         self._repositories.review_items.bulk_upsert(questions)
@@ -114,13 +117,21 @@ class PeopleLinker:
         self,
         candidates: Sequence[LinkCandidate],
         people: Sequence[Person],
+        declined: set[frozenset[UUID]],
     ) -> tuple[int, list[LinkSuggestion]]:
         """Fold a company record into the one person of that company, or ask.
 
         "Northwind AI Hiring Team" and Hanna at northwind.ai are one opportunity,
         so they are joined without a question, under Hanna's name, and assessed
         again together. When the company has several people, choosing one would
-        be a guess: the owner is asked about each instead.
+        be a guess: the owner is asked about each instead. A pair the owner has
+        already answered "no" about is never joined, even when it is the only
+        match left: the owner's answer outranks the rule.
+
+        Args:
+            candidates: Every person, described for the rules.
+            people: The same people, by record.
+            declined: The pairs the owner answered "no, not the same person" about.
 
         Returns:
             How many records were joined, and the questions for the rest.
@@ -136,6 +147,8 @@ class PeopleLinker:
                 )
                 continue
             (only,) = matches
+            if frozenset((record.person_id, only.person_id)) in declined:
+                continue
             survivor = by_id[only.person_id]
             PersonMerger(self._repositories).join(survivor, by_id[record.person_id])
             states = self._repositories.person_states.list_for_people([survivor.id])
@@ -164,14 +177,6 @@ class PeopleLinker:
             if person_id is not None:
                 groups[thread_id].add(person_id)
         return [frozenset(group) for group in groups.values() if len(group) > 1]
-
-    def _asked_pairs(self) -> set[frozenset[UUID]]:
-        """Every pair already put to the owner, in either direction."""
-        return {
-            frozenset((item.person_id, item.other_person_id))
-            for item in self._repositories.review_items.list_by_kind(ReviewKind.SAME_PERSON)
-            if item.person_id is not None and item.other_person_id is not None
-        }
 
     def _questions(
         self,
@@ -207,6 +212,27 @@ class PeopleLinker:
             for organisation in self._repositories.organisations.list_by_email_domains(domains)
             if organisation.email_domain
         }
+
+
+def _pairs(
+    questions: Sequence[ReviewItem], *, answer: ReviewAnswer | None = None
+) -> set[frozenset[UUID]]:
+    """The pairs "same person?" questions name, in either direction.
+
+    Args:
+        questions: Every "same person?" question.
+        answer: When given, only the questions answered this way count.
+
+    Returns:
+        Each pair once.
+    """
+    return {
+        frozenset((item.person_id, item.other_person_id))
+        for item in questions
+        if item.person_id is not None
+        and item.other_person_id is not None
+        and (answer is None or item.answer is answer)
+    }
 
 
 def link_candidates(

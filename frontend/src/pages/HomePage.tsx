@@ -54,7 +54,6 @@ export function HomePage() {
   const view = readPeopleView(searchParams, typeOptions.map((category) => category.key));
   const ready = people.isSuccess && vocabulary !== null;
   const failed = people.isError || vocabularyState.status === 'error';
-  const counters = countPeople(allPeople);
   const visiblePeople = applyPeopleView(allPeople, view);
 
   const showView = (next: PeopleView) => {
@@ -80,7 +79,9 @@ export function HomePage() {
       {meetings.isSuccess && <ComingUp meetings={meetings.data} />}
       {meetings.isError && <p className="text-sm text-ink-muted">{copy.home.comingUp.failed}</p>}
 
-      <HeadlineCounters counters={counters} view={view} />
+      {/* Like the grid, the numbers wait for the people: a 0 while loading or
+          after a failed load would read as "nothing to do". */}
+      {people.isSuccess && <HeadlineCounters counters={countPeople(allPeople)} view={view} />}
 
       {ready && allPeople.length > 0 && (
         <StatusGrid

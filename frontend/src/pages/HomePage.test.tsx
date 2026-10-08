@@ -132,6 +132,27 @@ describe('HomePage — counters', () => {
     expect(counterValue(copy.home.counters.activeConversations)).toBe('6');
   });
 
+  it('shows no numbers while the people are still loading', () => {
+    fetchPeopleMock.mockReturnValue(new Promise(() => undefined));
+    renderWithProviders(<HomePage />);
+    expect(screen.getByText(copy.states.loadingPeople)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: copy.home.countersLabel })).not.toBeInTheDocument();
+  });
+
+  it('shows no numbers when the people cannot be loaded', async () => {
+    fetchPeopleMock.mockRejectedValue(new DataUnavailableError('people.list'));
+    renderWithProviders(<HomePage />);
+    expect(await screen.findByText(copy.states.errorBody)).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: copy.home.countersLabel })).not.toBeInTheDocument();
+  });
+
+  it('shows real zeros once an empty list has loaded', async () => {
+    fetchPeopleMock.mockResolvedValue([]);
+    renderWithProviders(<HomePage />);
+    await screen.findByText(copy.home.empty.title);
+    expect(counterValue(copy.home.counters.actionsForMe)).toBe('0');
+  });
+
   it('keeps describing the whole list even when a filter is on', async () => {
     renderWithProviders(<HomePage />, { route: '/?due=overdue' });
     await screen.findByRole('table', { name: copy.home.tableCaption });
@@ -235,6 +256,22 @@ describe('HomePage — coming up', () => {
     await screen.findByRole('region', { name: copy.home.comingUp.title });
     expect(within(comingUp()).queryByRole('link')).not.toBeInTheDocument();
     expect(within(comingUp()).getByText(copy.home.comingUp.unknownPerson)).toBeInTheDocument();
+  });
+
+  it('opens no page for someone not on the list, but still shows the meeting', async () => {
+    const [ana, carla, jonas] = sampleMeetings;
+    fetchMeetingsMock.mockResolvedValue([
+      ana!,
+      { ...carla!, people: { ...carla!.people!, relevance: 'unsure' } },
+      { ...jonas!, people: { ...jonas!.people!, relevance: 'noise' } },
+    ]);
+    renderWithProviders(<HomePage />);
+
+    const strip = await screen.findByRole('region', { name: copy.home.comingUp.title });
+    const links = within(strip).getAllByRole('link');
+    expect(links.map((link) => link.getAttribute('href'))).toEqual(['/people/p-01']);
+    expect(within(strip).getByText('Carla Mendes')).toBeInTheDocument();
+    expect(within(strip).getByText('Jonas Berg')).toBeInTheDocument();
   });
 
   it('says so quietly when the meetings cannot be loaded', async () => {

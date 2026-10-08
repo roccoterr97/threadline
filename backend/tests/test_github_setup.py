@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import time
+from pathlib import Path
 
 import pytest
 import yaml
@@ -17,18 +19,24 @@ from tests.setup_world import (
     configured_env,
     make_world,
 )
-from tracker.infrastructure.github_cli import GitHubCli, GitHubRepository, GitRepository
+from tracker.infrastructure.github_cli import GitHubCli, GitHubRepository, GitRepository, TextFile
+from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
 from tracker.services.setup.step_github import GitHubStep
-from tracker.services.setup.step_schedule import (
+from tracker.services.setup.step_schedule import ScheduleStep
+from tracker.services.setup.step_time_zone import TimeZoneStep
+from tracker.services.setup.wizard import default_steps
+from tracker.services.setup.workflow_schedule import (
     WORKFLOW_PATH,
     Schedule,
-    ScheduleStep,
     read_schedule,
     write_schedule,
 )
-from tracker.services.setup.wizard import default_steps
-from tracker.shared.constants.github import CLAUDE_TOKEN_SECRET, SCHEDULE_COMMIT_MESSAGE
+from tracker.shared.constants.github import (
+    CLAUDE_TOKEN_SECRET,
+    SCHEDULE_COMMIT_MESSAGE,
+    WORKFLOW_FILE,
+)
 from tracker.shared.errors import SourceUnavailableError, ValidationFailedError
 
 CLAUDE_KEY = "sk-ant-oat01-made-up-subscription-key"
@@ -465,6 +473,86 @@ async def test_without_a_copy_the_schedule_is_committed_but_never_pushed() -> No
     assert world.git.committed == [(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)]
     assert world.git.pushed == []
     assert "nothing to push to" in world.io.text()
+
+
+# --- A new time zone moves the workflow's timezone line too ----------------------
+
+
+def time_zone_context(world: World, workflow: Path) -> SetupContext:
+    """The world's context, reading and writing a real workflow file."""
+    ctx = world.context()
+    return replace(ctx, gateways=replace(ctx.gateways, workflow=TextFile(workflow)))
+
+
+@pytest.mark.asyncio
+async def test_a_new_time_zone_is_written_into_the_workflow_keeping_its_time(
+    tmp_path: Path,
+) -> None:
+    workflow = tmp_path / "threadline-run.yml"
+    workflow.write_text(
+        write_schedule(
+            WORKFLOW_FILE.read_text(encoding="utf-8"), Schedule(time(6, 30), "Europe/Rome")
+        ),
+        encoding="utf-8",
+    )
+    world = make_world(["America/New_York", True, ""], github_env())
+
+    await TimeZoneStep().run(time_zone_context(world, workflow))
+
+    assert schedule_of(workflow.read_text(encoding="utf-8")) == {
+        "cron": "30 6 * * *",
+        "timezone": "America/New_York",
+    }
+    assert '  +      timezone: "America/New_York"' in world.io.said
+    assert (
+        f"Saved {WORKFLOW_PATH}: the daily run now starts at 06:30 (America/New_York)."
+        in world.io.said
+    )
+    assert world.git.pushed == [(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)]
+
+
+@pytest.mark.asyncio
+async def test_the_workflow_is_left_alone_when_its_zone_already_matches(tmp_path: Path) -> None:
+    workflow = tmp_path / "threadline-run.yml"
+    original = write_schedule(
+        WORKFLOW_FILE.read_text(encoding="utf-8"), Schedule(time(7, 0), "Europe/Rome")
+    )
+    workflow.write_text(original, encoding="utf-8")
+    world = make_world(["", ""], github_env())
+
+    await TimeZoneStep().run(time_zone_context(world, workflow))
+
+    assert workflow.read_text(encoding="utf-8") == original
+    assert world.git.pushed == []
+    assert world.git.committed == []
+
+
+@pytest.mark.asyncio
+async def test_a_workflow_with_two_daily_times_does_not_stop_the_time_zone_step(
+    tmp_path: Path,
+) -> None:
+    workflow = tmp_path / "threadline-run.yml"
+    original = write_schedule(
+        WORKFLOW_FILE.read_text(encoding="utf-8"), Schedule(time(7, 0), "Europe/Rome")
+    ).replace('- cron: "0 7 * * *"', '- cron: "0 7 * * *"\n    - cron: "0 19 * * *"')
+    workflow.write_text(original, encoding="utf-8")
+    world = make_world(["Asia/Tokyo", ""], github_env())
+
+    await TimeZoneStep().run(time_zone_context(world, workflow))
+
+    assert world.env.values["OWNER_TIME_ZONE"] == "Asia/Tokyo"
+    assert workflow.read_text(encoding="utf-8") == original
+    assert any("was changed by hand" in line for line in world.io.said)
+
+
+@pytest.mark.asyncio
+async def test_a_missing_workflow_file_does_not_stop_the_time_zone_step(tmp_path: Path) -> None:
+    world = make_world(["Asia/Tokyo", ""], github_env())
+
+    await TimeZoneStep().run(time_zone_context(world, tmp_path / "missing.yml"))
+
+    assert world.env.values["OWNER_TIME_ZONE"] == "Asia/Tokyo"
+    assert not (tmp_path / "missing.yml").exists()
 
 
 def test_the_github_steps_come_before_the_cloud_alternative() -> None:

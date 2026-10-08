@@ -38,8 +38,9 @@ MAX_PEOPLE_PER_SECTION: Final[int] = 10
 #: measure from — the first run, or a run after a long pause.
 REPLY_WINDOW_FALLBACK_HOURS: Final[int] = 24
 
-#: Recent runs read when looking for the previous one. Ten is a week and a half
-#: of daily runs, which is more than enough to find yesterday's.
+#: Recent daily runs read when looking for the last one whose summary went out.
+#: Refreshes are not counted, so however many there were, ten is a week and a
+#: half of mornings, which is more than enough to find yesterday's.
 RECENT_RUNS_SCANNED: Final[int] = 10
 
 #: Longest note stored next to a failed step. It holds a short technical hint

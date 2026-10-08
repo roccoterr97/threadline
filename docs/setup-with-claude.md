@@ -45,8 +45,9 @@ time:
    Claude saying exactly what to click.
 4. **The set-up page** — Claude starts the set-up and a page opens in your
    browser called *Threadline set-up*. It asks one question at a time: paste
-   each key there. Claude sees the questions, never your answers. Ask it
-   anything that is unclear.
+   each key there. Claude sees the questions, not your answers, and is told
+   never to open that page itself (it could: the page's address appears in
+   its window). Ask it anything that is unclear.
 5. **The first run** — Claude starts it and checks that it worked; you look
    for the first summary e-mail.
 

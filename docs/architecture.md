@@ -441,7 +441,46 @@ only, each read from the Actions secret or variable that
 `shared/constants/github.py` names; `tracker setup github` writes them there
 and a test keeps the workflow and that module in step. The file name and the
 `mode` input are a contract: the dashboard's "Refresh now" starts the workflow
-through GitHub's API with `mode=refresh`.
+through GitHub's API with `mode=refresh`, and the on-time morning start with
+`mode=daily`.
+
+**The on-time morning start.** GitHub starts a `schedule` event when it has
+room, which for some repositories is hours after the `cron` time. So the
+owner's database starts the daily run instead (migration `0017_daily_start`).
+A pg_cron job, `threadline-daily-start`, runs `public.request_daily_start()`
+every 15 minutes; it reads the function's address and a shared key from
+Supabase Vault and, with pg_net, POSTs to the `refresh-now` Edge Function's
+scheduled path, `…/refresh-now/daily-start`, the key in `X-Daily-Start-Key`.
+The path lives in the same function as the button (`daily.ts`, routed by
+`index.ts`) so the two share the runner's settings and one deploy of flat
+files; it never reaches the button's owner check or CORS, and the button
+never reaches it. The handler compares the key in constant time (401 when it
+differs), does nothing unless the runner is GitHub, reads `time_zone` and
+`daily_run_time` from `app_settings` with the service key, and then, only
+once the owner's local time has passed the daily time: treats a daily run in
+`run_logs` (any trigger but `refresh`, not `failed`) started on the owner's
+local date as done; claims the date by inserting it into `daily_starts`,
+whose unique `owner_date` lets exactly one of two overlapping calls in; asks
+GitHub whether a daily run (by title) created that day is waiting, going or
+succeeded, keeping the claim if so; and only then dispatches the workflow
+with `mode=daily` (`buildWorkflowDispatch`, shared with the button in
+`refresh.ts`). When GitHub refuses, cannot be reached or cannot say, the
+claim is deleted, so the next tick tries again. Dates are computed with
+`Intl.DateTimeFormat` in the owner's zone, so daylight saving and midnight in
+the owner's zone, not UTC, decide the day. `tracker setup schedule` and
+`tracker setup timezone` copy the workflow's time and zone into
+`app_settings`; `tracker setup refresh` makes a fresh key, saves it as the
+function's `DAILY_START_KEY` and, through the security-definer
+`save_daily_start_settings()` called with the service key, in Vault, and
+makes sure the job exists; `tracker doctor` reads `daily_start_status()`.
+GitHub's `schedule` stays as the backup: the gate of a run started by
+`schedule` lists the workflow's runs (`gh run list`) and stops with a notice
+when a daily run created on the owner's local date (each run's time moved by
+the zone's UTC offset, `OWNER_TIME_ZONE`, so no machine-specific date
+arithmetic) is waiting, going or succeeded; when GitHub cannot say, it goes
+ahead, and "a day's summary goes out once" below is the last net. A run
+started by `workflow_dispatch` never makes this check. Owners on the Claude
+cloud routine are untouched: the handler answers `not_github`.
 
 **Refresh mode.** Between two mornings the same recipe can run with
 `--mode refresh`: the run is recorded with the trigger `refresh`, the mailboxes
@@ -450,7 +489,9 @@ in which `collect_email` succeeded, minus `REFRESH_OVERLAP_HOURS`), the people
 list is tidied, only people with new messages are assessed (the rule that
 already skips everybody else), and no summary is built or sent. The next
 morning's "replied since" ignores refresh runs, so nothing a refresh saw goes
-unreported.
+unreported: it counts from the start of the latest earlier *daily* run whose
+summary actually went out, and refreshes are left out in the query itself, so a
+busy afternoon of them cannot push yesterday's run out of the runs it reads.
 
 A refresh and a daily run can be open at the same time (the gate keeps them
 apart on GitHub, but not across routes, and not when GitHub cannot say what is
@@ -491,6 +532,19 @@ sends before anything is recorded, so if its `run step` then fails, a later
 build in the same run is not stopped. Closing it would mean a claim recorded
 before the send, which turns a cut-off send into a missing summary.
 
+**And a day's summary goes out once** (`services/summary/once_a_day.py`). A
+day can hold two daily runs — GitHub's "Re-run job", a second "Run workflow",
+a run started by hand. Before a daily summary is built for an open run, and
+again before `summary send` sends one, the other daily runs started on the
+same day in the owner's time zone are looked at; when one of them sent its
+summary, this one is not built or sent. Its `summary_email` step is recorded
+as finished with `items_new` 0 and a note naming the run that did send, so the
+run stays clean and the command prints
+`summary skipped · today's summary already went out with run <id>`. A run whose
+send failed, or which was itself skipped, does not count as one that sent. A
+refresh is never affected. `--send-again` on `summary build` and `summary
+send` sends another copy on purpose; the recipe never passes it.
+
 **The steps are independent and each is recorded.** `run_logs` holds one row per
 morning, `run_step_logs` one row per step, with counts and an error code only —
 never message text, never a secret. Recording the same step twice updates the
@@ -508,7 +562,8 @@ run still `running` that started more than three hours ago
 row with the code `run_interrupted`, and the run is marked `failed` — unless it
 recorded every step and only missed its closing, in which case its status is
 derived as usual. The dashboard and the next summary explain the code; the
-summary's "replied since" window skips interrupted runs.
+summary's "replied since" window skips every run whose summary did not go out —
+interrupted, failed to send, or skipped.
 
 **The summary is built by Python** (`services/summary/`), not phrased by an
 assistant. `builder.py` reads `people_overview`, the unanswered `review_items`,
@@ -570,6 +625,7 @@ owner's time zone (see "The daily run").
 | `run_logs`, `run_step_logs` | `id` |
 | `app_secrets` | `name` |
 | `app_settings` | `singleton` (one row only) |
+| `daily_starts` | `owner_date` (one claim per owner-local day) |
 | `categories` | `key` |
 | `category_suggestions` | `key` |
 | `status_labels` | `status` |
@@ -615,3 +671,9 @@ corrections already applied over the AI's values, plus `last_contact_at`,
   `0011_function_access.sql` takes `EXECUTE` away from `public` and `anon`;
   the logged-in role keeps `is_app_owner()`, which every row-level security
   policy calls.
+- `daily_starts` and the on-time start's functions are for the service key
+  and the database itself: `save_daily_start_settings()` and
+  `daily_start_status()` may be called with the service key only, and
+  `request_daily_start()`, which reads Vault, only by the cron job's owner.
+  The key is accepted only for an address ending in
+  `/functions/v1/refresh-now/daily-start`.

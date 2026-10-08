@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { upcomingMeetingsQueryKey } from '../api/meetings';
 import { markPersonAsNoise } from '../api/overrides';
 import { peopleQueryKey } from '../api/people';
 import { personQueryKey } from '../api/person';
@@ -42,7 +43,11 @@ export function MarkNoiseAction({ personId, personName }: MarkNoiseActionProps) 
         state: { ...origin.state, ...hiddenPersonState({ id: personId, name: personName }) },
       });
       queryClient.removeQueries({ queryKey: personQueryKey(personId) });
-      await queryClient.invalidateQueries({ queryKey: peopleQueryKey });
+      // Off the list, so their meetings in "Coming up" stop opening a page.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: peopleQueryKey }),
+        queryClient.invalidateQueries({ queryKey: upcomingMeetingsQueryKey }),
+      ]);
     },
   });
 
