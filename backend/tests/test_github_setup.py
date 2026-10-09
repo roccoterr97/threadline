@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import time
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 
 import pytest
@@ -15,6 +15,7 @@ from pydantic import SecretStr
 from tests.setup_world import (
     GOOD_SECRET,
     OWNER_EMAIL,
+    REFRESH_RUN_TITLE,
     FakeWorkflow,
     World,
     configured_env,
@@ -25,8 +26,10 @@ from tracker.infrastructure.github_cli import (
     GitHubRepository,
     GitRepository,
     TextFile,
+    WorkflowRun,
     run_command,
 )
+from tracker.services.setup.claude_key import ClaudeKeyProblem, claude_key_problem
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import FirstRun
 from tracker.services.setup.models import StepName
@@ -42,6 +45,8 @@ from tracker.services.setup.workflow_schedule import (
 )
 from tracker.shared.constants.github import (
     CLAUDE_TOKEN_SECRET,
+    DAILY_RUN_TITLE,
+    RECENT_RUNS_LIMIT,
     SCHEDULE_COMMIT_MESSAGE,
     WORKFLOW_FILE,
     WorkflowMode,
@@ -53,7 +58,8 @@ from tracker.shared.errors import (
     WorkflowNotStartedError,
 )
 
-CLAUDE_KEY = "sk-ant-oat01-made-up-subscription-key"
+#: A made-up subscription key as long as a real one (about 108 characters).
+CLAUDE_KEY = "sk-ant-oat01-" + "made-up-subscription-key-" * 4 + "end"
 APP_PASSWORD_LIKE = "zzzz-not-a-real-value"
 WORKFLOW_PAGE = "https://github.com/you/threadline/actions/workflows/threadline-run.yml"
 
@@ -322,6 +328,80 @@ async def test_without_gh_the_names_and_page_are_shown_and_values_copied() -> No
     assert CLAUDE_KEY not in world.io.text()
 
 
+# --- The Claude key ------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("pasted", "problem"),
+    [
+        (CLAUDE_KEY, None),
+        (CLAUDE_KEY[:70], ClaudeKeyProblem.CUT_SHORT),
+        ("sk-ant-api03-" + "made-up-api-key-" * 7, ClaudeKeyProblem.API_KEY),
+        ("export CLAUDE_CODE_OAUTH_TOKEN=" + CLAUDE_KEY, ClaudeKeyProblem.NOT_A_KEY),
+        (CLAUDE_KEY + '"', ClaudeKeyProblem.STRAY_CHARACTERS),
+    ],
+)
+def test_a_pasted_key_is_judged_by_its_shape(pasted: str, problem: ClaudeKeyProblem | None) -> None:
+    assert claude_key_problem(pasted) is problem
+
+
+@pytest.mark.asyncio
+async def test_a_key_split_over_two_lines_is_joined_into_one() -> None:
+    first, second = CLAUDE_KEY[:70], CLAUDE_KEY[70:]
+    world = make_world([first, second, True, False], github_env())
+
+    await GitHubStep().run(world.context())
+
+    assert world.github.secrets[CLAUDE_TOKEN_SECRET] == CLAUDE_KEY
+    assert "split over two lines" in world.io.secret_prompts[1]
+    assert first not in world.io.text()
+
+
+@pytest.mark.asyncio
+async def test_a_key_cut_short_can_be_pasted_again_whole() -> None:
+    world = make_world([CLAUDE_KEY[:70], CLAUDE_KEY, True, False], github_env())
+
+    await GitHubStep().run(world.context())
+
+    assert world.github.secrets[CLAUDE_TOKEN_SECRET] == CLAUDE_KEY
+
+
+@pytest.mark.asyncio
+async def test_an_api_key_is_refused_with_what_to_paste_instead() -> None:
+    api_key = "sk-ant-api03-" + "made-up-api-key-" * 7
+    world = make_world([api_key, CLAUDE_KEY, True, False], github_env())
+
+    await GitHubStep().run(world.context())
+
+    assert world.github.secrets[CLAUDE_TOKEN_SECRET] == CLAUDE_KEY
+    shown = world.io.text()
+    assert "That is an API key" in shown
+    assert "starting sk-ant-oat" in shown
+    assert api_key not in shown
+
+
+@pytest.mark.asyncio
+async def test_a_key_never_whole_stops_the_step_before_anything_is_saved() -> None:
+    world = make_world(["not a key", "still not", "nope", "no"], github_env())
+
+    with pytest.raises(ValidationFailedError, match="from the first letter to the last"):
+        await GitHubStep().run(world.context())
+
+    assert world.github.secrets == {}
+    assert world.github.started == []
+
+
+@pytest.mark.asyncio
+async def test_the_key_instruction_says_it_is_split_over_two_lines() -> None:
+    world = make_world(["", True, False], github_env())
+
+    await GitHubStep().run(world.context())
+
+    shown = world.io.text()
+    assert "starting sk-ant-oat" in shown
+    assert "from the first letter to the last, including the second line" in shown
+
+
 # --- The first run ------------------------------------------------------------------
 
 
@@ -335,11 +415,10 @@ async def test_after_saving_the_first_run_is_started_after_one_yes() -> None:
     assert world.github.enabled == ["you/threadline"]
     assert world.github.started == [("you/threadline", "daily")]
     assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
-    assert (
-        f"The first run has started. You can watch it here, or close this window: {WORKFLOW_PAGE}"
-        in world.io.said
-    )
-    assert "The summary e-mail arrives in about 10 minutes." in world.io.said
+    said = world.io.said
+    assert "The first run has started." in said
+    assert "It is running; the summary e-mail comes in about 10 minutes." in said
+    assert f"You can watch it here, or close this window: {WORKFLOW_PAGE}" in said
 
 
 @pytest.mark.asyncio
@@ -511,7 +590,7 @@ async def test_with_outlook_alone_the_mailbox_step_is_offered_and_makes_the_e_ma
     assert world.github.variables["MAIL_SOURCES"] == "outlook,imap"
     assert world.github.started == [("you/threadline", "daily")]
     assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
-    assert "The summary e-mail arrives in about 10 minutes." in world.io.said
+    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
 
 
 @pytest.mark.asyncio
@@ -539,7 +618,7 @@ async def test_starting_the_first_run_anyway_says_no_e_mail_will_come() -> None:
     assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE, summary_by_email=False)
     shown = world.io.text()
     assert "No summary e-mail" in shown
-    assert "arrives in about" not in shown
+    assert "e-mail comes in about" not in shown
 
 
 @pytest.mark.asyncio
@@ -841,6 +920,136 @@ def test_the_core_steps_end_with_the_dashboard_the_schedule_and_github() -> None
     assert names[-3:] == [StepName.DASHBOARD, StepName.SCHEDULE, StepName.GITHUB]
 
 
+# --- Following the first run ----------------------------------------------------------
+
+STOPPED_NOTE = (
+    "Claude did not accept the key saved on GitHub (CLAUDE_CODE_OAUTH_TOKEN): it is "
+    "incomplete, expired or was cancelled."
+)
+
+
+@pytest.mark.asyncio
+async def test_a_first_run_that_stops_at_once_is_said_with_the_reason_from_github() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.run_states = [("in_progress", ""), ("completed", "failure")]
+    world.github.notes = (STOPPED_NOTE,)
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    run_page = "https://github.com/you/threadline/actions/runs/1000"
+    assert step.first_run == FirstRun(started=True, page=run_page, stopped=True)
+    said = world.io.said
+    assert f"The first run stopped with a problem. {STOPPED_NOTE}" in said
+    assert not any("e-mail comes in about" in line for line in said)
+    assert world.waits == [10, 10, 10]
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_run_without_a_reason_names_its_page() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.run_states = [("completed", "failure")]
+
+    await GitHubStep().run(world.context())
+
+    text = world.io.text()
+    assert "The first run stopped with a problem. To see why, open this page" in text
+    assert "step marked with a red cross: https://github.com/you/threadline/actions/runs/1000" in (
+        text
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_first_run_still_going_after_two_minutes_is_left_to_finish() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+
+    await GitHubStep().run(world.context())
+
+    assert world.waits == [10] * 12
+    assert "Watching it for up to 2 minutes, to catch a problem early..." in world.io.said
+    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
+
+
+@pytest.mark.asyncio
+async def test_a_first_run_that_finishes_well_says_so() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.run_states = [("completed", "success")]
+
+    await GitHubStep().run(world.context())
+
+    assert "The first run has finished." in world.io.said
+    assert "The summary e-mail is on its way." in world.io.said
+
+
+@pytest.mark.asyncio
+async def test_an_earlier_run_is_not_taken_for_the_new_one() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    old = "https://github.com/you/threadline/actions/runs/7"
+    world.github.runs = [WorkflowRun(id=7, status="completed", conclusion="failure", url=old)]
+
+    await GitHubStep().run(world.context())
+
+    assert set(world.github.looked_at) == {1001}
+    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
+
+
+_SET_UP_STARTED = datetime(2026, 9, 29, 7, 0, tzinfo=UTC)
+
+
+def _other_run(run_id: int, title: str, created_at: datetime) -> WorkflowRun:
+    url = f"https://github.com/you/threadline/actions/runs/{run_id}"
+    return WorkflowRun(run_id, "in_progress", "", url, title=title, created_at=created_at)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "other",
+    [
+        _other_run(1001, REFRESH_RUN_TITLE, _SET_UP_STARTED + timedelta(seconds=5)),
+        _other_run(1001, DAILY_RUN_TITLE, _SET_UP_STARTED + timedelta(seconds=5)),
+        _other_run(999, DAILY_RUN_TITLE, _SET_UP_STARTED - timedelta(minutes=10)),
+    ],
+    ids=["a refresh just after", "an on-time start just after", "a daily run from before"],
+)
+async def test_only_the_daily_run_the_set_up_started_is_followed(other: WorkflowRun) -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.runs_started_next = [other]
+    world.github.run_states = [("completed", "failure")]
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert set(world.github.looked_at) == {1000}
+    run_page = "https://github.com/you/threadline/actions/runs/1000"
+    assert step.first_run == FirstRun(started=True, page=run_page, stopped=True)
+
+
+@pytest.mark.asyncio
+async def test_the_set_ups_run_is_still_found_when_githubs_clock_is_a_little_behind() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.run_created_at = _SET_UP_STARTED - timedelta(seconds=30)
+    world.github.run_states = [("completed", "success")]
+
+    await GitHubStep().run(world.context())
+
+    assert set(world.github.looked_at) == {1000}
+    assert "The first run has finished." in world.io.said
+
+
+@pytest.mark.asyncio
+async def test_when_github_cannot_say_how_runs_go_the_run_is_not_followed() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.runs_readable = False
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.waits == []
+    assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
+    assert "The first run has started." in world.io.said
+    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
+
+
 # --- The end of the core set-up ---------------------------------------------------
 
 
@@ -915,6 +1124,20 @@ async def test_the_closing_words_name_the_missing_claude_key() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_closing_words_point_back_to_a_first_run_that_stopped() -> None:
+    world = _finishing_world([CLAUDE_KEY, True, ""])
+    world.github.run_states = [("completed", "failure")]
+    world.github.notes = (STOPPED_NOTE,)
+
+    assert await SetupWizard(world.context(), [GitHubStep()]).run_core()
+
+    said = world.io.said
+    ending = said[said.index("Set-up done.") :]
+    assert ending[1] == "The first run on GitHub stopped with a problem; what to do is said above."
+    assert not any("e-mail reaches you" in line for line in ending)
+
+
+@pytest.mark.asyncio
 async def test_a_core_set_up_that_stopped_has_no_closing_words() -> None:
     world = make_world([False], github_env())
     world.git.origin = None
@@ -926,6 +1149,72 @@ async def test_a_core_set_up_that_stopped_has_no_closing_words() -> None:
 
 
 # --- The gh and git helpers ----------------------------------------------------------
+
+
+def test_gh_reads_the_newest_runs_started_by_hand_and_one_runs_state() -> None:
+    listing = Recorder(
+        output=(
+            '[{"databaseId": 43, "status": "queued", "conclusion": "", "url": "v",'
+            ' "displayTitle": "Threadline refresh", "createdAt": "2026-10-09T08:00:05Z"},'
+            ' {"databaseId": 42, "status": "in_progress", "conclusion": "", "url": "u",'
+            ' "displayTitle": "Threadline daily run", "createdAt": "2026-10-09T08:00:00Z"},'
+            ' {"databaseId": 41, "status": "queued", "conclusion": "", "url": "w",'
+            ' "createdAt": "not a time"}, "not a run"]'
+        )
+    )
+    viewing = Recorder(
+        output='{"databaseId": 42, "status": "completed", "conclusion": "failure", "url": "u"}'
+    )
+
+    runs = GitHubCli(listing, which=lambda _: "/usr/bin/gh").recent_runs("you/threadline")
+    seen = GitHubCli(viewing, which=lambda _: "/usr/bin/gh").workflow_run("you/threadline", 42)
+
+    assert [run.id for run in runs] == [43, 42, 41]
+    assert runs[1] == WorkflowRun(
+        id=42,
+        status="in_progress",
+        conclusion="",
+        url="u",
+        title=DAILY_RUN_TITLE,
+        created_at=datetime(2026, 10, 9, 8, 0, tzinfo=UTC),
+    )
+    assert runs[2].created_at is None
+    assert seen.finished
+    assert not seen.succeeded
+    command = listing.calls[0][0]
+    assert command[:4] == ["gh", "run", "list", "--workflow"]
+    assert "workflow_dispatch" in command
+    assert command[command.index("--limit") + 1] == str(RECENT_RUNS_LIMIT)
+    assert "displayTitle,createdAt" in command[command.index("--json") + 1]
+    assert viewing.calls[0][0][:4] == ["gh", "run", "view", "42"]
+
+
+def test_gh_reads_no_run_as_none_and_a_failure_as_unavailable() -> None:
+    assert GitHubCli(Recorder(output="[]"), which=lambda _: "/usr/bin/gh").recent_runs("x/y") == ()
+    for broken in (Recorder(status=1), Recorder(output="not json")):
+        with pytest.raises(SourceUnavailableError, match="could not say how the run is going"):
+            GitHubCli(broken, which=lambda _: "/usr/bin/gh").recent_runs("x/y")
+    with pytest.raises(SourceUnavailableError):
+        GitHubCli(Recorder(output="{}"), which=lambda _: "/usr/bin/gh").workflow_run("x/y", 1)
+
+
+def test_gh_reads_a_runs_notes_by_their_title_from_each_job() -> None:
+    runner = Answering(
+        {
+            "run view": (0, "11\n12\n"),
+            "api repos/you/threadline/check-runs/11/annotations": (0, "First line\n"),
+            "api repos/you/threadline/check-runs/12/annotations": (0, ""),
+        }
+    )
+
+    notes = GitHubCli(runner, which=lambda _: "/usr/bin/gh").run_notes(
+        "you/threadline", 42, "Why Claude stopped"
+    )
+
+    assert notes == ("First line",)
+    api_call = runner.calls[1][0]
+    assert api_call[:3] == ["gh", "api", "repos/you/threadline/check-runs/11/annotations"]
+    assert api_call[-1] == '.[] | select(.title == "Why Claude stopped") | .message'
 
 
 class Recorder:

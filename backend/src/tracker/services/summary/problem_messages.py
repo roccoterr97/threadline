@@ -40,18 +40,17 @@ _CHECK_THE_RUN_PAGE: Final[str] = (
 #: Sentences chosen by the step *and* the code, where the source matters.
 _BY_STEP_AND_CODE: Final[dict[tuple[RunStep, str], tuple[str, str]]] = {
     (RunStep.COLLECT_LINKEDIN, "source_auth_failed"): (
-        "LinkedIn would not accept its key this morning, so no new LinkedIn "
-        "messages were read.",
-        "Renew the LinkedIn key — it lasts about a year and takes five minutes. "
-        "The steps are in 'Renew the LinkedIn key' in docs/operations.md.",
+        "LinkedIn would not accept its key this morning, so no new LinkedIn messages were read.",
+        "Renew the LinkedIn key: run 'uv run tracker setup linkedin' on your computer "
+        "and click 'Allow' on LinkedIn's page. The steps are in 'Renew the LinkedIn "
+        "key' in docs/operations.md.",
     ),
     (RunStep.COLLECT_LINKEDIN, "source_unavailable"): (
         "LinkedIn did not answer this morning, so no new LinkedIn messages were read.",
         _WAIT_IT_OUT,
     ),
     (RunStep.COLLECT_EMAIL, "source_auth_failed"): (
-        "Your mailbox could not be read this morning: Microsoft refused the "
-        "saved sign-in.",
+        "Your mailbox could not be read this morning: Microsoft refused the saved sign-in.",
         "Sign in to Microsoft once more — it takes about a minute. The steps are "
         "in 'Redo the Microsoft sign-in' in docs/operations.md.",
     ),
@@ -67,14 +66,12 @@ _BY_STEP_AND_CODE: Final[dict[tuple[RunStep, str], tuple[str, str]]] = {
         "in full as soon as somebody writes in it again.",
     ),
     (RunStep.COLLECT_CALENDAR, "source_auth_failed"): (
-        "Your calendar could not be read this morning: Microsoft refused "
-        "the saved sign-in.",
+        "Your calendar could not be read this morning: Microsoft refused the saved sign-in.",
         "Sign in to Microsoft once more — it takes about a minute. The steps are "
         "in 'Redo the Microsoft sign-in' in docs/operations.md.",
     ),
     (RunStep.COLLECT_CALENDAR, "source_unavailable"): (
-        "Your calendar did not answer this morning, so no new meetings "
-        "were read.",
+        "Your calendar did not answer this morning, so no new meetings were read.",
         _WAIT_IT_OUT,
     ),
 }
@@ -118,14 +115,12 @@ _BY_CODE: Final[dict[str, tuple[str, str]]] = {
         _WAIT_IT_OUT,
     ),
     "configuration_invalid": (
-        "A setting Threadline needs is missing or wrong, so this part of the run "
-        "could not start.",
+        "A setting Threadline needs is missing or wrong, so this part of the run could not start.",
         "See 'When a setting is missing' in docs/operations.md. Nothing is lost — "
         "the next run picks up where this one stopped.",
     ),
     "validation_failed": (
-        "Some of what came back did not look right, so it was left out rather than "
-        "saved wrongly.",
+        "Some of what came back did not look right, so it was left out rather than saved wrongly.",
         _WAIT_IT_OUT,
     ),
     RUN_INTERRUPTED_CODE: (

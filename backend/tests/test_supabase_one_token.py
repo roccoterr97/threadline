@@ -10,6 +10,7 @@ from tests.setup_world import (
     GOOD_PUBLISHABLE,
     GOOD_SECRET,
     GOOD_TOKEN,
+    NARROW_TOKEN,
     NEW_PROJECT_REF,
     ORGANIZATION,
     OWNER_EMAIL,
@@ -27,7 +28,12 @@ from tracker.services.setup.step_login import LoginStep
 from tracker.services.setup.step_refresh import RefreshStep
 from tracker.services.setup.step_supabase import SupabaseStep
 from tracker.services.setup.supabase_project import region_group_for
-from tracker.services.setup.supabase_session import TOKEN_PROMPT, require_supabase_token
+from tracker.services.setup.supabase_session import (
+    TOKEN_PROMPT,
+    TOKEN_STEPS,
+    TOO_LITTLE_ACCESS,
+    require_supabase_token,
+)
 from tracker.shared.constants.setup import (
     DATABASE_PASSWORD_BYTES,
     NEW_PROJECT_ANSWER_ATTEMPTS,
@@ -41,6 +47,7 @@ from tracker.shared.constants.setup import (
 from tracker.shared.errors import (
     DatabaseUnavailableError,
     SourceAuthError,
+    SourcePermissionError,
     SourceRequestRejectedError,
     SourceUnavailableError,
     ValidationFailedError,
@@ -114,6 +121,41 @@ async def test_a_refused_token_is_asked_for_again_and_never_kept() -> None:
     # Two tokens checked, then the accepted one lists the organizations.
     assert world.platform.organization_reads == 3
     assert world.env.values["SUPABASE_URL"] == NEW_PROJECT_URL
+
+
+async def test_the_steps_lead_to_a_legacy_token_on_supabases_page() -> None:
+    world = make_world(list(CREATE_NEW))
+
+    await SupabaseStep().run(world.context())
+
+    for line in TOKEN_STEPS:
+        assert line in world.io.said
+    assert "click the small link 'Create legacy token'" in world.io.text()
+    assert "whole account" not in world.io.text()
+
+
+async def test_a_scoped_token_turned_away_at_once_is_asked_for_again_with_the_fix() -> None:
+    world = make_world([True, NARROW_TOKEN, GOOD_TOKEN, "", ""])
+    world.platform.narrow_may_list = False
+
+    await SupabaseStep().run(world.context())
+
+    assert f"  {TOO_LITTLE_ACCESS}. Please try again." in world.io.said
+    assert "did not accept" not in world.io.text()
+    assert world.env.values["SUPABASE_URL"] == NEW_PROJECT_URL
+
+
+async def test_a_scoped_token_that_may_not_read_the_keys_stops_with_the_fix() -> None:
+    world = make_world([True, NARROW_TOKEN, "", ""])
+    ctx = world.context()
+
+    with pytest.raises(SourcePermissionError) as raised:
+        await SupabaseStep().run(ctx)
+
+    assert raised.value.message == TOO_LITTLE_ACCESS
+    assert "Create legacy token" in raised.value.message
+    assert ctx.session.supabase_token is None
+    assert world.env.values == {}
 
 
 async def test_a_token_refused_every_time_creates_nothing() -> None:
@@ -405,7 +447,7 @@ async def test_a_secret_key_the_token_may_not_reveal_is_never_saved() -> None:
         ApiKey(ApiKeyKind.SECRET, "default", SecretStr("sb_secret_abcd····")),
     ]
 
-    with pytest.raises(SourceAuthError, match="API Key Secrets"):
+    with pytest.raises(SourcePermissionError, match="Create legacy token"):
         await SupabaseStep().run(world.context())
 
     assert world.env.values == {}
@@ -498,6 +540,20 @@ async def test_a_token_that_may_not_apply_the_structure_falls_back_to_the_editor
     assert "The database structure is in place." in world.io.said
 
 
+async def test_a_scoped_token_falls_back_to_the_editor_and_says_how_to_fix_it() -> None:
+    world = make_world([True, NARROW_TOKEN], configured_env())
+    world.admin.present = set(KNOWN_MIGRATIONS) - {"0006_meeting_time"}
+    world.io.on_pause = lambda prompt: world.admin.present.add("0006_meeting_time")
+    ctx = world.context()
+
+    await DatabaseStep().run(ctx)
+
+    assert f"{TOO_LITTLE_ACCESS}." in world.io.said
+    assert "Carrying on by hand instead." in world.io.said
+    assert ctx.session.supabase_token is None
+    assert "The database structure is in place." in world.io.said
+
+
 async def test_the_structure_check_asks_again_while_a_new_project_wakes_up() -> None:
     world = make_world([], configured_env())
     world.admin.unanswered_calls = 2
@@ -564,6 +620,23 @@ async def test_a_failed_switch_falls_back_to_the_settings_page(refusal: type[Exc
     assert "Sign-ups are now switched off." in world.io.said
 
 
+async def test_a_scoped_token_switches_signups_off_by_hand_and_is_forgotten() -> None:
+    world = make_world([OWNER_EMAIL, True, NARROW_TOKEN], configured_env())
+    world.platform.signups_off = [False]
+
+    def saved_by_hand(prompt: str) -> None:
+        world.platform.signups_off = [True]
+
+    world.io.on_pause = saved_by_hand
+    ctx = world.context()
+
+    await LoginStep().run(ctx)
+
+    assert f"Supabase would not change the setting: {TOO_LITTLE_ACCESS}." in world.io.said
+    assert world.io.opened[-1].endswith(f"/project/{PROJECT_REF}/auth/providers")
+    assert ctx.session.supabase_token is None
+
+
 async def test_signups_already_off_need_no_token() -> None:
     world = make_world([OWNER_EMAIL], configured_env())
 
@@ -574,6 +647,20 @@ async def test_signups_already_off_need_no_token() -> None:
 
 
 # --- Refresh now ---------------------------------------------------------------
+
+
+async def test_refresh_now_with_a_scoped_token_stops_with_the_fix() -> None:
+    env = configured_env() | {"DASHBOARD_BASE_URL": "https://you.vercel.app"}
+    world = make_world([True, GOOD_GITHUB_TOKEN], env)
+    ctx: SetupContext = world.context()
+    ctx.session.supabase_token = SecretStr(NARROW_TOKEN)
+
+    with pytest.raises(SourcePermissionError, match="Create legacy token"):
+        await RefreshStep().run(ctx)
+
+    assert world.platform.secrets == {}
+    assert world.platform.deployed == []
+    assert ctx.session.supabase_token is None
 
 
 async def test_refresh_now_reuses_the_runs_token() -> None:

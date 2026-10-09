@@ -228,6 +228,22 @@ class SupabaseAdmin:
                 return None
         return None
 
+    def user_email(self, user_id: str) -> str | None:
+        """Read the e-mail address a login signs in with.
+
+        Args:
+            user_id: The login's identifier in Supabase Auth, as recorded for the owner.
+
+        Returns:
+            The address, or ``None`` when the login has none.
+
+        Raises:
+            SourceAuthError: If the key is not the secret one.
+            DatabaseUnavailableError: If Supabase could not answer, or has no such login.
+        """
+        response = self._auth(lambda: self._client.auth.admin.get_user_by_id(user_id))
+        return response.user.email or None
+
     def create_confirmed_user(self, email: str) -> str | None:
         """Create a login that can sign in by e-mailed link straight away.
 

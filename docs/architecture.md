@@ -607,6 +607,18 @@ derived as usual. The dashboard and the next summary explain the code; the
 summary's "replied since" window skips every run whose summary did not go out —
 interrupted, failed to send, or skipped.
 
+**Two runs of the same kind never work at once**
+(`services/runs/overlapping_runs.py`). GitHub queues its own runs (the
+workflow's concurrency groups), but a run on the Mac, in Claude's cloud or by
+hand is outside that queue. So `tracker run start` then looks for an open run
+of its own kind (daily or refresh) and stops with the code
+`run_already_going`, opening and closing nothing; the recipe then ends at once
+without its closing step, which would otherwise close the other run. When
+GitHub starts the run, an open run GitHub itself started cannot still be
+going, so it is closed as interrupted at once instead of three hours later.
+`--force` is the owner's way past a run they know has stopped: it closes that
+run as interrupted first.
+
 **The summary is built by Python** (`services/summary/`), not phrased by an
 assistant. `builder.py` reads `people_overview`, the unanswered `review_items`,
 the conversations of the people it already lists and the steps of the run;

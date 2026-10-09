@@ -23,6 +23,10 @@ is held in memory for one set-up run and never written anywhere:
   and saves its settings (``POST /v1/projects/{ref}/secrets``).
 * **Read whether sign-ups are open.** The auth server publishes its public
   settings at ``/auth/v1/settings``; the publishable key is enough to read them.
+
+A 401 means the token itself is wrong or expired; a 403 means Supabase knows
+the token but it may not make that call, which is how a limited (scoped) token
+is turned away. The two get different errors so the set-up can say which.
 """
 
 from __future__ import annotations
@@ -50,14 +54,12 @@ from tracker.shared.constants.setup import (
 )
 from tracker.shared.errors import (
     SourceAuthError,
+    SourcePermissionError,
     SourceRequestRejectedError,
     SourceUnavailableError,
 )
 from tracker.shared.http import get_with_retries, request_with_retries
 from tracker.shared.logging import get_logger
-
-#: Statuses meaning "this key or token is not accepted".
-REFUSED_STATUSES: Final[frozenset[int]] = frozenset({401, 403})
 
 #: Fields of an error answer that hold Supabase's own explanation, in order of preference.
 ERROR_MESSAGE_FIELDS: Final[tuple[str, ...]] = ("message", "msg", "error_description", "error")
@@ -520,7 +522,10 @@ def _checked(response: httpx.Response, what: str) -> httpx.Response:
     status = response.status_code
     detail = _error_detail(response)
     _log.error("supabase_request_refused", status=status, detail=detail)
-    if status in REFUSED_STATUSES:
+    if status == httpx.codes.FORBIDDEN:
+        message = f"Supabase says {what} has too little access"
+        raise SourcePermissionError(message)
+    if status == httpx.codes.UNAUTHORIZED:
         message = f"Supabase did not accept {what}"
         raise SourceAuthError(message)
     reason = f"status {status}: {detail}" if detail else f"status {status}"

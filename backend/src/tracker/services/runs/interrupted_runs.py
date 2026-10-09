@@ -42,7 +42,7 @@ def close_interrupted_runs(
     """
     cutoff = now - timedelta(hours=INTERRUPTED_RUN_AFTER_HOURS)
     stale = [run for run in repositories.run_logs.list_running() if run.started_at < cutoff]
-    return [_close(repositories, run, now, unconfigured) for run in stale]
+    return [close_interrupted_run(repositories, run, now, unconfigured) for run in stale]
 
 
 def expected_steps(trigger: RunTrigger) -> tuple[RunStep, ...]:
@@ -60,10 +60,20 @@ def expected_steps(trigger: RunTrigger) -> tuple[RunStep, ...]:
     return steps
 
 
-def _close(
+def close_interrupted_run(
     repositories: Repositories, run: RunLog, now: datetime, unconfigured: frozenset[RunStep]
 ) -> RunLog:
-    """Record where one run stopped, then close it."""
+    """Record where one run stopped, then close it.
+
+    Args:
+        repositories: The repository container.
+        run: The run still marked running.
+        now: The current moment, which becomes its finishing time.
+        unconfigured: Steps whose source is not set up; never blamed.
+
+    Returns:
+        The closed run.
+    """
     recorded = repositories.run_step_logs.list_for_run(run.id)
     done = {step.step for step in recorded}
     stopped_at = next(

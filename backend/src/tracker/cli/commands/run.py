@@ -15,6 +15,9 @@ because every step of the recipe costs the session the same few seconds
 whatever it does. ``run start --prepare`` goes on to the health check and
 ``profile apply``; ``run finish --clean`` goes on to ``ai clean`` once the run
 is closed. Each folded command prints what it prints on its own.
+
+``tracker run why-claude-stopped`` is not part of the recipe: the workflow
+calls it after Claude stopped with an error, to say why in one plain line.
 """
 
 from __future__ import annotations
@@ -37,6 +40,7 @@ from tracker.repositories import Repositories, build_repositories
 from tracker.schemas.summary import SummaryEmail
 from tracker.services.collection.mailboxes import imap_account, saved_app_password
 from tracker.services.collection.models import NOT_CONFIGURED_LINE
+from tracker.services.runs.claude_failure import explain_execution_file
 from tracker.services.runs.owner_settings import publish_owner_settings
 from tracker.services.runs.run_recorder import (
     RunRecorder,
@@ -79,6 +83,17 @@ PrepareOption = Annotated[
     typer.Option(
         "--prepare",
         help="Also run the health check and 'profile apply', and say whether the run can go on.",
+    ),
+]
+
+ForceOption = Annotated[
+    bool,
+    typer.Option(
+        "--force",
+        help=(
+            "Start even though another run of the same kind looks open; that run is "
+            "closed as interrupted. Only for a run you know has stopped."
+        ),
     ),
 ]
 
@@ -154,6 +169,14 @@ FileOption = Annotated[
     ),
 ]
 
+ExecutionFileArgument = Annotated[
+    str,
+    typer.Argument(
+        help="The record claude-code-action kept of the run; empty when it kept none.",
+        show_default=False,
+    ),
+]
+
 SendAgainOption = Annotated[
     bool,
     typer.Option(
@@ -174,11 +197,15 @@ def register(cli: typer.Typer) -> None:
 
 
 @run_app.command("start")
-def start_run(trigger: TriggerOption = RunTrigger.CLOUD, prepare: PrepareOption = False) -> None:
+def start_run(
+    trigger: TriggerOption = RunTrigger.CLOUD,
+    prepare: PrepareOption = False,
+    force: ForceOption = False,
+) -> None:
     """Open today's run, print its identifier, and pass the owner's time zone on."""
     settings = get_settings()
     repositories = _repositories(settings)
-    run = _recorder(settings, repositories).start(trigger)
+    run = _recorder(settings, repositories).start(trigger, force=force)
     typer.echo(f"run {run.id} started · trigger {trigger.value}")
     typer.echo(_time_zone_line(repositories, settings))
     if prepare:
@@ -230,6 +257,12 @@ def finish_run(
         raise
     if clean:
         attempt("ai clean", clean_work_files)
+
+
+@run_app.command("why-claude-stopped")
+def why_claude_stopped(execution_file: ExecutionFileArgument = "") -> None:
+    """Say in one line why Claude stopped a run on GitHub, never what it read."""
+    typer.echo(explain_execution_file(Path(execution_file) if execution_file else None))
 
 
 @summary_app.command("build")

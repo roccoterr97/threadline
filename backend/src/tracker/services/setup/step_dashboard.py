@@ -17,7 +17,8 @@ from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
 from tracker.services.setup.netlify_publish import SITE_ID, publish_on_netlify
-from tracker.services.setup.supabase_session import require_supabase_token
+from tracker.services.setup.supabase_session import full_access_needed, require_supabase_token
+from tracker.shared.constants.dashboard import LOGIN_WALL_STATUSES
 from tracker.shared.constants.setup import SUPABASE_URL_CONFIGURATION_PAGE
 from tracker.shared.errors import (
     SourceAuthError,
@@ -26,9 +27,6 @@ from tracker.shared.errors import (
 )
 
 ADDRESS: Final[str] = "DASHBOARD_BASE_URL"
-
-#: Statuses a page answers when it is behind a host's login (a Vercel preview, say).
-LOGIN_WALL_STATUSES: Final[frozenset[int]] = frozenset({401, 403})
 
 #: First status that counts as "the page did not open".
 FIRST_ERROR_STATUS: Final[int] = 400
@@ -142,10 +140,11 @@ async def _pointed_through_the_api(ctx: SetupContext, ref: str, address: str) ->
     entry = f"{address}/**"
     try:
         token = await require_supabase_token(ctx)
-        known = await ctx.gateways.platform.redirect_urls(ref, token)
-        urls = known if entry in known else (*known, entry)
-        settings = AuthSettings(site_url=address, redirect_urls=urls)
-        await ctx.gateways.platform.configure_auth(ref, token, settings)
+        with full_access_needed(ctx):
+            known = await ctx.gateways.platform.redirect_urls(ref, token)
+            urls = known if entry in known else (*known, entry)
+            settings = AuthSettings(site_url=address, redirect_urls=urls)
+            await ctx.gateways.platform.configure_auth(ref, token, settings)
     except (SourceAuthError, SourceUnavailableError) as error:
         ctx.io.say(f"Supabase would not change the sign-in addresses: {error.message}.")
         return False

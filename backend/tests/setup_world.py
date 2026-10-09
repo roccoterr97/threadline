@@ -8,7 +8,7 @@ from __future__ import annotations
 import hashlib
 from collections import deque
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 
@@ -16,6 +16,7 @@ from pydantic import SecretStr
 
 from tracker.domain.categories import Category
 from tracker.domain.daily_start import DailyStartStatus
+from tracker.domain.linkedin_sign_in import LinkedInApp, LinkedInGrant, SignInProblem
 from tracker.domain.supabase import (
     ApiKey,
     ApiKeyKind,
@@ -24,7 +25,7 @@ from tracker.domain.supabase import (
     Organization,
     SupabaseProject,
 )
-from tracker.infrastructure.github_cli import GitHubRepository
+from tracker.infrastructure.github_cli import GitHubRepository, WorkflowRun
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
@@ -41,13 +42,15 @@ from tracker.services.setup.ports import SetupGateways
 from tracker.services.setup.workflow_schedule import Schedule, write_schedule
 from tracker.shared.clock import FixedClock
 from tracker.shared.constants.dashboard import ARCHIVE_NAME, CHECKSUM_NAME, RELEASE_ASSET_URL
-from tracker.shared.constants.github import WORKFLOW_FILE, WorkflowMode
+from tracker.shared.constants.github import DAILY_RUN_TITLE, WORKFLOW_FILE, WorkflowMode
 from tracker.shared.errors import (
     DatabaseStructureMissingError,
     DatabaseUnavailableError,
+    LinkedInSignInError,
     MailboxPasswordError,
     SiteNameTakenError,
     SourceAuthError,
+    SourcePermissionError,
     SourceRequestRejectedError,
     SourceUnavailableError,
     WorkflowNotEnabledError,
@@ -59,8 +62,17 @@ PROJECT_REF = "abcdefghijklmnop"
 GOOD_PUBLISHABLE = "sb_publishable_good"
 GOOD_SECRET = "sb_secret_good"
 GOOD_TOKEN = "sbp_good"
+#: A scoped Supabase token: it may list and create projects, but Supabase answers
+#: "too little access" to everything inside a project, as it does for revealing keys.
+NARROW_TOKEN = "sbp_fc_scoped"
 GOOD_LINKEDIN = "linkedin-good"
+GOOD_CLIENT_ID = "78linkedinapp1"
+GOOD_CLIENT_SECRET = "WPL_AP1.good-secret"
+#: When the key LinkedIn hands out stops working, in the fake.
+LINKEDIN_KEY_EXPIRES_AT = datetime(2027, 9, 24, 7, 0, tzinfo=UTC)
 OWNER_EMAIL = "you@example.com"
+#: The title GitHub shows on a refresh, from the workflow's run-name.
+REFRESH_RUN_TITLE = "Threadline refresh"
 GOOD_APP_PASSWORD = "wxyzwxyzwxyzwxyz"
 GOOD_GITHUB_TOKEN = "github_pat_good"
 NEW_PROJECT_REF = "newprojectrefabcdefg"
@@ -106,6 +118,7 @@ class ScriptedIO:
         self.answers: deque[str | bool] = deque(answers or [])
         self.said: list[str] = []
         self.defaults: dict[str, str | None] = {}
+        self.exact: list[str] = []
         self.opened: list[str] = []
         self.copied: list[str] = []
         self.secret_prompts: list[str] = []
@@ -115,8 +128,10 @@ class ScriptedIO:
     def say(self, text: str) -> None:
         self.said.append(text)
 
-    def ask(self, prompt: str, *, default: str | None = None) -> str:
+    def ask(self, prompt: str, *, default: str | None = None, exact: bool = False) -> str:
         self.defaults[prompt] = default
+        if exact:
+            self.exact.append(prompt)
         answer = self._next(prompt)
         if answer == "":
             return default or ""
@@ -234,6 +249,9 @@ class FakeAdmin:
     def find_user_id(self, email: str) -> str | None:
         return self.users.get(email)
 
+    def user_email(self, user_id: str) -> str | None:
+        return next((email for email, known in self.users.items() if known == user_id), None)
+
     def create_confirmed_user(self, email: str) -> str | None:
         if email in self.users:
             return None
@@ -303,7 +321,8 @@ def _row_detail(matches: tuple[tuple[str, str], ...]) -> str:
 class FakePlatform:
     """Supabase's Management API and public auth settings.
 
-    Every Management API call refuses any token but ``GOOD_TOKEN``, as Supabase would.
+    Every Management API call refuses any token but ``GOOD_TOKEN``, as Supabase would;
+    ``NARROW_TOKEN`` is let through only to the organization and project calls.
     """
 
     signups_off: list[bool] = field(default_factory=lambda: [True])
@@ -339,6 +358,8 @@ class FakePlatform:
     unanswered_settings: int = 0
     #: Whether creating a project is lost to a timeout after Supabase made it.
     create_times_out: bool = False
+    #: Whether ``NARROW_TOKEN`` may list the organizations (and so pass the paste check).
+    narrow_may_list: bool = True
 
     async def signups_disabled(self, project_url: str, publishable_key: SecretStr) -> bool:
         if self.unanswered_settings > 0:
@@ -352,15 +373,18 @@ class FakePlatform:
 
     async def organizations(self, token: SecretStr) -> tuple[Organization, ...]:
         self.organization_reads += 1
-        _require_good(token, "the access token")
+        if self.narrow_may_list:
+            _require_known(token, "the access token")
+        else:
+            _require_good(token, "the access token")
         return tuple(self.organization_list)
 
     async def projects(self, token: SecretStr) -> tuple[SupabaseProject, ...]:
-        _require_good(token, "the access token")
+        _require_known(token, "the access token")
         return tuple(self.project_list)
 
     async def create_project(self, token: SecretStr, request: NewProject) -> SupabaseProject:
-        _require_good(token, "the access token for creating a project")
+        _require_known(token, "the access token for creating a project")
         if self.create_refusal is not None:
             message = f"Supabase refused it (status 402: {self.create_refusal})"
             raise SourceRequestRejectedError(message)
@@ -375,7 +399,7 @@ class FakePlatform:
         return project
 
     async def project(self, token: SecretStr, project_ref: str) -> SupabaseProject:
-        _require_good(token, "the access token")
+        _require_known(token, "the access token")
         if self.busy_looks > 0:
             self.busy_looks -= 1
             message = "Supabase refused it (status 429: Too many requests)"
@@ -426,6 +450,7 @@ class FakePlatform:
     async def apply_migration(
         self, project_ref: str, token: SecretStr, name: str, sql: str
     ) -> None:
+        _require_good(token, "the access token")
         if name == self.fail_on:
             message = "Supabase answered status 500"
             raise SourceUnavailableError(message)
@@ -443,9 +468,7 @@ class FakePlatform:
     async def set_secrets(
         self, project_ref: str, token: SecretStr, secrets: Mapping[str, SecretStr]
     ) -> None:
-        if token.get_secret_value() != GOOD_TOKEN:
-            message = "Supabase did not accept the access token for the function's settings"
-            raise SourceAuthError(message)
+        _require_good(token, "the access token for the function's settings")
         self.secrets.update({name: value.get_secret_value() for name, value in secrets.items()})
 
     async def deploy_function(
@@ -457,11 +480,21 @@ class FakePlatform:
         *,
         verify_jwt: bool,
     ) -> None:
+        _require_good(token, "the access token for deploying the function")
         self.deployed.append((slug, tuple(files), verify_jwt))
+
+
+def _require_known(token: SecretStr, what: str) -> None:
+    """Refuse any token but the good one or the scoped one."""
+    if token.get_secret_value() != NARROW_TOKEN:
+        _require_good(token, what)
 
 
 def _require_good(token: SecretStr, what: str) -> None:
     """Refuse any token but the good one, in Supabase's words."""
+    if token.get_secret_value() == NARROW_TOKEN:
+        message = f"Supabase says {what} has too little access"
+        raise SourcePermissionError(message)
     if token.get_secret_value() != GOOD_TOKEN:
         message = f"Supabase did not accept {what}"
         raise SourceAuthError(message)
@@ -526,6 +559,80 @@ class FakeMailbox:
 
     async def save_password(self, access: StoreAccess, username: str, password: SecretStr) -> None:
         self.saved[username] = password.get_secret_value()
+
+
+@dataclass
+class FakeLinkedIn:
+    """LinkedIn's sign-in with the owner's application, and the encrypted Client Secret.
+
+    A sign-in with the good Client ID and Secret hands out the good key, unless
+    a test lines up errors first; any other Client ID or Secret is refused.
+    """
+
+    #: Errors the next sign-ins raise, in turn, before they succeed.
+    errors: list[LinkedInSignInError | SourceUnavailableError] = field(default_factory=list)
+    #: The key a successful sign-in hands out.
+    key: str = GOOD_LINKEDIN
+    #: How many times a sign-in asks whether to keep waiting before LinkedIn answers.
+    slow_answers: int = 0
+    #: Whether the key exchange says when the key stops working.
+    tells_expiry: bool = True
+    #: What the key check answers; ``None`` when LinkedIn does not say.
+    introspected: datetime | None = LINKEDIN_KEY_EXPIRES_AT
+    #: Whether LinkedIn cannot be reached to read a key's expiry.
+    introspection_fails: bool = False
+    saved_secret: str | None = None
+    #: Whether the database is down when the Client Secret is saved.
+    secret_save_fails: bool = False
+    #: Whether LinkedIn cannot be reached for the live check of a key.
+    check_unreachable: bool = False
+    sign_ins: list[LinkedInApp] = field(default_factory=list)
+    introspections: list[str] = field(default_factory=list)
+
+    async def sign_in(
+        self,
+        app: LinkedInApp,
+        show_page: Callable[[str], None],
+        keep_waiting: Callable[[], bool],
+    ) -> LinkedInGrant:
+        self.sign_ins.append(app)
+        show_page(f"https://www.linkedin.com/oauth/v2/authorization?client_id={app.client_id}")
+        for _ in range(self.slow_answers):
+            if not keep_waiting():
+                message = "No answer came back from LinkedIn"
+                raise LinkedInSignInError(message, SignInProblem.NO_ANSWER)
+        if self.errors:
+            raise self.errors.pop(0)
+        if not _good_app(app):
+            message = "LinkedIn did not accept the Client ID or the Client Secret"
+            raise LinkedInSignInError(message, SignInProblem.APP_DETAILS)
+        expires = LINKEDIN_KEY_EXPIRES_AT if self.tells_expiry else None
+        return LinkedInGrant(SecretStr(self.key), expires)
+
+    async def expiry_of(self, app: LinkedInApp, token: SecretStr) -> datetime | None:
+        self.introspections.append(token.get_secret_value())
+        if self.introspection_fails:
+            message = "LinkedIn could not be reached"
+            raise SourceUnavailableError(message)
+        if not _good_app(app):
+            message = "LinkedIn did not accept the Client ID or the Client Secret"
+            raise LinkedInSignInError(message, SignInProblem.APP_DETAILS)
+        return self.introspected
+
+    async def saved_client_secret(self, access: StoreAccess) -> SecretStr | None:
+        return SecretStr(self.saved_secret) if self.saved_secret else None
+
+    async def save_client_secret(self, access: StoreAccess, secret: SecretStr) -> None:
+        if self.secret_save_fails:
+            message = "database request failed on app_secrets.bulk_upsert"
+            raise DatabaseUnavailableError(message)
+        self.saved_secret = secret.get_secret_value()
+
+
+def _good_app(app: LinkedInApp) -> bool:
+    """Whether the fake LinkedIn knows this Client ID and Secret."""
+    secret = app.client_secret.get_secret_value()
+    return app.client_id == GOOD_CLIENT_ID and secret == GOOD_CLIENT_SECRET
 
 
 @dataclass
@@ -654,6 +761,21 @@ class FakeGitHub:
     disable_refused: bool = False
     #: Whether GitHub refuses to save a secret or a variable.
     save_refused: bool = False
+    #: The workflow's runs, newest last; each run the set-up starts is added.
+    runs: list[WorkflowRun] = field(default_factory=list)
+    #: When GitHub makes each run the set-up starts.
+    run_created_at: datetime = datetime(2026, 9, 29, 7, 0, tzinfo=UTC)
+    #: Runs GitHub shows only once the set-up has started its own, such as a
+    #: refresh pressed a moment later.
+    runs_started_next: list[WorkflowRun] = field(default_factory=list)
+    #: The (status, conclusion) a started run is seen in at each look, in turn;
+    #: the last one repeats.
+    run_states: list[tuple[str, str]] = field(default_factory=lambda: [("in_progress", "")])
+    #: The notes titled "Why Claude stopped" that a run's job leaves.
+    notes: tuple[str, ...] = ()
+    #: Whether GitHub can say how runs are going, and each run looked at.
+    runs_readable: bool = True
+    looked_at: list[int] = field(default_factory=list)
 
     def installed(self) -> bool:
         return self.is_installed
@@ -727,6 +849,40 @@ class FakeGitHub:
             )
             raise WorkflowNotStartedError(message)
         self.started.append((repository, mode.value))
+        run_id = 1000 + len(self.runs)
+        url = f"https://github.com/{repository}/actions/runs/{run_id}"
+        title = DAILY_RUN_TITLE if mode == WorkflowMode.DAILY else REFRESH_RUN_TITLE
+        run = WorkflowRun(
+            id=run_id,
+            status="queued",
+            conclusion="",
+            url=url,
+            title=title,
+            created_at=self.run_created_at,
+        )
+        self.runs.append(run)
+        self.runs.extend(self.runs_started_next)
+
+    def recent_runs(self, repository: str) -> tuple[WorkflowRun, ...]:
+        self._refuse_unless_readable()
+        return tuple(reversed(self.runs))
+
+    def workflow_run(self, repository: str, run_id: int) -> WorkflowRun:
+        self._refuse_unless_readable()
+        self.looked_at.append(run_id)
+        states = self.run_states
+        status, conclusion = states.pop(0) if len(states) > 1 else states[0]
+        run = next(run for run in self.runs if run.id == run_id)
+        return replace(run, status=status, conclusion=conclusion)
+
+    def run_notes(self, repository: str, run_id: int, title: str) -> tuple[str, ...]:
+        self._refuse_unless_readable()
+        return self.notes if title == "Why Claude stopped" else ()
+
+    def _refuse_unless_readable(self) -> None:
+        if not self.runs_readable:
+            message = "GitHub could not say how the run is going"
+            raise SourceUnavailableError(message)
 
     def disable_workflow(self, repository: str) -> None:
         if self.disable_refused:
@@ -829,6 +985,7 @@ class World:
     microsoft: FakeMicrosoft
     statuses: dict[str, int]
     linkedin_calls: list[str]
+    linkedin: FakeLinkedIn = field(default_factory=FakeLinkedIn)
     choices: FakeChoices = field(default_factory=FakeChoices)
     mailbox: FakeMailbox = field(default_factory=FakeMailbox)
     workflow: FakeWorkflow = field(default_factory=FakeWorkflow)
@@ -852,6 +1009,9 @@ class World:
     def context(self) -> SetupContext:
         async def check_linkedin(token: SecretStr) -> None:
             self.linkedin_calls.append(token.get_secret_value())
+            if self.linkedin.check_unreachable:
+                message = "LinkedIn could not be reached"
+                raise SourceUnavailableError(message)
             if token.get_secret_value() != GOOD_LINKEDIN:
                 message = "LinkedIn did not accept the key - it is wrong or has expired"
                 raise SourceAuthError(message)
@@ -888,6 +1048,7 @@ class World:
             microsoft=self.microsoft,
             mailbox=self.mailbox,
             check_linkedin=check_linkedin,
+            linkedin=self.linkedin,
             status_of=status_of,
             status_of_post=status_of_post,
             make_encryption_key=lambda: "generated-key",

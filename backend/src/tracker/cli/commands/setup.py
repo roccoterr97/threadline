@@ -17,9 +17,11 @@ from tracker.cli.setup_wiring import build_context
 from tracker.infrastructure.setup_form import open_setup_form
 from tracker.infrastructure.supabase_platform import SupabasePlatform
 from tracker.services.setup.models import StepGroup, StepName
+from tracker.services.setup.netlify_publish import BUILD_HERE_OPTION
 from tracker.services.setup.ports import SetupIO
 from tracker.services.setup.wizard import SetupWizard, default_steps
 from tracker.shared import config
+from tracker.shared.logging import logs_kept_in
 
 #: Panel the root help groups this command under.
 HELP_PANEL: Final[str] = "system"
@@ -55,6 +57,21 @@ BrowserOption = Annotated[
     ),
 ]
 
+BuildHereOption = Annotated[
+    bool,
+    typer.Option(
+        BUILD_HERE_OPTION,
+        help="For testing your own changes to the dashboard: build it on this computer "
+        "with Node.js 22 or newer instead of downloading the ready-made one. Goes with "
+        f"'{StepName.DASHBOARD}' or a full run.",
+    ),
+]
+
+#: What the set-up says when it stops, so whoever helps can see the details.
+_DETAILS: Final[str] = (
+    "If you ask someone for help, show them the file {name} in the project's backend folder."
+)
+
 
 def register(cli: typer.Typer) -> None:
     """Attach the set-up to the root application.
@@ -65,7 +82,11 @@ def register(cli: typer.Typer) -> None:
     cli.command("setup", rich_help_panel=HELP_PANEL)(setup)
 
 
-def setup(target: TargetArgument = None, browser: BrowserOption = False) -> None:
+def setup(
+    target: TargetArgument = None,
+    browser: BrowserOption = False,
+    build_here: BuildHereOption = False,
+) -> None:
     """Set up every connection, checking each one live before saving it.
 
     The core steps, run in order without an argument: supabase, encryption,
@@ -76,18 +97,41 @@ def setup(target: TargetArgument = None, browser: BrowserOption = False) -> None
     and cloud (the alternative to GitHub). A step's name runs that step alone.
     """
     request = parse_target(target)
-    if not browser:
-        if not _run_in_terminal(request):
-            raise typer.Exit(1)
-        return
+    _check_build_here(request, build_here=build_here)
+    with logs_kept_in(config.SETUP_LOG_FILE):
+        finished = (
+            _run_with_page(request, build_here=build_here)
+            if browser
+            else _run_in_terminal(request, build_here=build_here)
+        )
+    if not finished:
+        typer.echo(_DETAILS.format(name=config.SETUP_LOG_FILE.name))
+        raise typer.Exit(1)
+
+
+def _check_build_here(request: StepName | StepGroup, *, build_here: bool) -> None:
+    """Refuse ``--build-here`` with a step that does not publish the dashboard.
+
+    Raises:
+        typer.BadParameter: If it goes with another step or with the extras.
+    """
+    if build_here and request not in (StepName.DASHBOARD, StepGroup.CORE):
+        message = (
+            f"{BUILD_HERE_OPTION} goes with the dashboard step: "
+            f"{_COMMAND} {StepName.DASHBOARD} {BUILD_HERE_OPTION}"
+        )
+        raise typer.BadParameter(message)
+
+
+def _run_with_page(request: StepName | StepGroup, *, build_here: bool) -> bool:
+    """Run on a page in the browser, which shows the last word before it closes."""
     form = open_setup_form(typer.echo)
     try:
-        finished = _run_with(form.io, request)
+        finished = _run_with(form.io, request, build_here=build_here)
         form.finish(ok=finished, message=_ending(request, finished=finished))
     finally:
         form.close()
-    if not finished:
-        raise typer.Exit(1)
+    return finished
 
 
 def parse_target(target: str | None) -> StepName | StepGroup:
@@ -112,9 +156,9 @@ def parse_target(target: str | None) -> StepName | StepGroup:
     raise typer.BadParameter(message)
 
 
-def _run_in_terminal(request: StepName | StepGroup) -> bool:
+def _run_in_terminal(request: StepName | StepGroup, *, build_here: bool) -> bool:
     """Run here, with the final check printed after the core steps."""
-    if not run_interruptible(_run(request)):
+    if not run_interruptible(_run(request, build_here=build_here)):
         return False
     if request is not StepGroup.CORE:
         return True
@@ -124,9 +168,9 @@ def _run_in_terminal(request: StepName | StepGroup) -> bool:
     return print_doctor_report()
 
 
-def _run_with(io: SetupIO, request: StepName | StepGroup) -> bool:
+def _run_with(io: SetupIO, request: StepName | StepGroup, *, build_here: bool) -> bool:
     """Run through the page, with the final check shown there after the core steps."""
-    if not run_interruptible(_run(request, io)):
+    if not run_interruptible(_run(request, io, build_here=build_here)):
         return False
     if request is not StepGroup.CORE:
         return True
@@ -188,10 +232,13 @@ def _ending(request: StepName | StepGroup, *, finished: bool) -> str:
     return _FINISHED_EXTRAS if request is StepGroup.EXTRAS else _FINISHED_STEP
 
 
-async def _run(request: StepName | StepGroup, io: SetupIO | None = None) -> bool:
+async def _run(
+    request: StepName | StepGroup, io: SetupIO | None = None, *, build_here: bool = False
+) -> bool:
     """Run the wizard on real clients."""
     async with SupabasePlatform() as platform:
-        wizard = SetupWizard(build_context(config.ENV_FILE, platform, io), default_steps())
+        ctx = build_context(config.ENV_FILE, platform, io, build_dashboard_here=build_here)
+        wizard = SetupWizard(ctx, default_steps())
         if request is StepGroup.CORE:
             return await wizard.run_core()
         if request is StepGroup.EXTRAS:

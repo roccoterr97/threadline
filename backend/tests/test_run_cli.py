@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from tests.conftest import FakeSupabaseClient, as_client, printed_lines
 from tests.summary_world import sample_client
@@ -17,7 +17,12 @@ from tracker.cli.main import build_cli, main
 from tracker.domain.enums import RunStatus, RunStep, RunTrigger
 from tracker.services.assessment.work_files import clean_work_directory
 from tracker.shared.config import REPOSITORY_ROOT, Settings, reset_settings_cache
-from tracker.shared.errors import DatabaseUnavailableError, ValidationFailedError, WorkFileError
+from tracker.shared.errors import (
+    DatabaseUnavailableError,
+    RunAlreadyGoingError,
+    ValidationFailedError,
+    WorkFileError,
+)
 
 #: The codes a terminal reads as "switch to this colour".
 _COLOUR_CODES = re.compile(r"\x1b\[[0-9;]*m")
@@ -91,6 +96,7 @@ def test_starting_a_run_passes_the_owners_time_zone_to_the_database(
     reset_settings_cache()
 
     first = runner.invoke(build_cli(), ["run", "start"])
+    runner.invoke(build_cli(), ["run", "finish"])
     second = runner.invoke(build_cli(), ["run", "start"])
 
     assert first.exit_code == 0
@@ -99,6 +105,29 @@ def test_starting_a_run_passes_the_owners_time_zone_to_the_database(
     (row,) = database.tables["app_settings"]
     assert row["singleton"] is True
     assert row["time_zone"] == "Asia/Tokyo"
+
+
+def test_a_second_run_is_refused_while_one_is_going_and_force_starts_it_anyway(
+    runner: CliRunner, database: FakeSupabaseClient, settings: Settings
+) -> None:
+    assert settings.supabase_url
+    first = runner.invoke(build_cli(), ["run", "start", "--trigger", "mac"])
+    refused = runner.invoke(build_cli(), ["run", "start", "--trigger", "manual"])
+    forced = runner.invoke(build_cli(), ["run", "start", "--trigger", "manual", "--force"])
+
+    assert first.exit_code == 0
+    assert refused.exit_code != 0
+    assert isinstance(refused.exception, RunAlreadyGoingError)
+    assert forced.exit_code == 0
+    assert printed_lines(forced)[0].endswith("started · trigger manual")
+    status = {row["id"]: row["status"] for row in database.tables["run_logs"]}
+    assert status[_run_id(first)] == "failed"
+    assert status[_run_id(forced)] == "running"
+
+
+def _run_id(started: Result) -> str:
+    """The identifier in 'run <id> started · trigger <trigger>'."""
+    return printed_lines(started)[0].split()[1]
 
 
 def test_a_run_still_starts_when_the_time_zone_cannot_be_saved(
@@ -347,6 +376,7 @@ def test_prepare_prints_what_the_three_separate_commands_print(
     started = runner.invoke(build_cli(), ["run", "start", "--trigger", "manual"])
     checked = runner.invoke(build_cli(), ["healthcheck"])
     applied = runner.invoke(build_cli(), ["profile", "apply", *profile_arguments])
+    runner.invoke(build_cli(), ["run", "finish"])
 
     result = runner.invoke(build_cli(), ["run", "start", "--trigger", "manual", "--prepare"])
 
@@ -364,7 +394,7 @@ def test_prepare_prints_what_the_three_separate_commands_print(
     assert "stage labels saved: 6" in lines
     assert any(line.startswith("guide written: ") for line in lines)
     running = [row for row in prepared.tables["run_logs"] if row["status"] == "running"]
-    assert len(running) == 2
+    assert len(running) == 1
 
 
 def test_prepare_with_a_failed_health_check_says_not_ready_and_leaves_the_profile_alone(
@@ -597,3 +627,17 @@ def test_without_clean_a_finish_leaves_the_work_files(
     assert len(printed_lines(result)) == 1
     assert (work / "summary.json").is_file()
     assert (work / "batches" / "batch-0001.json").is_file()
+
+
+def test_the_daily_recipe_stops_on_the_code_a_refused_start_gives() -> None:
+    recipe = (REPOSITORY_ROOT / ".claude" / "commands" / "daily-run.md").read_text(encoding="utf-8")
+
+    assert f"`{RunAlreadyGoingError.code}`" in recipe
+
+
+def test_the_recipes_keep_the_assessors_in_the_foreground() -> None:
+    commands = REPOSITORY_ROOT / ".claude" / "commands"
+    for name in ("daily-run.md", "assess.md"):
+        recipe = (commands / name).read_text(encoding="utf-8")
+
+        assert "`run_in_background: false`" in recipe, name

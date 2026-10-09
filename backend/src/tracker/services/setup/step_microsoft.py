@@ -2,6 +2,7 @@
 
 Outlook is optional once another mailbox is read: the step then asks before
 signing in, because only an Outlook mailbox or the Outlook calendar needs it.
+A "no" is remembered, so a later full run does not ask again.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from tracker.services.setup.mail_sources import save_sources, saved_sources
 from tracker.services.setup.models import StepName
 from tracker.services.setup.owner_address import remember_address
 from tracker.services.setup.ports import MicrosoftAccess
+from tracker.services.setup.skipped_steps import remember_skip, skipped_earlier
 from tracker.shared.constants.collection import MICROSOFT_CLIENT_ID, MICROSOFT_DEFAULT_TENANT
 from tracker.shared.constants.mailbox import MailSource
 
@@ -31,12 +33,8 @@ class MicrosoftStep:
         """Show the code, wait for the sign-in, then say who signed in."""
         io = ctx.io
         saved = saved_sources(ctx)
-        if saved and MailSource.OUTLOOK not in saved:
-            io.say("Outlook is optional: Threadline already reads another mailbox. It is")
-            io.say("only needed for an Outlook or Hotmail mailbox, or for your Outlook calendar.")
-            if not io.confirm("Connect Outlook as well?", default=False):
-                io.say("Skipped. To add it later: uv run tracker setup microsoft")
-                return
+        if saved and MailSource.OUTLOOK not in saved and not _wanted(ctx):
+            return
         io.say("Threadline reads your Outlook or Hotmail mailbox and calendar, read-only.")
         io.say("A Microsoft page opens: type the code below, sign in, and approve")
         io.say("the read-only permissions. Then come back here and wait a moment.")
@@ -47,6 +45,20 @@ class MicrosoftStep:
         if saved and MailSource.OUTLOOK not in saved:
             save_sources(ctx, (*saved, MailSource.OUTLOOK))
         remember_address(ctx, address)
+
+
+def _wanted(ctx: SetupContext) -> bool:
+    """Ask whether to connect Outlook too, unless the owner said no on an earlier run."""
+    io = ctx.io
+    if skipped_earlier(ctx, StepName.MICROSOFT, "To add it"):
+        return False
+    io.say("Outlook is optional: Threadline already reads another mailbox. It is")
+    io.say("only needed for an Outlook or Hotmail mailbox, or for your Outlook calendar.")
+    if io.confirm("Connect Outlook as well?", default=False):
+        return True
+    remember_skip(ctx, StepName.MICROSOFT)
+    io.say(f"Skipped. To add it later: uv run tracker setup {StepName.MICROSOFT}")
+    return False
 
 
 def microsoft_access(ctx: SetupContext) -> MicrosoftAccess:

@@ -48,7 +48,12 @@ Ignore it, and say so in your closing summary.
    `work/results` directory: there is nothing to create.
 
 3. **Launch one `conversation-assessor` per batch, all in one message so they
-   run in parallel.** Give each one only paths — never contents:
+   run in parallel, and in the foreground: set `run_in_background: false` on
+   every one.** Each call then returns only when that helper has written its
+   file, so all verdicts are on disk when the message's results come back.
+   Never end your turn to wait for a helper: on GitHub and in a cloud routine
+   the session ends with your turn, the helpers' work is lost and the run is
+   left half done. Give each one only paths — never contents:
 
    > Read the batch file at `<absolute path to the batch>` and judge every
    > person in it, following `docs/assessment-guide.md`. Write your verdict file
@@ -58,7 +63,7 @@ Ignore it, and say so in your closing summary.
    Nothing else goes in the prompt. Do not summarise the batch for them, do not
    quote it, do not open it yourself.
 
-4. **Import and check.**
+4. **Import and check**, once every helper has returned.
 
    ```bash
    cd backend && uv run tracker ai import

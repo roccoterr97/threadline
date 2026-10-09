@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import sys
 import webbrowser
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -678,6 +679,65 @@ def test_terminal_copies_with_pbcopy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert TerminalIO().copy("value") is True
     assert calls == [(["/usr/bin/pbcopy"], calls[0][1])]
     assert calls[0][1]["input"] == "value"
+
+
+# Windows has no pseudo-terminal and keeps its own prompt. The skip sits inside
+# each test, not in a skipif mark, so pyright on Windows also sees the POSIX-only
+# calls below it as unreachable.
+_NO_TERMINAL_ON_WINDOWS = "Windows has no pseudo-terminal; it keeps its own prompt"
+
+
+def test_a_hidden_answer_keeps_both_lines_of_one_paste() -> None:
+    if sys.platform == "win32":
+        pytest.skip(_NO_TERMINAL_ON_WINDOWS)
+    import pty
+
+    keyboard, terminal = pty.openpty()
+    try:
+        os.write(keyboard, b"sk-ant-oat01-first-half\nsecond-half\n")
+
+        answer = terminal_io.read_hidden_lines(terminal, gap_seconds=0.05)
+    finally:
+        os.close(keyboard)
+        os.close(terminal)
+
+    assert answer == "sk-ant-oat01-first-half\nsecond-half"
+
+
+def test_a_hidden_answer_turns_the_echo_off_and_back_on() -> None:
+    if sys.platform == "win32":
+        pytest.skip(_NO_TERMINAL_ON_WINDOWS)
+    import pty
+    import termios
+
+    keyboard, terminal = pty.openpty()
+    try:
+        os.write(keyboard, b"\n")
+
+        answer = terminal_io.read_hidden_lines(terminal, gap_seconds=0.01)
+        echo_after = termios.tcgetattr(terminal)[3] & termios.ECHO
+    finally:
+        os.close(keyboard)
+        os.close(terminal)
+
+    assert answer == ""
+    assert echo_after
+
+
+def test_without_a_terminal_an_empty_hidden_answer_is_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[dict[str, Any]] = []
+
+    def prompt(text: str, **options: Any) -> str:
+        asked.append(options)
+        return options["default"]
+
+    monkeypatch.setattr(terminal_io.sys.stdin, "isatty", lambda: False, raising=False)
+    monkeypatch.setattr(terminal_io.typer, "prompt", prompt)
+
+    assert TerminalIO().ask_secret("Paste the key") == ""
+    assert asked == [{"default": "", "hide_input": True, "show_default": False}]
 
 
 # --- The commands --------------------------------------------------------------

@@ -17,7 +17,11 @@ import httpx
 from pydantic import SecretStr
 
 from tracker.shared.constants.collection import HTTP_TIMEOUT_SECONDS
-from tracker.shared.constants.dashboard import NETLIFY_API_URL, NETLIFY_USER_AGENT
+from tracker.shared.constants.dashboard import (
+    NETLIFY_API_URL,
+    NETLIFY_APP_URL,
+    NETLIFY_USER_AGENT,
+)
 from tracker.shared.constants.setup import SERVICE_ERROR_DETAIL_LENGTH
 from tracker.shared.errors import (
     SiteNameTakenError,
@@ -59,11 +63,14 @@ class NetlifySite:
         id: Netlify's identifier for it (the "Project ID"); not a secret.
         name: Its name, the first part of ``<name>.netlify.app``.
         address: Its public https address, with no trailing slash.
+        admin_address: Its page in Netlify's own site, where its settings
+            are; ``None`` when Netlify did not give one on its own site.
     """
 
     id: str
     name: str
     address: str
+    admin_address: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,7 +315,17 @@ def _site(payload: dict[str, Any]) -> NetlifySite:
         raise _unreadable()
     if address.startswith(_HTTP_PREFIX):
         address = _HTTPS_PREFIX + address.removeprefix(_HTTP_PREFIX)
-    return NetlifySite(id=site_id, name=name, address=address.rstrip("/"))
+    return NetlifySite(
+        id=site_id, name=name, address=address.rstrip("/"), admin_address=_admin_address(payload)
+    )
+
+
+def _admin_address(payload: dict[str, Any]) -> str | None:
+    """The site's page in Netlify's own site, only when it really is there."""
+    admin = _text(payload, "admin_url")
+    if admin is None or not admin.startswith(NETLIFY_APP_URL + "/"):
+        return None
+    return admin.rstrip("/")
 
 
 def _deploy(payload: dict[str, Any]) -> NetlifyDeploy:

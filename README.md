@@ -151,6 +151,11 @@ LinkedIn's copy of your messages also runs one to two days behind, so a
 LinkedIn message reaches Threadline a day or two after you receive it. Mail and
 calendar entries are read as they are at the moment of the run.
 
+Connecting LinkedIn takes about ten minutes the first time: you make a small
+developer application on LinkedIn's pages and the set-up walks you through it.
+When the key expires, getting a new one is one command and one click on
+LinkedIn's **Allow** button.
+
 ## Set it up
 
 **The easy way: let Claude do it.** You already need a Claude plan, and
@@ -190,8 +195,10 @@ What happens next:
    sign-ups off. It then asks for your categories, time zone and mailbox,
    publishes the dashboard, and asks for the daily time.
 3. Last, it saves your settings and your Claude key on GitHub, starts the first
-   run, and checks every connection. The first summary e-mail arrives about ten
-   minutes later, then every day at the time you chose (this needs a mailbox
+   run and watches it for two minutes (so a problem is said at once), and
+   checks every connection. Its last screen names your dashboard's address and
+   the e-mail address that signs in to it. The first summary e-mail arrives
+   about ten minutes later, then every day at the time you chose (this needs a mailbox
    with an app password; with Outlook alone the set-up tells you the options).
 4. LinkedIn, the dashboard's Refresh now button and the Claude cloud route are
    optional extras: `uv run tracker setup extras`, any time. Refresh now also
@@ -283,7 +290,7 @@ See [`docs/customising.md`](./docs/customising.md).
 
 | Command | What it does |
 |---------|--------------|
-| `tracker run start [--trigger github\|cloud\|refresh\|mac\|manual] [--prepare]` | Open today's run and print its identifier (default trigger: `cloud`). `--prepare` goes on to `tracker healthcheck` and `tracker profile apply` and ends with `ready: yes` or `ready: no` — this is how the daily run opens |
+| `tracker run start [--trigger github\|cloud\|refresh\|mac\|manual] [--prepare] [--force]` | Open today's run and print its identifier (default trigger: `cloud`). `--prepare` goes on to `tracker healthcheck` and `tracker profile apply` and ends with `ready: yes` or `ready: no` — this is how the daily run opens. It refuses while another run of the same kind is going; `--force` starts anyway and closes that one as interrupted |
 | `tracker healthcheck` | The daily run's own check of the configuration, the database and the secret store, run by `run start --prepare`. By hand, `tracker doctor` says more |
 | `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID \| --refresh]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `assess` or `summary_email`. `--refresh` records into the refresh that is open rather than the daily run |
 | `tracker run finish [--run ID \| --refresh] [--clean]` | Close the run with the status its steps add up to. `--refresh` closes the refresh that is open rather than the daily run. `--clean` then removes the exchanged files, as `tracker ai clean` does — this is how the daily run closes |

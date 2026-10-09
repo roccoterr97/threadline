@@ -7,6 +7,7 @@ import { LoadingState } from '../components/LoadingState';
 import * as copy from '../copy/en';
 import { useFocusFirstInvalid } from '../hooks/useFocusFirstInvalid';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { signInFailureMessage } from './signInLinkError';
 import { useAuth } from './useAuth';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -58,9 +59,9 @@ export function LoginPage() {
     try {
       await sendSignInLink(address);
       setForm({ kind: 'sent', email: address });
-    } catch {
-      // The real reason is already logged; the owner only needs to know to retry.
-      setForm({ kind: 'error', message: copy.login.failed });
+    } catch (error: unknown) {
+      // The details are already logged; the owner gets only what to do next.
+      setForm({ kind: 'error', message: signInFailureMessage(error) });
     }
   }
 

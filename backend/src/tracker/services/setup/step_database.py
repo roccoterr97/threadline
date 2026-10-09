@@ -22,7 +22,7 @@ from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
 from tracker.services.setup.fresh_project import ask_until_it_answers
 from tracker.services.setup.models import StepName
 from tracker.services.setup.ports import SetupIO
-from tracker.services.setup.supabase_session import require_supabase_token
+from tracker.services.setup.supabase_session import require_supabase_token, too_little_access
 from tracker.shared.constants.setup import (
     MIGRATION_PAUSE_SECONDS,
     MIGRATION_RETRY_WAIT_SECONDS,
@@ -30,6 +30,7 @@ from tracker.shared.constants.setup import (
 )
 from tracker.shared.errors import (
     SourceAuthError,
+    SourcePermissionError,
     SourceRequestRejectedError,
     SourceUnavailableError,
     ValidationFailedError,
@@ -100,17 +101,8 @@ def pending_files(
         item
         for item in files
         if item.name in report.missing
-        or (item.name in report.unconfirmed and _may_not_have_run(item.name, report))
+        or (item.name in report.unconfirmed and report.may_not_have_run(item.name))
     )
-
-
-def _may_not_have_run(name: str, report: StructureReport) -> bool:
-    """Whether an unconfirmed file comes after a missing one or after every one that shows."""
-    first_missing = min(report.missing, default=None)
-    newest_present = max(report.present, default=None)
-    after_a_gap = first_missing is not None and name > first_missing
-    after_the_last_seen = newest_present is None or name > newest_present
-    return after_a_gap or after_the_last_seen
 
 
 def _apply_automatically_wanted(ctx: SetupContext) -> bool:
@@ -190,7 +182,10 @@ async def _apply_one(ctx: SetupContext, ref: str, token: SecretStr, item: Migrat
 
 
 def _say_token_may_not_apply(ctx: SetupContext, error: SourceAuthError) -> None:
-    """Explain that the token may read the project's files but not change its database."""
+    """Explain that the token may not change the database; say how to fix a limited one."""
+    if isinstance(error, SourcePermissionError):
+        ctx.io.say(f"{too_little_access(ctx).message}.")
+        return
     ctx.io.say(f"{error.message}: it may not change this project's database.")
 
 

@@ -216,7 +216,6 @@ class LinkedInSnapshotClient:
             raise SourceUnavailableError(message) from error
 
 
-
 def _row_signature(row: dict[str, str]) -> str:
     """Identify one snapshot row, so a repeat of it can be recognised.
 

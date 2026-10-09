@@ -16,6 +16,7 @@ from tracker.shared.constants.retry import SOURCE_REQUEST_ATTEMPTS
 from tracker.shared.constants.setup import RegionGroup
 from tracker.shared.errors import (
     SourceAuthError,
+    SourcePermissionError,
     SourceRequestRejectedError,
     SourceUnavailableError,
 )
@@ -263,6 +264,24 @@ async def test_a_token_that_may_not_read_auth_is_an_auth_error() -> None:
         async with SupabasePlatform() as platform:
             with pytest.raises(SourceAuthError, match="auth settings"):
                 await platform.redirect_urls(REF, TOKEN)
+
+
+async def test_a_401_is_a_wrong_token_and_a_403_a_token_with_too_little_access() -> None:
+    with respx.mock:
+        respx.get(ORGANIZATIONS).mock(return_value=httpx.Response(401, json={"message": "no"}))
+        respx.get(KEYS).mock(
+            return_value=httpx.Response(403, json={"message": "Missing required scope"})
+        )
+        async with SupabasePlatform() as platform:
+            with pytest.raises(SourceAuthError, match="did not accept") as wrong:
+                await platform.organizations(TOKEN)
+            with pytest.raises(SourcePermissionError, match="too little access") as narrow:
+                await platform.api_keys(REF, TOKEN)
+
+    assert not isinstance(wrong.value, SourcePermissionError)
+    assert narrow.value.message == (
+        "Supabase says the access token for reading the API keys has too little access"
+    )
 
 
 async def test_empty_auth_settings_send_nothing() -> None:

@@ -15,20 +15,21 @@ fail, it did not run, and it must not turn a clean morning into a "partial" one.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID
 
 from tracker.domain.enums import RunStatus, RunStep, RunTrigger
 from tracker.domain.models import RunLog, RunStepLog
 from tracker.repositories import Repositories
-from tracker.services.runs.interrupted_runs import close_interrupted_runs
+from tracker.services.runs.interrupted_runs import close_interrupted_run, close_interrupted_runs
+from tracker.services.runs.overlapping_runs import already_going_message, sort_open_runs
 from tracker.services.runs.run_status import derive_status_of_run
 from tracker.shared.clock import Clock
 from tracker.shared.config import Settings
 from tracker.shared.constants.runs import INTERRUPTED_RUN_AFTER_HOURS
 from tracker.shared.constants.summary import MAX_ERROR_DETAIL_LENGTH
-from tracker.shared.errors import ValidationFailedError
+from tracker.shared.errors import RunAlreadyGoingError, ValidationFailedError
 from tracker.shared.logging import get_logger
 
 #: Error code stored when a step is reported as failed without naming a reason.
@@ -134,24 +135,47 @@ class RunRecorder:
         self._clock = clock
         self._unconfigured = unconfigured
 
-    def start(self, trigger: RunTrigger) -> RunLog:
+    def start(self, trigger: RunTrigger, *, force: bool = False) -> RunLog:
         """Open a run.
 
         Args:
             trigger: What started it.
+            force: Open it even though another run of the same kind looks
+                open; that run is closed as interrupted. The owner's choice,
+                for a run they know has stopped.
 
         Earlier runs still marked running that started long ago are closed
-        first, as interrupted (see :mod:`interrupted_runs`).
+        first, as interrupted (see :mod:`interrupted_runs`). Then an open run
+        of the same kind stops this one (see :mod:`overlapping_runs`).
 
         Returns:
             The new run, already stored and still ``running``.
+
+        Raises:
+            RunAlreadyGoingError: If another run of the same kind is going and
+                ``force`` is not set. Nothing is stored or closed.
         """
         now = self._clock.now()
         close_interrupted_runs(self._repositories, now, self._unconfigured)
+        self._make_way(trigger, now, force=force)
         run = RunLog(started_at=now, status=RunStatus.RUNNING, trigger=trigger)
         self._repositories.run_logs.bulk_upsert([run])
         _log.info("run_started", run_id=str(run.id), trigger=trigger.value)
         return run
+
+    def _make_way(self, trigger: RunTrigger, now: datetime, *, force: bool) -> None:
+        """Close the open runs of this kind that died, or refuse to overlap a live one."""
+        refresh = trigger is RunTrigger.REFRESH
+        kind = triggers_of_kind(refresh=refresh)
+        open_runs = [
+            run for run in self._repositories.run_logs.list_running() if run.trigger in kind
+        ]
+        sorted_runs = sort_open_runs(open_runs, trigger)
+        if sorted_runs.going and not force:
+            newest = sorted_runs.going[-1]
+            raise RunAlreadyGoingError(already_going_message(newest, refresh=refresh))
+        for run in (*sorted_runs.left_behind, *sorted_runs.going):
+            close_interrupted_run(self._repositories, run, now, self._unconfigured)
 
     def record_step(self, run_id: UUID, outcome: StepOutcome) -> RunStepLog | None:
         """Store the result of one step, replacing an earlier attempt at it.

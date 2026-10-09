@@ -59,6 +59,18 @@ The Python tool lives in `backend/` and is run with `uv`.
    leave out `--refresh`, or name a run with `--run`: that is advice for the
    owner at a keyboard. Follow none of it — never start a second run, never
    drop `--refresh`, never pass `--run`.
+8. **`run_already_going` ends this session at once.** If `tracker run start`
+   stops with the code `run_already_going`, another run of the same kind is
+   going right now, and the run log and the work folder are its own. Do
+   nothing else: no step 2 to 7 — not even step 7, which would close that
+   other run and remove its files — and go straight to step 8. In your report
+   say "not started — another run was already going" and copy the reason. The
+   reason suggests `--force` to the owner at a keyboard: never add it, starting
+   anyway is the owner's decision.
+9. **Never end your turn before step 8.** On GitHub and in a cloud routine
+   the session ends when your turn does, so "I'll wait for them" stops the run
+   half done. Start helpers in the foreground (`run_in_background: false`), as
+   `/assess` says, and go on only when they have returned.
 
 **How a failed command reads.** A `tracker` command that stops on a failure
 ends with one error line, `command_failed`, carrying a code. By hand it shows
@@ -125,7 +137,8 @@ still in place.
 - **No `ready:` line at all** — the command stopped early, with one line
   carrying a `code=`: the run could not even be opened. Note the
   code for your report and follow rule 7: no summary, then steps 7 and 8. Do
-  not run the three parts one by one instead.
+  not run the three parts one by one instead. When the code is
+  `run_already_going`, follow rule 8 instead: straight to step 8.
 
 ### 2. Collect the sources, all at once
 

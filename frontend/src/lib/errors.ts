@@ -59,3 +59,30 @@ export class RefusedError extends DashboardError {
     this.constraint = constraint;
   }
 }
+
+/** Why Supabase would not send a sign-in link, as far as the owner can act on it. */
+export enum SignInRefusal {
+  /** No dashboard login uses this address, and sign-ups are off. */
+  UnknownAddress = 'unknown_address',
+  /** Too many links were asked for in a short time. */
+  TooManyRequests = 'too_many_requests',
+  /** Anything else: no connection, a server fault, an unknown code. */
+  Unavailable = 'unavailable',
+}
+
+/** Supabase did not send the sign-in link. */
+export class SignInLinkError extends DashboardError {
+  readonly reason: SignInRefusal;
+  /** How long Supabase asked to wait, when it said; otherwise null. */
+  readonly retryAfterSeconds: number | null;
+
+  constructor(
+    reason: SignInRefusal,
+    retryAfterSeconds: number | null = null,
+    options?: ErrorOptions,
+  ) {
+    super(`sign-in link not sent: ${reason}`, options);
+    this.reason = reason;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}

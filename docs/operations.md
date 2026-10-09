@@ -98,10 +98,10 @@ output on that page, that is a fault worth reporting.
 
 ## Renew the LinkedIn key
 
-The key that lets Threadline read your LinkedIn messages lasts until the date
-LinkedIn's Token Inspector showed when you made it. Seven days before that date,
-every morning summary carries a "LinkedIn key" line with the exact date. It
-takes about five minutes.
+The key that lets Threadline read your LinkedIn messages works until a date
+LinkedIn sets; the set-up saved that date when you made the key. Seven days
+before it, every morning summary carries a "LinkedIn key" line with the exact
+date. Renewing it takes about a minute.
 
 1. On your computer, open a terminal and type:
 
@@ -110,19 +110,23 @@ takes about five minutes.
    uv run tracker setup linkedin
    ```
 
-   A key is already saved, so the set-up goes straight to making a new one and
-   opens LinkedIn's token page (in LinkedIn's own menu: **Docs and tools →
-   OAuth Token Tools → Create token**).
-2. On that page, pick your application, tick the permission starting with
-   `r_dma_portability`, click **Request access token**, then **Allow**. Copy
-   the token and paste it in the terminal. Then read its expiry date in
-   LinkedIn's **Token Inspector** and type it. Every click is in the set-up
-   guide, part 8a: [stage 3](setup-your-accounts.md#stage-3-of-3-make-the-key)
-   and [the expiry date](setup-your-accounts.md#the-expiry-date-and-your-profile-address).
-   The set-up checks the key with LinkedIn before it saves anything, and asks
-   before replacing the old values.
-3. Put the same two values where the daily run reads them, or it keeps using
-   the old key. The set-up offers this right after saving: answer yes to
+   A key is already saved, so the set-up goes straight to making a new one.
+2. LinkedIn's page opens in your browser. Sign in if asked and click
+   **Allow**. If you are still signed in, LinkedIn may not even ask: the page
+   says `Threadline has LinkedIn's answer` straight away. The set-up checks the
+   new key with LinkedIn and saves it with the day it expires. You copy
+   nothing and type no date.
+
+   The first time after updating Threadline, if you made your key by hand
+   before, the set-up first offers the one-click way once: answer **yes** to
+   `Set that up now?` and do steps 1 to 6 of
+   [stage 3](setup-your-accounts.md#stage-3-of-3-connect-the-application-to-threadline)
+   in the set-up guide (add one address on your LinkedIn application's
+   **Auth** tab and copy two values). Answer **n** to keep making the key by
+   hand, as in
+   [Making the key by hand](setup-your-accounts.md#making-the-key-by-hand).
+3. Put the new key where the daily run reads it, or it keeps using the old
+   one. The set-up offers this right after saving: press Enter (yes) at
    `Send them to … on GitHub now?` and it saves `LINKEDIN_ACCESS_TOKEN` and
    `LINKEDIN_TOKEN_EXPIRES_ON` on GitHub for you. If you answered no, run
    `uv run tracker setup github` (press Enter when it asks for the Claude key,
@@ -234,13 +238,18 @@ listed.
 
 GitHub runs Threadline with the key `claude setup-token` made for you. It lasts
 one year. When it expires, the run on GitHub fails with a red cross at the
-**Run the recipe with Claude** step, and no summary arrives. Put a reminder in
-your calendar for a week before the date you made it.
+**Run the recipe with Claude** step, no summary arrives, and the run's page
+says why in a line titled **Why Claude stopped** ("Claude did not accept the
+key saved on GitHub"). Put a reminder in your calendar for a week before the
+date you made it.
 
-1. In a terminal, run `claude setup-token`, sign in, and copy the key it
-   prints.
+1. In a terminal, run `claude setup-token` and sign in. It prints a long key
+   that starts with `sk-ant-oat`, split over two lines. Copy it from the first
+   letter to the last, including the second line.
 2. In the `backend` folder (`cd ~/threadline/backend`), run
-   `uv run tracker setup github` and paste the key when asked. It replaces the
+   `uv run tracker setup github` and paste the key when asked. If the key
+   looks cut short, the set-up asks you to paste its second line, or the whole
+   key again; it also refuses an API key (`sk-ant-api…`). It replaces the
    `CLAUDE_CODE_OAUTH_TOKEN` secret and is saved nowhere else. (Without the
    GitHub tool `gh`: on GitHub, open **Settings → Secrets and variables →
    Actions**, click the pencil next to `CLAUDE_CODE_OAUTH_TOKEN`, paste the key
@@ -340,6 +349,8 @@ uv run tracker setup dashboard
 sign in it shows your data as before.
 
 **If not:** follow the line the set-up printed, then run the command again.
+If it stopped, the technical details are in the file `setup.log` in the
+`backend` folder; show it to whoever helps you.
 
 ---
 
@@ -351,7 +362,7 @@ Open **Actions → Threadline run**. Every run is one line:
 |--------------|---------------|------------|
 | Green tick, and the summary arrived | The run worked (the dashboard may still say **Partly worked**: the summary says what needs attention). | Nothing. |
 | Green tick after a few seconds, no summary | A required secret is missing, so the run did nothing on purpose. The run page names the missing secrets in a note at the top. | `uv run tracker setup github`. |
-| Red cross at **Run the recipe with Claude** | The Claude key was refused or expired, or the session stopped. | [Renew the Claude key](#renew-the-claude-key-once-a-year); if it happens again, read the end of that step's log. |
+| Red cross at **Run the recipe with Claude** | Claude stopped with an error. The run's page says why at the top, in one line titled **Why Claude stopped**: a refused or expired key, the plan's usage limit, or Claude being busy. | Do what that line says. For a refused key, [renew the Claude key](#renew-the-claude-key-once-a-year); a usage limit or a busy Claude needs nothing, the next run tries again. |
 | Red cross at **Install Threadline** | GitHub could not install the tool, usually a passing outage. | Nothing; the next run tries again. |
 | Red cross at **Run the recipe with Claude** after 45 minutes of it | The run took too long and was stopped. | Nothing once; if it repeats, see [When something keeps failing](#when-something-keeps-failing). |
 | Green tick after a few seconds, with the note "Today's daily run already started on time" | GitHub's own late start found that the on-time morning start had already started today's run, so it stopped. | Nothing. This is the backup doing its job. |

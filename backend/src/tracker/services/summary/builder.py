@@ -272,7 +272,9 @@ class SummaryBuilder:
         if days_left > KEY_REMINDER_DAYS:
             return None
         renew = (
-            "Renewing takes about five minutes: see 'Renew the LinkedIn key' in docs/operations.md."
+            "To renew it, run 'uv run tracker setup linkedin' on your computer and click "
+            "'Allow' on LinkedIn's page; 'Renew the LinkedIn key' in docs/operations.md "
+            "has the details."
         )
         if days_left < 0:
             return (

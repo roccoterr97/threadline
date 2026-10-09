@@ -70,6 +70,17 @@ have and updates it if it is older.
 do not have them yet. You can sign in to Supabase and Netlify with your GitHub
 account. The set-up asks for Supabase in its very first step.
 
+If Netlify's **Sign up with GitHub** answers "Email address is invalid", your
+GitHub e-mail address has a "+" in it, which Netlify refuses. Use **Sign up
+with email** instead, with any address you can read.
+
+**Pages open in your default browser.** When the set-up opens a page
+(GitHub, Supabase, Netlify), it appears in your usual browser. If that browser
+is signed in to a different GitHub, Supabase or Netlify account than the one
+you want to use, check the account name at the top of the page before you
+click anything. If it is the wrong one, copy the page's address into a window
+signed in to the right account.
+
 **Claude Code comes later.** You need it only at part 6b, to make the key that
 lets GitHub use your Claude plan, so install it any time before then (on
 Windows, after the install line in part 1: Claude Code's own installer may want
@@ -169,8 +180,11 @@ starts the guided set-up.
 
 3. If Windows asks whether to allow an installation, click **Yes**.
 4. When it says `Signing you in to GitHub`, the terminal shows a one-time code.
-   Press Enter, and a GitHub page opens in your browser. Sign in, type the code,
-   and click **Authorize**. The page lists what it lets the GitHub tool do,
+   Press Enter, and a GitHub page opens in your browser. Sign in and type the
+   code. Before you click **Authorize**, check the account name at the top of
+   the GitHub page: if it is not the account you want Threadline on, click
+   **Use a different account** and sign in with the right one. Then click
+   **Authorize**. The page lists what it lets the GitHub tool do,
    including "workflow": that one is needed to save the daily-run file later.
    If the terminal asks whether to authenticate Git with your GitHub
    credentials, answer yes.
@@ -205,6 +219,10 @@ pasting the line again is safe: it skips what is already done and carries on.
   that is not your own private copy. Rename it on GitHub (Settings, then
   Repository name), or make it private if it is your copy, then paste the line
   again.
+- `You are signed in to GitHub with the account that publishes Threadline`:
+  that account holds Threadline itself, so it cannot have a copy of its own.
+  Run `gh auth logout`, paste the line again, and sign in with another GitHub
+  account.
 - `An earlier Threadline set-up is already on this computer`: you set up an
   older version in `~/tracker`. Press Enter to carry on with it, or type `n` to
   make a fresh copy in `~/threadline`.
@@ -220,6 +238,11 @@ pasting the line again is safe: it skips what is already done and carries on.
 Ctrl + C. Everything it has saved stays saved. To carry on, paste the install
 line again, or go to the `backend` folder as shown just below and type
 `uv run tracker setup`.
+
+**If a step stops.** The set-up shows only plain sentences. The technical
+details go to a file called `setup.log` in the `backend` folder, and the set-up
+names that file when it stops. If you ask someone for help, show them that
+file. It never holds your keys.
 
 **Where to type the commands.** Every `uv run tracker …` command in this guide
 is typed in a terminal, inside the `backend` folder of your copy. In every new
@@ -287,11 +310,14 @@ switches off sign-ups. The token is kept in memory while the set-up runs and is
    Press Enter for yes.
 2. Supabase's **Access Tokens** page opens
    (<https://supabase.com/dashboard/account/tokens>). Sign in if asked.
-3. Click **Generate new token** and name it `Threadline set-up`.
-4. Choose the **shortest expiry** offered: the token is only needed today.
-5. If it asks which access to give, give it your **whole account**. That is the
-   simplest choice: the set-up uses the token to create the project, read its
-   keys, build the database and switch sign-ups off.
+3. Click **Generate new token**. A form opens.
+4. Do not fill in that form. On the left, under **Resource access**, click the
+   small link **Create legacy token**. Supabase's newer, limited tokens cannot
+   read your project's secret key yet, and the set-up needs it. A legacy token
+   can do everything the set-up does: create the project, read its keys, build
+   the database and switch sign-ups off.
+5. Name it `Threadline set-up` and choose the **shortest expiry**: the token is
+   only needed today.
 6. Click **Generate token**, copy it (it starts with `sbp_`), and paste it into
    the terminal. Nothing appears while you paste: that is on purpose.
 7. If you have several Supabase organisations, type the number of the one to
@@ -319,6 +345,9 @@ Database**.
 
 - `Supabase did not accept the access token`: copy the token again, all of it,
   and paste it once more. The set-up lets you try three times.
+- `Supabase says this access token has too little access`: you made the newer,
+  limited kind of token. Make a new one with the **Create legacy token** link
+  (steps 3 to 6 above) and paste that one.
 - `your Supabase account has no organization yet`: open <https://supabase.com>,
   create an organisation (any name, free plan), then run
   `uv run tracker setup supabase`.
@@ -369,7 +398,7 @@ more by itself.
 Run on its own later (`uv run tracker setup database`), the step first asks
 `Apply them automatically?`: press Enter, and paste a Supabase token made as in
 2a. The token needs to read and write the database's **migrations** (its
-structure files); access to your whole account covers that.
+structure files); a legacy token covers that.
 
 **✅ Check:** the step starts with `To apply: 0001_schema, 0002_access_rules, …`,
 naming every file still missing (all of them on a new project). Then you see
@@ -433,7 +462,8 @@ tells the AI helper about them.
 
 **What you do:**
 
-1. Answer **y** to "Choose your categories now?" (or **n** to skip).
+1. Answer **y** to "Choose your categories now?" (or **n** to skip; it won't
+   ask again, and `uv run tracker setup categories` brings it back).
 2. Type the number of the list closest to what you track, for example `3` for a
    job search or `5` for sales. Press Enter to accept the number it suggests.
 3. It lists the suggested categories and asks "Use all of them?". Press Enter
@@ -469,9 +499,9 @@ your copy on GitHub, as in part 6a.
 
 **What you do:**
 
-1. Press Enter to keep the zone offered, or type yours in the same form
-   (`America/New_York`, `Asia/Tokyo`, `UTC`). When no zone is offered you must
-   type one; an empty answer is asked again. Capital letters do not matter:
+1. Press Enter (or type `y`) to keep the zone offered, or type yours in the
+   same form (`America/New_York`, `Asia/Tokyo`, `UTC`). When no zone is
+   offered you must type one; an empty answer is asked again. Capital letters do not matter:
    `europe/rome` is accepted and saved as `Europe/Rome`.
 2. It then asks for your name as people write it (such as `Sam Rivera`). This
    is optional: it helps only when your e-mail address does not spell your name
@@ -699,7 +729,8 @@ IMAP needs a paid Fastmail plan above Basic.
 ### 4c. Outlook mailbox and calendar (`tracker setup microsoft`)
 
 If you chose another mailbox in 4a, this step asks first whether to connect
-Outlook as well. Answer **no** to skip it; you can add it later with
+Outlook as well. Answer **no** to skip it: the set-up remembers that and won't
+ask again (it says `Skipped earlier`). You can add it later with
 `uv run tracker setup microsoft`.
 
 **What the set-up does for you:** it asks Microsoft for a short one-time code,
@@ -758,8 +789,10 @@ Netlify's website and paste it. Nothing needs installing.
 
 1. When the set-up asks `Publish it on Netlify now?`, press Enter (yes).
 2. It asks whether you already have a Netlify account. If not, answer **n**:
-   Netlify's sign-up page opens. Signing up with GitHub is quickest. Press
-   Enter in the terminal once you are signed in.
+   Netlify's sign-up page opens. Signing up with GitHub is quickest; if
+   Netlify answers "Email address is invalid", use **Sign up with email**
+   instead (see [Before you start](#before-you-start)). Press Enter in the
+   terminal once you are signed in.
 3. Netlify's token page opens. Click **New access token**, name it
    `Threadline set-up`, choose the shortest expiry offered, click
    **Generate token** and copy it. The page may look slightly different.
@@ -788,11 +821,39 @@ Three things happen behind the scenes that are good to know:
 link in the e-mail Supabase sends. The dashboard opens (it is empty until the
 first run).
 
-**If not:** Supabase's own message "Email address not authorized" means the
-address is not the one of your Supabase account (see part 3a). A link that opens `localhost` means the
+**If not:** "This address cannot sign in" on the dashboard means you typed
+another address than your dashboard login: use the one you typed in part 3a,
+usually your Supabase address. "Too many links were asked for" means waiting as
+long as it says. Supabase's own message "Email address not authorized" means
+the address is not the one of your Supabase account (see part 3a). A link that
+opens `localhost` means the
 sign-in link was not connected: run `uv run tracker setup dashboard` again.
 Running it again keeps the sign-in addresses you already have in Supabase and
 adds the new one; it tells you which it did.
+
+**If it says Netlify keeps your dashboard private.** Netlify accounts made
+since July 2026 keep every new site private, so only you, signed in to Netlify,
+can open it, and your phone cannot. Netlify gives the set-up no way to change
+that, so the set-up stops, opens your project's page on Netlify and lists the
+clicks. You do them once:
+
+1. Open your project (`threadline-xxxxxx`) if it is not open already.
+2. Click **Project configuration → General → Visitor access**.
+3. Under **Project visibility**, click **Edit visibility**. If Netlify asks,
+   choose **Customize this project's visibility**.
+4. Set **Production** to **Public** (leave the previews as they are) and click
+   **Save**.
+5. Run `uv run tracker setup dashboard` again.
+
+This is safe: the dashboard has its own sign-in, and only your e-mail address
+can open your data.
+
+**✅ Check:** the step now says `Check: https://threadline-xxxxxx.netlify.app
+opens the dashboard.`
+
+**If not:** if Netlify does not offer **Public**, your team is set to keep
+every project private: change it in **Team settings → General → Visitor access
+→ Default project visibility**, then do the steps above again.
 
 If you set `NETLIFY_SITE_ID` in `.env` yourself, it must be a Netlify site ID or
 a plain site name, nothing else.
@@ -800,8 +861,9 @@ a plain site name, nothing else.
 If the step warns that the downloaded dashboard is **newer than your copy of
 Threadline**, the dashboard expects database changes your copy does not have
 yet, and it may show errors. The safe way out is to publish the dashboard from
-your own copy with a local build: run the step again and answer yes to the
-local-build question (this needs Node.js 22 or newer).
+your own copy with a local build: run
+`uv run tracker setup dashboard --build-here` (this needs Node.js 22 or
+newer).
 
 **Not on Netlify?** If you answer **n** to `Publish it on Netlify now?`, the
 set-up asks whether you publish it somewhere else instead. Answer **y** and
@@ -918,11 +980,14 @@ with your Claude plan.
    ```
 
 2. Sign in in the browser that opens, then go back to that second window: it
-   prints a long key that starts with `sk-ant-` and lasts one year. Copy all of
-   it.
+   prints a long key that starts with `sk-ant-oat` and lasts one year. The key
+   is split over two lines. Copy it from the first letter to the last,
+   including the second line.
 3. Paste it into the set-up in the first window (nothing shows while you
-   paste) and press Enter. Pressing Enter on an empty line keeps the key
-   GitHub already has, if any (useful when you run the step again). If GitHub
+   paste) and press Enter. If the key looks cut short, the set-up asks you to
+   paste its second line, or the whole key again. Pressing Enter on an empty
+   line keeps the key GitHub already has, if any (useful when you run the step
+   again). If GitHub
    has no key, the set-up does not start the first run, because the run would
    do nothing: it tells you to run `claude setup-token` and then
    `uv run tracker setup github` again.
@@ -950,7 +1015,12 @@ them.
 **✅ Check:** the list names every secret and variable it set, ending with
 `Done. GitHub has everything it needs to run Threadline on your copy.`
 
-**If not:** if the set-up stopped with `there is no private copy on GitHub
+**If not:** `That key is cut short`, `That is an API key` or `That is not the
+key` means the paste was not the whole key from `claude setup-token`. Go back
+to the second window and copy it again, from `sk-ant-oat` to the last letter of
+the second line, and paste it when the set-up asks again.
+
+If the set-up stopped with `there is no private copy on GitHub
 yet`, this folder is not linked to your own private copy. Paste the install
 line from part 1 again: it makes the copy and downloads it.
 
@@ -968,16 +1038,28 @@ makes sure GitHub Actions and the workflow are switched on in your copy, then
 starts the run. (When no summary e-mail can be sent from GitHub, the question
 says so and Enter means no. You may still answer yes to fill the dashboard.)
 
-**✅ Check:** you see `The first run has started.` with the address of the
-run's page, and `The summary e-mail arrives in about 10 minutes.`
+The set-up then watches the run for up to two minutes, to catch a problem
+early (`Watching it for up to 2 minutes, to catch a problem early...`).
 
-**If not:** if GitHub refused, the set-up says so in one line and names the page
-where you start the run yourself:
+**✅ Check:** you see `The first run has started.`, then
+`It is running; the summary e-mail comes in about 10 minutes.` and the address
+of the run's page. (If the run already finished, it says `The first run has
+finished.` instead.)
 
-1. Open that page (**Actions → Threadline run** in your copy on GitHub). If it
-   shows **Enable workflow**, click it.
-2. Click **Run workflow**, keep **mode: daily**, and click the green **Run
-   workflow** button.
+**If not:**
+
+- `The first run stopped with a problem.`, followed by the reason: do what that
+  line says. Most often it is `Claude did not accept the key saved on GitHub`:
+  the Claude key was not copied whole. Run `claude setup-token` again, then
+  `uv run tracker setup github`, paste the new key (both lines), and answer yes
+  to start a new first run.
+- If GitHub refused to start the run, the set-up says so in one line and names
+  the page where you start the run yourself:
+
+  1. Open that page (**Actions → Threadline run** in your copy on GitHub). If
+     it shows **Enable workflow**, click it.
+  2. Click **Run workflow**, keep **mode: daily**, and click the green **Run
+     workflow** button.
 
 The same steps apply if you set Threadline up without the installer and the
 set-up could not use the GitHub tool: it then lists the setting names to add on
@@ -1000,10 +1082,12 @@ shows the run as **Worked** or **Partly worked**.
 - *Green tick after a few seconds, nothing sent:* a required secret is
   missing. Open the run; a note at the top names the missing secrets. Run
   `uv run tracker setup github` again.
-- *Red cross:* open the run, click **Threadline**, and open the step with the
-  red cross. **Run the recipe with Claude** failing usually means the Claude
-  key is wrong or expired: run `claude setup-token` again, then
-  `uv run tracker setup github`, and paste the new key.
+- *Red cross:* open the run. When Claude stopped with an error, a line titled
+  **Why Claude stopped** at the top of the run's page says why, such as a
+  refused key, the plan's usage limit, or Claude being busy, and what to do.
+  For a refused key, run `claude setup-token` again, then
+  `uv run tracker setup github`, and paste the new key (both lines). Without
+  that line, click **Threadline** and open the step with the red cross.
 - *Green tick but no e-mail:* a green tick only means the job ran, not that
   every part worked. Read Claude's report at the end of the log, then run
   `uv run tracker doctor` on your computer: its **Summary e-mail** line checks
@@ -1022,10 +1106,13 @@ GitHub's timer allows; with Refresh now switched on (part 8b), exactly on time.
 
 ## 7. The final check
 
-The set-up ends by saying `Set-up done.`, how the first run was left (and, when
-it was started and an e-mail can be sent, when the first summary e-mail will
-arrive), the daily time, and how to add the extras. Then it checks every
-connection once and prints one line for each.
+The set-up ends by saying `Set-up done.`, then your dashboard's address and
+the e-mail address that can sign in to it (`Sign in there with …`: write it
+down). It then says how the first run was left (and, when it was started and an
+e-mail can be sent, when the first summary e-mail will arrive), the daily time,
+and how to add the extras. Then it checks every connection once and prints one
+line for each. The technical details of the whole set-up are in
+`backend/setup.log`, if anyone helping you needs them.
 
 You can run the same check yourself at any time:
 
@@ -1069,9 +1156,10 @@ It shows `Step 1 of 3` (LinkedIn), `Step 2 of 3` (Refresh now) and
 
 ### 8a. LinkedIn (`tracker setup linkedin`)
 
-This is the least friendly step in the guide, because LinkedIn offers no
-sign-in button for it: you make a key by hand on LinkedIn's developer pages.
-Before you decide, here is what to expect:
+LinkedIn offers no ready-made sign-in button for this, so the first time you
+make a small "developer application" on LinkedIn's pages and connect it to
+Threadline. After that, a new key is one command and one click. Before you
+decide, here is what to expect:
 
 - **It is optional.** Everything else works without LinkedIn.
 - **It depends on where your LinkedIn profile is located.** LinkedIn offers
@@ -1082,30 +1170,36 @@ Before you decide, here is what to expect:
   messages runs one to two days behind (measured on 24 September 2026), so a
   message you receive on LinkedIn today shows up in Threadline tomorrow or the
   day after. Nothing is lost; it only arrives later.
-- **It takes about ten minutes.** When the key expires you repeat only the last
-  stages ([stage 3](#stage-3-of-3-make-the-key) and
-  [the expiry date](#the-expiry-date-and-your-profile-address)).
+- **The first time takes about ten minutes.** When the key expires, you run
+  one command and click **Allow** once (see
+  [When the key expires](#when-the-key-expires) below).
 
 <!-- The one-to-two-day delay is recorded beside LINKEDIN_OVERLAP_DAYS in
      backend/src/tracker/shared/constants/collection.py. -->
 
-**What the set-up does for you:** it takes you through three stages in order,
-opens the right LinkedIn page for each one and waits while you click. Then it
-makes one small call to LinkedIn with your new key and saves the key only if
-LinkedIn accepts it.
+**What the set-up does for you:** it takes you through three stages in order
+and opens the right LinkedIn page for each one. In the last stage it puts the
+address you need on your clipboard, opens LinkedIn's **Allow** page, catches
+LinkedIn's answer on your own computer, and reads from LinkedIn the day the
+key expires, so you never copy the key or type a date. It makes one small call
+to LinkedIn with the new key and saves it only if LinkedIn accepts it. The
+application's Client Secret is kept encrypted in your Supabase database, never
+in a plain file.
 
 **What you do:** answer **yes** to "Connect LinkedIn now?" (or press Enter to
 skip LinkedIn), then follow the stages below as the pages open.
 
 #### Stage 1 of 3: create the developer application
 
-The set-up opens <https://www.linkedin.com/developers/apps>.
+The set-up opens LinkedIn's "Create an app" form,
+<https://www.linkedin.com/developers/apps/new>. Sign in to LinkedIn if it asks.
 
-1. Click **Create app**.
-2. **App name:** anything, for example `Threadline`.
-3. **LinkedIn Page:** choose the page LinkedIn suggests for this product,
-   **Member Data Portability (Member) Default Company**. Do **not** create a new
-   page.
+1. **App name:** anything, for example `Threadline`.
+2. **LinkedIn Page:** type `Member Data Portability` and choose the page
+   LinkedIn suggests for this product, **Member Data Portability (Member)
+   Default Company**. Do **not** create a new page.
+3. If the form asks for an **App logo**, upload any small square picture (a
+   screenshot works).
 4. Tick the terms and click **Create app**.
 5. Go back to the terminal and press Enter.
 
@@ -1114,7 +1208,8 @@ The set-up opens <https://www.linkedin.com/developers/apps>.
 
 **If not:** if LinkedIn asks you to verify the page, make sure you picked the
 default company named above. If you already created the application on an
-earlier try, do not make a second one: click it in the list instead.
+earlier try, do not make a second one: open
+<https://www.linkedin.com/developers/apps> and click it in the list instead.
 
 #### Stage 2 of 3: add the Member Data Portability product
 
@@ -1133,58 +1228,109 @@ Stay on your application's page, the one stage 1 ended on.
 is most likely not located in the EEA or Switzerland. Answer **no**. The set-up
 says `Skipped: …`, saves nothing, and Threadline carries on without LinkedIn.
 
-#### Stage 3 of 3: make the key
+<a id="stage-3-of-3-make-the-key"></a>
 
-The set-up opens LinkedIn's token page,
-<https://www.linkedin.com/developers/tools/oauth/token-generator>. In
-LinkedIn's own menu it is **Docs and tools → OAuth Token Tools → Create token**.
+#### Stage 3 of 3: connect the application to Threadline
 
-1. Pick your application.
-2. Tick the permission (scope) whose name starts with **`r_dma_portability`**.
+Stay on your application's page. You do this stage once; later keys need only
+the **Allow** click in step 6.
+
+1. Open its **Auth** tab.
+2. Under **OAuth 2.0 settings**, click the pencil next to **Authorized
+   redirect URLs for your app**, then **+ Add redirect URL**.
+3. Paste this address, exactly as it is, and click **Update**. The set-up has
+   already put it on your clipboard:
+
+   ```text
+   http://localhost:8746/linkedin
+   ```
+
+4. Go back to the terminal and press Enter.
+5. At the top of the same **Auth** tab, under **Application credentials**:
+   copy the **Client ID**, paste it in the terminal and press Enter. Then click
+   the eye icon next to **Primary Client Secret**, copy it, paste it in the
+   terminal and press Enter. Nothing appears as you paste the secret; that is on
+   purpose.
+6. LinkedIn's page opens and asks to let your application read your data.
+   Sign in if asked and click **Allow**. The tab then says
+   `Threadline has LinkedIn's answer. You can close this tab and go back to the set-up.`
+7. The first time only, paste your profile address
+   (`https://www.linkedin.com/in/…`) in the terminal.
+
+**✅ Check:** you see `LinkedIn made a new key. It works until …` with a date,
+then `LinkedIn accepted the key.`, then `Saved LINKEDIN_CLIENT_ID in .env.`,
+`Saved the Client Secret, encrypted, in your Supabase database.` and the same
+`Saved …` line for `LINKEDIN_ACCESS_TOKEN`, `LINKEDIN_TOKEN_EXPIRES_ON` and
+`OWNER_LINKEDIN_PROFILE_URL`.
+
+**If not:** each problem has its own line. After it, answer **y** to
+`Try again?` and the set-up opens LinkedIn's page again (up to three tries).
+
+- LinkedIn's own page shows **"The redirect_uri does not match the registered
+  value"**: the address in step 3 is not exactly the one above. Fix it on the
+  **Auth** tab. After two minutes the terminal asks
+  `No answer from LinkedIn yet. Keep waiting?`: answer **n**, then **y** to
+  `Try again?`. When it asks for the Client ID and Client Secret again, press
+  Enter to keep what you typed.
+- LinkedIn's own page shows **"invalid client_id"**: the Client ID was not
+  copied whole. Do as in the line above and type the Client ID again.
+- `LinkedIn did not accept the Client ID or the Client Secret`: copy both
+  again from the **Auth** tab when the set-up asks.
+- `LinkedIn has not given your application the … product yet`: check the
+  **Products** tab (stage 2). Wait a few minutes after requesting it.
+- `LinkedIn says the sign-in was cancelled`: you clicked **Cancel** or did not
+  sign in. Try again and click **Allow**.
+- `Another program on this computer is using port 8746`: another set-up is
+  probably still open in a different terminal window. Close it and try again.
+
+If it still does not work, answer **n** to `Try again?`: the set-up offers to
+make the key by hand instead (next section).
+
+<a id="the-expiry-date-and-your-profile-address"></a>
+
+#### Making the key by hand
+
+This is the older way, and it always stays available. The set-up offers it
+when the one-click way did not work (`Make the key by hand on LinkedIn's token
+page instead?`), and on a renewal when you answer **n** to `Set that up now?`.
+
+1. The set-up opens LinkedIn's token page,
+   <https://www.linkedin.com/developers/tools/oauth/token-generator> (in
+   LinkedIn's own menu: **Docs and tools → OAuth Token Tools → Create token**).
+2. Pick your application.
+3. Tick the permission (scope) whose name starts with **`r_dma_portability`**.
    LinkedIn's own pages name it slightly differently in different places.
-3. Click **Request access token**, sign in if asked, and click **Allow**.
-4. Copy the token LinkedIn shows. It is shown only once.
-5. Paste it in the terminal and press Enter. Nothing appears as you paste; that
-   is on purpose.
+4. Click **Request access token**, sign in if asked, and click **Allow**.
+5. Copy the token LinkedIn shows. It is shown only once. Paste it in the
+   terminal and press Enter. Nothing appears as you paste; that is on purpose.
+6. If you typed the Client ID and Client Secret in stage 3, the set-up asks
+   LinkedIn when the key expires and shows `LinkedIn says this key works
+   until …`. Otherwise it asks you for that day: open **Docs and tools → OAuth
+   Token Tools → Token Inspector** on the same LinkedIn page, pick your
+   application, paste the token, click **Inspect** and type the expiry date it
+   shows. `2027-09-24`, `24 Sep 2027`, `24 September 2027` and `Sep 24, 2027`
+   all work. A date with only numbers and slashes, such as `03/04/2027`, is
+   refused, because it could mean two different days.
 
-**✅ Check:** you see `LinkedIn accepted the key.`
+**✅ Check:** you see `LinkedIn accepted the key.`, then
+`Saved LINKEDIN_ACCESS_TOKEN in .env.` and the same line for
+`LINKEDIN_TOKEN_EXPIRES_ON`.
 
 **If not:** if **Request access token** is greyed out, the product from stage 2
-has not been approved yet. Wait a few minutes and reload. "wrong or has
-expired": make a new token (steps 1 to 4) and paste that one; the set-up asks
+has not been approved yet: wait a few minutes and reload. "wrong or has
+expired": make a new token (steps 2 to 5) and paste that one; the set-up asks
 up to three times. "lacks the data portability permission": you ticked a
-different permission in step 2.
-
-#### The expiry date and your profile address
-
-The key stops working on a fixed day, and only LinkedIn can tell you which. The
-set-up asks for that day so the morning summary can remind you **seven days**
-before it comes.
-
-1. At the top of the same LinkedIn page, open **Docs and tools → OAuth Token
-   Tools** and choose the **Token Inspector** (the page may look slightly
-   different).
-2. Pick your application, paste the token and click **Inspect**. Find the day
-   the token expires.
-3. Type that day in the terminal. `2027-09-24`, `24 Sep 2027`,
-   `24 September 2027` and `Sep 24, 2027` all work. A date written only with
-   numbers and slashes, such as `03/04/2027`, is refused, because it could mean
-   two different days.
-4. Paste your profile address (`https://www.linkedin.com/in/…`). The set-up
-   asks for it only the first time.
-
-**✅ Check:** you see `Saved LINKEDIN_ACCESS_TOKEN in .env.`, then the same line
-for `LINKEDIN_TOKEN_EXPIRES_ON` and `OWNER_LINKEDIN_PROFILE_URL`.
-
-**If not:** "that date has already passed": you typed the day the token was
-made, or the wrong year. Type the day it **expires**.
+different permission in step 3. "that date has already passed": type the day
+the key **expires**, not the day it was made.
 
 #### Send it to GitHub
 
 The daily run on GitHub only learns about LinkedIn once the new values are
 there. Right after saving them, the set-up says so and asks `Send them to … on
-GitHub now?`: press Enter for yes. It saves just the LinkedIn settings, never
-shows a value, and does not ask for the Claude key again.
+GitHub now?`: press Enter for yes. It saves just the LinkedIn key, its expiry
+date and (the first time) your profile address, never shows a value, and does
+not ask for the Claude key again. The Client ID and Client Secret stay on your
+computer and in your database: the daily run does not need them.
 
 If you answered **n**, or the GitHub tool is not signed in, it prints
 `To send them later, run: uv run tracker setup github`. Run that command, press
@@ -1197,9 +1343,28 @@ one now.
 **If not:** run `uv run tracker setup github` and read the line where it
 stopped.
 
-**When the key expires.** Run `uv run tracker setup linkedin` again. A key is
-already saved, so the set-up skips stages 1 and 2 and goes straight to stage 3.
-The steps are in [Renew the LinkedIn key](operations.md#renew-the-linkedin-key).
+#### When the key expires
+
+Seven days before the key stops working, the morning summary says so. Run:
+
+```bash
+uv run tracker setup linkedin
+```
+
+A key is already saved, so the set-up skips stages 1 and 2. If your
+application is connected (stage 3), LinkedIn's page opens at once: click
+**Allow** (if you are still signed in, LinkedIn may not even ask), then press
+Enter to send the new key to GitHub. That is all.
+
+If you connected LinkedIn by hand, before this one-click way existed, the
+set-up offers it once: answer **yes** to `Set that up now?` and do steps 1 to
+6 of [stage 3](#stage-3-of-3-connect-the-application-to-threadline). Answer
+**n** to keep [making the key by hand](#making-the-key-by-hand).
+
+**✅ Check:** you see `LinkedIn made a new key. It works until …` and
+`secret LINKEDIN_ACCESS_TOKEN saved`.
+
+**If not:** the same lines as in stage 3's **If not** apply.
 
 ### 8b. Refresh now (`tracker setup refresh`)
 
@@ -1263,8 +1428,9 @@ appear in a few minutes."
 - *`GitHub did not accept the token` or `the token cannot see the workflow`:*
   make the key again and check that step 1 picked your copy of Threadline and
   that **Actions** says **Read and write**.
-- *`Supabase did not accept the access token`:* make the Supabase token again,
-  with access to your whole account.
+- *`Supabase did not accept the access token` or `Supabase says this access
+  token has too little access`:* make the Supabase token again with the
+  **Create legacy token** link, as in part 2a (steps 3 to 6).
 - *`The workflow is switched off on GitHub`:* open the link the set-up shows
   and click **Enable workflow**.
 - *The dashboard still says "not switched on yet":* close the dashboard tab and

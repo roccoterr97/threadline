@@ -124,10 +124,52 @@ class DashboardDeployError(TrackerError):
     code = "dashboard_deploy_failed"
 
 
+class DashboardPrivateError(DashboardDeployError):
+    """The dashboard is live but its host keeps it behind the host's own login.
+
+    New Netlify teams make every new project private, and Netlify's API offers
+    no way to change that, so the owner switches it to public by hand.
+    """
+
+    code = "dashboard_private"
+
+
 class SourceAuthError(TrackerError):
     """An external message source rejected the credentials we hold."""
 
     code = "source_auth_failed"
+
+
+class SourcePermissionError(SourceAuthError):
+    """A service accepted the credentials, but they lack the access one request needs.
+
+    Supabase answers a limited (scoped) access token this way, so the set-up
+    can say how to make a token that may do everything, rather than calling a
+    good token wrong.
+    """
+
+    code = "source_permission_missing"
+
+
+class LinkedInSignInError(SourceAuthError):
+    """Signing in to LinkedIn with the owner's own application did not end with a key.
+
+    Attributes:
+        problem: Why, as far as the set-up must tell apart; a
+            :class:`~tracker.domain.linkedin_sign_in.SignInProblem` value.
+    """
+
+    code = "linkedin_sign_in_failed"
+
+    def __init__(self, message: str, problem: str) -> None:
+        """Store the owner-facing message and why it happened.
+
+        Args:
+            message: Short, plain explanation, free of secrets.
+            problem: Why, as a ``SignInProblem`` value.
+        """
+        super().__init__(message)
+        self.problem = problem
 
 
 class MailboxPasswordError(SourceAuthError):
@@ -150,6 +192,12 @@ class MailboxWindowCappedError(TrackerError):
     """
 
     code = "mailbox_window_capped"
+
+
+class RunAlreadyGoingError(TrackerError):
+    """Another run of the same kind is still going, so a second one was not opened."""
+
+    code = "run_already_going"
 
 
 class SetupStoppedError(TrackerError):

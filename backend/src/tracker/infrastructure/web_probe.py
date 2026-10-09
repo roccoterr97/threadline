@@ -25,10 +25,12 @@ class WebPage:
     Attributes:
         status: The HTTP status after redirects.
         is_html: Whether it answered with a web page.
+        address: The address it ended at, after redirects; empty when not known.
     """
 
     status: int
     is_html: bool
+    address: str = ""
 
 
 class WebProbe:
@@ -66,7 +68,7 @@ class WebProbe:
             url: The address to open.
 
         Returns:
-            The status after redirects, and whether the answer is HTML.
+            The status after redirects, whether the answer is HTML, and where it ended.
 
         Raises:
             SourceUnavailableError: If the address could not be reached at all.
@@ -117,7 +119,9 @@ class WebProbe:
         """Send the request and describe the answer."""
         response = await _get(http, url)
         media_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
-        return WebPage(status=response.status_code, is_html=media_type == _HTML)
+        return WebPage(
+            status=response.status_code, is_html=media_type == _HTML, address=str(response.url)
+        )
 
 
 async def _get(http: httpx.AsyncClient, url: str) -> httpx.Response:

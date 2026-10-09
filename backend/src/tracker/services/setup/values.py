@@ -25,6 +25,8 @@ _HOST: Final[re.Pattern[str]] = re.compile(
 _MAX_PORT: Final[int] = 65_535
 _CLOCK_TIME: Final[re.Pattern[str]] = re.compile(r"^(\d{1,2})(?:[:.](\d{2}))?$")
 _REPOSITORY_NAME: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+#: A LinkedIn Client ID: a short run of letters and numbers, such as ``78abcd12efgh34``.
+_LINKEDIN_CLIENT_ID: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9]{8,40}$")
 #: The longest project name Supabase's Management API accepts.
 _MAX_PROJECT_NAME_LENGTH: Final[int] = 256
 _MONTH_NAMES: Final[tuple[str, ...]] = (
@@ -243,6 +245,28 @@ def linkedin_profile(raw: str) -> str:
         message = f"the address should start with {LINKEDIN_PROFILE_PREFIX}"
         raise ValidationFailedError(message)
     return cleaned if cleaned.endswith("/") else f"{cleaned}/"
+
+
+def linkedin_client_id(raw: str) -> str:
+    """Accept the Client ID from a LinkedIn application's Auth tab.
+
+    Args:
+        raw: What was typed.
+
+    Returns:
+        The Client ID without surrounding spaces.
+
+    Raises:
+        ValidationFailedError: If it is not a run of letters and numbers.
+    """
+    cleaned = raw.strip()
+    if not _LINKEDIN_CLIENT_ID.match(cleaned):
+        message = (
+            "the Client ID is a short run of letters and numbers, shown under "
+            "'Client ID' on the application's Auth tab"
+        )
+        raise ValidationFailedError(message)
+    return cleaned
 
 
 def web_address(raw: str) -> str:

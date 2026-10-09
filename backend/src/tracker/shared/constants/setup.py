@@ -195,8 +195,11 @@ LINKEDIN_TOKEN_GENERATOR_PAGE: Final[str] = (
     "https://www.linkedin.com/developers/tools/oauth/token-generator"
 )
 
-#: Your applications on LinkedIn's developer portal, where a new one is created.
+#: Your applications on LinkedIn's developer portal, where an earlier one is found.
 LINKEDIN_DEVELOPER_APPS_PAGE: Final[str] = "https://www.linkedin.com/developers/apps"
+
+#: The form that creates a new application, opened straight away.
+LINKEDIN_NEW_APP_PAGE: Final[str] = "https://www.linkedin.com/developers/apps/new"
 
 #: The company page LinkedIn provides for this product, so nobody has to create one.
 LINKEDIN_DEFAULT_COMPANY: Final[str] = "Member Data Portability (Member) Default Company"

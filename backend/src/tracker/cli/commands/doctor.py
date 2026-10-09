@@ -9,6 +9,8 @@ from typing import Final
 import typer
 
 from tracker.cli.doctor_wiring import render, run_doctor
+from tracker.shared import config
+from tracker.shared.logging import logs_kept_in
 
 #: Panel the root help groups this command under.
 HELP_PANEL: Final[str] = "system"
@@ -25,7 +27,9 @@ def register(cli: typer.Typer) -> None:
 
 def doctor() -> None:
     """Check every connection, one line each, with what to do about any problem."""
-    if not print_doctor_report():
+    with logs_kept_in(config.SETUP_LOG_FILE):
+        healthy = print_doctor_report()
+    if not healthy:
         raise typer.Exit(1)
 
 

@@ -333,6 +333,8 @@ function Connect-GitHub {
         Confirm-WorkflowPermission
     } else {
         Say 'Signing you in to GitHub: a browser window opens, follow what it says.'
+        Note 'Before you click Authorize, check the account name at the top of the GitHub page:'
+        Note "if it is not the account you want Threadline on, click 'Use a different account'."
         & gh auth login --hostname github.com --web --git-protocol https --scopes $GitHubWorkflowScope
         if ($LASTEXITCODE -ne 0) {
             Stop-Install 'The GitHub sign-in did not finish.' @('Paste the line again to retry.')
@@ -379,6 +381,15 @@ function Test-ExistingCopy {
         return $false
     }
     $Name = $Facts.nameWithOwner
+    # The account that publishes the template finds the template itself under
+    # this name, and can never have a copy of its own called that.
+    if ($Name -eq $TemplateRepository) {
+        Stop-Install "You are signed in to GitHub with the account that publishes Threadline ($Name)." @(
+            "Your own copy needs the name '$CopyName', which this account already uses for Threadline itself.",
+            "Sign in to GitHub with another account: run 'gh auth logout', then paste the line again",
+            'and sign in with the other account when the browser opens.'
+        )
+    }
     if (-not $Facts.isPrivate) {
         Stop-Install "$Name on GitHub is public." @(
             'Your copy of Threadline must be private, because it will hold your job-search data.',

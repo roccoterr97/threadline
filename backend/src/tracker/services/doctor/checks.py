@@ -16,6 +16,7 @@ from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.services.database_structure import (
     MigrationFile,
     StructureProbe,
+    StructureReport,
     inspect_structure,
 )
 from tracker.services.doctor.models import CheckResult, ok, problem, skipped, warning
@@ -101,10 +102,28 @@ class MigrationsCheck:
         report = inspect_structure(self.files, self.probe)
         if report.missing:
             return problem(self.name, f"not applied yet: {', '.join(report.missing)}", self.fix)
-        detail = f"{len(report.present)} of {len(self.files)} files confirmed"
-        if report.unconfirmed:
-            detail += f"; cannot be seen from here: {', '.join(report.unconfirmed)}"
-        return ok(self.name, detail)
+        return ok(self.name, _structure_detail(report, len(self.files)))
+
+
+def _structure_detail(report: StructureReport, total: int) -> str:
+    """Say plainly that the structure is in place, and how sure that is.
+
+    A file that leaves nothing the data API can see counts as applied when a
+    newer file shows, as the set-up's database step judges it too. Only one
+    that may never have run is named.
+    """
+    unsure = [name for name in report.unconfirmed if report.may_not_have_run(name)]
+    if unsure:
+        return (
+            f"{total - len(unsure)} of {total} structure files applied; cannot tell for "
+            f"{', '.join(unsure)} ({_setup('database')} to apply it safely)"
+        )
+    if not report.unconfirmed:
+        return f"all {total} structure files applied"
+    return (
+        f"all {total} structure files applied ({len(report.unconfirmed)} leave nothing to "
+        "check directly; the newer files show they are in)"
+    )
 
 
 @dataclass(slots=True)

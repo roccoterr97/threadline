@@ -137,7 +137,7 @@ def has_copy(ctx: SetupContext) -> bool:
 def _create(ctx: SetupContext, *, has_origin: bool) -> str | None:
     """Create the private copy with the GitHub CLI and push this folder to it."""
     name = ctx.ask_until_valid(
-        lambda: ctx.io.ask("Name for your copy", default=DEFAULT_COPY_NAME),
+        lambda: ctx.io.ask("Name for your copy", default=DEFAULT_COPY_NAME, exact=True),
         values.repository_name,
     )
     if has_origin:

@@ -7,7 +7,10 @@ export interface AuthState {
   status: AuthStatus;
   /** The signed-in address, or null when nobody is signed in. */
   email: string | null;
-  /** Asks Supabase to email a one-time sign-in link. */
+  /**
+   * Asks Supabase to email a one-time sign-in link.
+   * Rejects with a `SignInLinkError` saying why when no link was sent.
+   */
   sendSignInLink: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }

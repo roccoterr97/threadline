@@ -213,9 +213,12 @@ jobs:
         uses: actions/checkout@v5
 
       # uv installs the Python version named in backend/.python-version.
+      # setup-uv publishes no moving major tag since v8, so it is pinned to the
+      # commit of one release, as GitHub advises for any action; v10 runs on
+      # Node.js 24 (v6 ran on the retired Node.js 20).
       - name: Install uv
         if: steps.gate.outputs.ready == 'true'
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
@@ -229,6 +232,7 @@ jobs:
       # .claude/settings.json. GitHub's own short-lived token is passed, so no
       # Claude GitHub App is needed. The settings reach this step only.
       - name: Run the recipe with Claude
+        id: claude
         if: steps.gate.outputs.ready == 'true'
         uses: anthropics/claude-code-action@v1
         timeout-minutes: 45
@@ -281,3 +285,22 @@ jobs:
             --max-turns 200
             --allowedTools "Bash(cd:*),Bash(uv run tracker:*),Bash(mkdir:*),Read,Edit(/work/**),Skill,Task,Agent"
             --disallowedTools "Edit(/backend/**),Edit(/frontend/**),Edit(/supabase/**),Edit(/docs/**),Edit(/profile/**),Edit(/.claude/**),Edit(/.github/**),Edit(/.*),Edit(/*.md),Edit(/LICENSE),Edit(/install.sh),Edit(/install.ps1)"
+
+      # The action hides what Claude wrote, since it can quote your mail, and so
+      # also hides why Claude stopped. When Claude stopped with an error, this
+      # reads the reason from the action's record of the run and says it in one
+      # plain line, with what to do, here and on the run's summary page. It
+      # never prints what Claude wrote. The set-up looks for the line's title
+      # (CLAUDE_STOPPED_TITLE in backend/src/tracker/shared/constants/claude.py)
+      # when it watches the first run.
+      - name: Say why Claude stopped
+        if: failure() && steps.claude.outcome == 'failure'
+        working-directory: backend
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        run: |
+          if ! reason=$(uv run tracker run why-claude-stopped "$EXECUTION_FILE"); then
+            reason="Claude stopped with an error, and the reason could not be read."
+          fi
+          echo "::error title=Why Claude stopped::$reason"
+          echo "**Why Claude stopped:** $reason" >> "$GITHUB_STEP_SUMMARY"

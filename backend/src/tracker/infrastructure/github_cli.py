@@ -16,8 +16,9 @@ import subprocess
 import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Final, cast
+from typing import Final, NoReturn, cast
 
 from pydantic import SecretStr
 
@@ -35,6 +36,11 @@ from tracker.shared.constants.github import (
     GIT_WORKFLOW_SCOPE_REFUSAL,
     GITHUB_CLI_MINIMUM_VERSION,
     GITHUB_CLI_PAGE,
+    JOB_ANNOTATIONS_API_PATH,
+    RECENT_RUNS_LIMIT,
+    RUN_CONCLUSION_SUCCESS,
+    RUN_EVENT_BY_HAND,
+    RUN_STATUS_COMPLETED,
     WORKFLOW_FILE_NAME,
     WORKFLOW_MODE_INPUT,
     WORKFLOW_PAGE,
@@ -65,6 +71,8 @@ _NEWLINE: Final[str] = "\n"
 
 #: What ``gh repo view`` is asked for, and the answers that make a private copy.
 _REPOSITORY_FIELDS: Final[str] = "nameWithOwner,visibility,viewerPermission"
+#: What is read about a workflow run.
+_RUN_FIELDS: Final[str] = "databaseId,status,conclusion,url,displayTitle,createdAt"
 _PRIVATE: Final[str] = "PRIVATE"
 _ADMIN: Final[str] = "ADMIN"
 
@@ -178,6 +186,74 @@ def _parse_repository(output: str) -> GitHubRepository | None:
         private=facts.get("visibility") == _PRIVATE,
         admin=facts.get("viewerPermission") == _ADMIN,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowRun:
+    """One run of the Threadline workflow, as GitHub describes it.
+
+    Attributes:
+        id: GitHub's number for the run.
+        status: Where it is: ``queued``, ``in_progress``, ``completed`` and so on.
+        conclusion: How it ended, once it has; empty before.
+        url: The run's page, with its log.
+        title: The title GitHub shows for it, such as "Threadline daily run".
+        created_at: When GitHub made it, or ``None`` when GitHub did not say.
+    """
+
+    id: int
+    status: str
+    conclusion: str
+    url: str
+    title: str = ""
+    created_at: datetime | None = None
+
+    @property
+    def finished(self) -> bool:
+        """Whether the run has ended, well or not."""
+        return self.status == RUN_STATUS_COMPLETED
+
+    @property
+    def succeeded(self) -> bool:
+        """Whether the run has ended well."""
+        return self.finished and self.conclusion == RUN_CONCLUSION_SUCCESS
+
+
+def _parse_run(answer: object) -> WorkflowRun | None:
+    """Read one run from ``gh``'s JSON; anything unexpected is ``None``."""
+    if not isinstance(answer, dict):
+        return None
+    facts = cast("dict[str, object]", answer)
+    number = facts.get("databaseId")
+    if not isinstance(number, int):
+        return None
+    return WorkflowRun(
+        id=number,
+        status=str(facts.get("status") or ""),
+        conclusion=str(facts.get("conclusion") or ""),
+        url=str(facts.get("url") or ""),
+        title=str(facts.get("displayTitle") or ""),
+        created_at=_parse_moment(facts.get("createdAt")),
+    )
+
+
+def _parse_moment(value: object) -> datetime | None:
+    """Read a moment GitHub gives with its time zone; anything else is ``None``."""
+    if not isinstance(value, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return moment if moment.tzinfo is not None else None
+
+
+def _loaded(output: str) -> object:
+    """``gh``'s JSON answer, or ``None`` when it is not JSON."""
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError:
+        return None
 
 
 class GitHubCli:
@@ -407,6 +483,78 @@ class GitHubCli:
             raise WorkflowNotStartedError(message)
         _log.info("github_workflow_started", mode=mode.value)
 
+    def recent_runs(self, repository: str) -> tuple[WorkflowRun, ...]:
+        """The newest runs of the workflow started with 'Run workflow', newest first.
+
+        Args:
+            repository: The copy, as ``owner/name``.
+
+        Returns:
+            Up to ``RECENT_RUNS_LIMIT`` runs; none when there is none yet.
+
+        Raises:
+            SourceUnavailableError: If GitHub could not say.
+        """
+        output = self._read_runs(
+            [
+                _GH, "run", "list", "--workflow", WORKFLOW_FILE_NAME, "--repo", repository,
+                "--event", RUN_EVENT_BY_HAND, "--limit", str(RECENT_RUNS_LIMIT),
+                "--json", _RUN_FIELDS,
+            ]
+        )  # fmt: skip
+        answer = _loaded(output)
+        if not isinstance(answer, list):
+            return self._unreadable()
+        runs = (_parse_run(item) for item in cast("list[object]", answer))
+        return tuple(run for run in runs if run is not None)
+
+    def workflow_run(self, repository: str, run_id: int) -> WorkflowRun:
+        """Read where one run is.
+
+        Args:
+            repository: The copy, as ``owner/name``.
+            run_id: GitHub's number for the run.
+
+        Returns:
+            The run.
+
+        Raises:
+            SourceUnavailableError: If GitHub could not say.
+        """
+        output = self._read_runs(
+            [_GH, "run", "view", str(run_id), "--repo", repository, "--json", _RUN_FIELDS]
+        )
+        run = _parse_run(_loaded(output))
+        return run if run is not None else self._unreadable()
+
+    def run_notes(self, repository: str, run_id: int, title: str) -> tuple[str, ...]:
+        """Read the notes with one title that a run's jobs left, such as an error line.
+
+        Args:
+            repository: The copy, as ``owner/name``.
+            run_id: GitHub's number for the run.
+            title: The notes' title.
+
+        Returns:
+            Each such note's text, in the order GitHub lists them.
+
+        Raises:
+            SourceUnavailableError: If GitHub could not say.
+        """
+        jobs = self._read_runs(
+            [
+                _GH, "run", "view", str(run_id), "--repo", repository,
+                "--json", "jobs", "--jq", ".jobs[].databaseId",
+            ]
+        ).split()  # fmt: skip
+        notes: list[str] = []
+        for job in jobs:
+            path = JOB_ANNOTATIONS_API_PATH.format(repository=repository, job=job)
+            selected = f".[] | select(.title == {json.dumps(title)}) | .message"
+            output = self._read_runs([_GH, "api", path, "--jq", selected])
+            notes.extend(line.strip() for line in output.splitlines() if line.strip())
+        return tuple(notes)
+
     def disable_workflow(self, repository: str) -> None:
         """Switch the Threadline workflow off, so it stops starting on its schedule.
 
@@ -455,6 +603,28 @@ class GitHubCli:
                 f"{WORKFLOW_PAGE.format(repository=repository)}"
             )
             raise WorkflowNotEnabledError(message)
+
+    def _read_runs(self, arguments: list[str]) -> str:
+        """Run one ``gh`` command that reads runs, and return what it printed.
+
+        Raises:
+            SourceUnavailableError: If ``gh`` failed.
+        """
+        status, output = self._run(arguments, None)
+        if status != 0:
+            _log.warning("github_runs_not_read", command=arguments[1], status=status)
+            return self._unreadable()
+        return output
+
+    @staticmethod
+    def _unreadable() -> NoReturn:
+        """Stop with the one message for every run GitHub could not describe.
+
+        Raises:
+            SourceUnavailableError: Always.
+        """
+        message = "GitHub could not say how the run is going"
+        raise SourceUnavailableError(message)
 
     def _names(self, arguments: list[str], kind: str) -> frozenset[str]:
         """Run one ``gh … list`` command and read the names it printed."""

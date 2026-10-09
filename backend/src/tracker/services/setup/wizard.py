@@ -15,13 +15,15 @@ from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import FirstRun, workflow_page
 from tracker.services.setup.models import Step, StepGroup, StepName
 from tracker.services.setup.ports import SetupIO
+from tracker.services.setup.skipped_steps import forget_skip
 from tracker.services.setup.step_categories import CategoriesStep
 from tracker.services.setup.step_cloud import CloudStep
+from tracker.services.setup.step_dashboard import ADDRESS as DASHBOARD_ADDRESS
 from tracker.services.setup.step_dashboard import DashboardStep
 from tracker.services.setup.step_database import DatabaseStep
 from tracker.services.setup.step_github import GitHubStep
 from tracker.services.setup.step_linkedin import LinkedInStep
-from tracker.services.setup.step_login import LoginStep
+from tracker.services.setup.step_login import LoginStep, login_address
 from tracker.services.setup.step_mailbox import MailboxStep
 from tracker.services.setup.step_microsoft import MicrosoftStep
 from tracker.services.setup.step_refresh import RefreshStep
@@ -108,6 +110,8 @@ class SetupWizard:
             Whether it finished.
         """
         step = next(step for step in self._steps if step.name is name)
+        # Asked for by name, a step skipped on an earlier run asks again.
+        forget_skip(self._ctx, name)
         self._ctx.io.say(step.title)
         return await self._attempt(step, skip_when_done=False)
 
@@ -175,6 +179,7 @@ def _say_finish_line(ctx: SetupContext, first_run: FirstRun | None) -> None:
     run = first_run if first_run is not None else FirstRun(started=False, page=workflow_page(None))
     io.say("")
     io.say("Set-up done.")
+    _say_how_to_sign_in(ctx)
     _say_first_run(io, run)
     when = f"every day at {schedule.describe()}" if schedule is not None else "every day"
     if schedule is None:
@@ -189,9 +194,25 @@ def _say_finish_line(ctx: SetupContext, first_run: FirstRun | None) -> None:
     io.say(f"cloud route: {_COMMAND} {StepGroup.EXTRAS}")
 
 
+def _say_how_to_sign_in(ctx: SetupContext) -> None:
+    """Name the dashboard's address and the one address that can sign in to it."""
+    address = ctx.env.get(DASHBOARD_ADDRESS)
+    if address is None:
+        return
+    login = login_address(ctx)
+    ctx.io.say(f"Your dashboard: {address}")
+    if login is None:
+        ctx.io.say("Sign in there with the address you gave for the dashboard login: a sign-in")
+        ctx.io.say("link is e-mailed to it.")
+        return
+    ctx.io.say(f"Sign in there with {login}: a sign-in link is e-mailed to that address.")
+
+
 def _say_first_run(io: SetupIO, run: FirstRun) -> None:
     """Say how the first run was left, promising an e-mail only when one can come."""
-    if run.started and run.summary_by_email:
+    if run.stopped:
+        io.say("The first run on GitHub stopped with a problem; what to do is said above.")
+    elif run.started and run.summary_by_email:
         io.say("The first run is going on GitHub, so the first summary e-mail reaches you in")
         io.say(f"about {FIRST_SUMMARY_MINUTES} minutes.")
     elif run.started:

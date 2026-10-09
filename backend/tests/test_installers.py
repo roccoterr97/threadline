@@ -82,3 +82,46 @@ def test_every_installer_asks_for_the_same_github_tool_version_as_the_set_up() -
     assert windows is not None
     assert shell.group(1) == expected
     assert windows.group(1) == expected
+
+
+def check_existing_copy_with(facts: str) -> subprocess.CompletedProcess[str]:
+    """Run the installer's existing-copy check against GitHub answering ``facts``."""
+    script = "\n".join(
+        [
+            'TEMPLATE_REPOSITORY="roccoterr97/threadline"',
+            'COPY_NAME="threadline"',
+            installer_function("stop"),
+            installer_function("lowercase"),
+            installer_function("check_existing_copy"),
+            f"copy_facts() {{ echo '{facts}'; }}",
+            "copy_has_content() { return 0; }",
+            "check_existing_copy",
+        ]
+    )
+    return run_shell(script)
+
+
+@needs_posix_shell
+def test_the_template_owner_is_told_to_use_another_account_not_to_hide_the_template() -> None:
+    result = check_existing_copy_with("RoccoTerr97/Threadline false ADMIN /")
+
+    assert result.returncode == 1
+    assert "the account that publishes Threadline" in result.stderr
+    assert "gh auth logout" in result.stderr
+    assert "Make it private" not in result.stderr
+
+
+@needs_posix_shell
+def test_a_public_repository_of_the_same_name_is_still_refused_as_public() -> None:
+    result = check_existing_copy_with("someone/threadline false ADMIN roccoterr97/threadline")
+
+    assert result.returncode == 1
+    assert "someone/threadline on GitHub is public" in result.stderr
+
+
+@needs_posix_shell
+def test_a_private_copy_made_from_the_template_is_used() -> None:
+    result = check_existing_copy_with("someone/threadline true ADMIN roccoterr97/threadline")
+
+    assert result.returncode == 0
+    assert result.stderr == ""

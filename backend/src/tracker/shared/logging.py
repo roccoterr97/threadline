@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Final, TextIO, cast
 
 import structlog
@@ -64,6 +67,34 @@ class _StandardErrorStream:
     def flush(self) -> None:
         """Flush the current stream."""
         sys.stderr.flush()
+
+
+class _AppendingFile:
+    """Adds each rendered line to the end of a file, opening it for that line only.
+
+    Nothing stays open between lines, so there is nothing to close when the
+    command ends, however it ends.
+    """
+
+    def __init__(self, path: Path) -> None:
+        """Bind the stream to its file.
+
+        Args:
+            path: The file; it is created when it does not exist yet.
+        """
+        self._path = path
+
+    def write(self, message: str) -> int:
+        """Append one rendered log line, or show it when the file cannot be written."""
+        try:
+            with self._path.open("a", encoding="utf-8") as file:
+                return file.write(message)
+        except OSError:
+            # A folder that cannot be written to must not cost the line itself.
+            return sys.stderr.write(message)
+
+    def flush(self) -> None:
+        """Nothing to flush: every line is written and closed at once."""
 
 
 def redact_sensitive_fields(
@@ -161,6 +192,32 @@ def configure_logging(
         # cached logger would keep the level captured the first time.
         cache_logger_on_first_use=False,
     )
+
+
+@contextmanager
+def logs_kept_in(path: Path) -> Iterator[None]:
+    """Write log lines to a file instead of the screen, then go back to the screen.
+
+    For commands that guide a person step by step (the set-up and the doctor):
+    each log event there comes with a plain sentence of its own, so the
+    technical line would only get in the way; the file keeps it for whoever
+    helps. The level, the format and the redaction stay as configured.
+
+    Args:
+        path: The file the lines are added to.
+
+    Yields:
+        Nothing; the lines go to the file until the block ends.
+    """
+    structlog.configure(
+        logger_factory=structlog.WriteLoggerFactory(file=cast("TextIO", _AppendingFile(path)))
+    )
+    try:
+        yield
+    finally:
+        structlog.configure(
+            logger_factory=structlog.WriteLoggerFactory(file=cast("TextIO", _StandardErrorStream()))
+        )
 
 
 def get_logger(name: str) -> structlog.stdlib.BoundLogger:

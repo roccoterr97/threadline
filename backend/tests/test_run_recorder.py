@@ -22,7 +22,7 @@ from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
 from tracker.shared.constants.runs import INTERRUPTED_RUN_AFTER_HOURS, RUN_INTERRUPTED_CODE
 from tracker.shared.constants.summary import MAX_ERROR_DETAIL_LENGTH
-from tracker.shared.errors import ValidationFailedError
+from tracker.shared.errors import RunAlreadyGoingError, ValidationFailedError
 
 NOW = datetime(2026, 9, 18, 5, 0, tzinfo=UTC)
 
@@ -247,10 +247,10 @@ def test_a_daily_run_with_a_collect_step_and_a_summary_is_a_success(recorder: Ru
 def test_a_refresh_needs_no_summary_but_still_needs_a_collect_step(recorder: RunRecorder) -> None:
     clean = recorder.start(RunTrigger.REFRESH)
     record_all(recorder, clean.id, RunStep.COLLECT_EMAIL, RunStep.ASSESS)
+    assert recorder.finish(clean.id).status is RunStatus.SUCCESS
+
     without_collect = recorder.start(RunTrigger.REFRESH)
     record_all(recorder, without_collect.id, RunStep.ASSESS)
-
-    assert recorder.finish(clean.id).status is RunStatus.SUCCESS
     assert recorder.finish(without_collect.id).status is RunStatus.PARTIAL
 
 
@@ -462,3 +462,100 @@ def test_a_run_with_only_an_unconfigured_step_is_not_a_success(
     recorder.record_step(run.id, StepOutcome(RunStep.COLLECT_LINKEDIN, StepResult.SUCCESS))
 
     assert recorder.finish(run.id).status is RunStatus.FAILED
+
+
+def _status_of(fake_client: FakeSupabaseClient, run_id: str) -> str:
+    return next(row["status"] for row in fake_client.tables["run_logs"] if row["id"] == run_id)
+
+
+@pytest.mark.parametrize(
+    ("going", "starting"),
+    [
+        (RunTrigger.MAC, RunTrigger.GITHUB),
+        (RunTrigger.GITHUB, RunTrigger.MAC),
+        (RunTrigger.CLOUD, RunTrigger.CLOUD),
+        (RunTrigger.MANUAL, RunTrigger.GITHUB),
+    ],
+    ids=["mac then github", "github then mac", "cloud twice", "by hand then github"],
+)
+def test_a_second_daily_run_is_refused_while_one_from_elsewhere_is_going(
+    recorder: RunRecorder,
+    fake_client: FakeSupabaseClient,
+    going: RunTrigger,
+    starting: RunTrigger,
+) -> None:
+    running = _running_since(fake_client, 0.5, going)
+
+    with pytest.raises(RunAlreadyGoingError, match="another daily run is already going"):
+        recorder.start(starting)
+
+    assert [row["id"] for row in fake_client.tables["run_logs"]] == [running]
+    assert _status_of(fake_client, running) == RunStatus.RUNNING.value
+    assert _steps_of(fake_client, running) == []
+
+
+def test_the_refusal_says_where_and_when_the_other_run_started(
+    recorder: RunRecorder, fake_client: FakeSupabaseClient
+) -> None:
+    _running_since(fake_client, 0.5, RunTrigger.MAC)
+
+    with pytest.raises(RunAlreadyGoingError) as refused:
+        recorder.start(RunTrigger.GITHUB)
+
+    assert "on the Mac at 2026-09-18 04:30 UTC" in str(refused.value)
+    assert "--force" in str(refused.value)
+    assert refused.value.code == "run_already_going"
+
+
+@pytest.mark.parametrize("trigger", [RunTrigger.GITHUB, RunTrigger.REFRESH])
+def test_github_closes_its_own_run_left_open_instead_of_waiting_for_it(
+    recorder: RunRecorder, fake_client: FakeSupabaseClient, trigger: RunTrigger
+) -> None:
+    """GitHub never overlaps two of its runs of one kind, so an open one has died."""
+    left_open = _running_since(fake_client, 1, trigger)
+
+    run = recorder.start(trigger)
+
+    assert _status_of(fake_client, left_open) == RunStatus.FAILED.value
+    assert any(
+        row["error_code"] == RUN_INTERRUPTED_CODE for row in _steps_of(fake_client, left_open)
+    )
+    assert _status_of(fake_client, str(run.id)) == RunStatus.RUNNING.value
+
+
+def test_a_run_left_open_on_github_still_stops_a_run_on_the_mac(
+    recorder: RunRecorder, fake_client: FakeSupabaseClient
+) -> None:
+    _running_since(fake_client, 1, RunTrigger.GITHUB)
+
+    with pytest.raises(RunAlreadyGoingError, match="on GitHub at"):
+        recorder.start(RunTrigger.MAC)
+
+
+def test_force_closes_the_run_in_the_way_as_interrupted_and_starts(
+    recorder: RunRecorder, fake_client: FakeSupabaseClient
+) -> None:
+    stuck = _running_since(fake_client, 1, RunTrigger.MAC)
+
+    run = recorder.start(RunTrigger.MAC, force=True)
+
+    assert _status_of(fake_client, stuck) == RunStatus.FAILED.value
+    assert _status_of(fake_client, str(run.id)) == RunStatus.RUNNING.value
+
+
+@pytest.mark.parametrize(
+    ("going", "starting"),
+    [(RunTrigger.REFRESH, RunTrigger.MAC), (RunTrigger.MAC, RunTrigger.REFRESH)],
+    ids=["refresh going, daily starts", "daily going, refresh starts"],
+)
+def test_a_run_of_the_other_kind_never_stops_a_new_one(
+    recorder: RunRecorder,
+    fake_client: FakeSupabaseClient,
+    going: RunTrigger,
+    starting: RunTrigger,
+) -> None:
+    running = _running_since(fake_client, 0.2, going)
+
+    recorder.start(starting)
+
+    assert _status_of(fake_client, running) == RunStatus.RUNNING.value

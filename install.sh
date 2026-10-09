@@ -439,6 +439,8 @@ sign_in_to_github() {
     ensure_workflow_permission
   else
     say "Signing you in to GitHub: a browser window opens, follow what it says."
+    note "Before you click Authorize, check the account name at the top of the GitHub page:"
+    note "if it is not the account you want Threadline on, click 'Use a different account'."
     gh auth login --hostname github.com --web --git-protocol https \
       --scopes "$GITHUB_WORKFLOW_SCOPE" \
       || stop "The GitHub sign-in did not finish." "Paste the line again to retry."
@@ -476,6 +478,13 @@ check_existing_copy() {
   read -r found_name found_private found_permission found_template <<FACTS
 $facts
 FACTS
+  # The account that publishes the template finds the template itself under
+  # this name, and can never have a copy of its own called that.
+  [ "$(lowercase "$found_name")" != "$(lowercase "$TEMPLATE_REPOSITORY")" ] \
+    || stop "You are signed in to GitHub with the account that publishes Threadline ($found_name)." \
+      "Your own copy needs the name '$COPY_NAME', which this account already uses for Threadline itself." \
+      "Sign in to GitHub with another account: run 'gh auth logout', then paste the line again" \
+      "and sign in with the other account when the browser opens."
   [ "$found_private" = "true" ] || stop "$found_name on GitHub is public." \
     "Your copy of Threadline must be private, because it will hold your job-search data." \
     "Make it private (on GitHub: Settings, then Danger Zone, then Change visibility)," \

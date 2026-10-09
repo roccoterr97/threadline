@@ -2,11 +2,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
+import { AuthApiError } from '@supabase/supabase-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SignInLinkError, SignInRefusal } from '../lib/errors';
 
 const setSession = vi.fn();
 const getSession = vi.fn();
 const signOut = vi.fn();
+const signInWithOtp = vi.fn();
 let announce: (event: string, session: unknown) => void = () => undefined;
 
 vi.mock('../lib/supabaseClient', () => ({
@@ -16,6 +19,7 @@ vi.mock('../lib/supabaseClient', () => ({
       setSession,
       getSession,
       signOut,
+      signInWithOtp,
       onAuthStateChange: (listener: typeof announce) => {
         announce = listener;
         return { data: { subscription: { unsubscribe: () => undefined } } };
@@ -42,6 +46,20 @@ function SignOutButton() {
       }}
     >
       leave
+    </button>
+  );
+}
+
+function SendLinkButton({ onResult }: { onResult: (outcome: unknown) => void }) {
+  const { sendSignInLink } = useAuth();
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        sendSignInLink('stranger@example.test').then(onResult, onResult);
+      }}
+    >
+      send
     </button>
   );
 }
@@ -163,5 +181,39 @@ describe('what is kept in memory when someone leaves', () => {
     await waitFor(() => {
       expect(queryClient.getQueryData(PRIVATE_KEY)).toBeUndefined();
     });
+  });
+});
+
+describe('asking for a sign-in link', () => {
+  beforeEach(() => {
+    getSession.mockReset().mockResolvedValue({ data: { session: null } });
+    signInWithOtp.mockReset();
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('never creates a login and says why Supabase refused the address', async () => {
+    signInWithOtp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: new AuthApiError('Signups not allowed for otp', 422, 'otp_disabled'),
+    });
+    const onResult = vi.fn();
+    render(
+      <AuthProvider>
+        <Probe />
+        <SendLinkButton onResult={onResult} />
+      </AuthProvider>,
+      { wrapper: withQueryClient(new QueryClient()) },
+    );
+    await waitFor(() => expect(screen.getByText('signed-out')).toBeInTheDocument());
+
+    await userEvent.setup().click(screen.getByRole('button', { name: 'send' }));
+
+    await waitFor(() => expect(onResult).toHaveBeenCalled());
+    expect(signInWithOtp).toHaveBeenCalledWith(
+      expect.objectContaining({ options: expect.objectContaining({ shouldCreateUser: false }) }),
+    );
+    const outcome: unknown = onResult.mock.calls[0]?.[0];
+    expect(outcome).toBeInstanceOf(SignInLinkError);
+    expect(outcome).toMatchObject({ reason: SignInRefusal.UnknownAddress });
   });
 });

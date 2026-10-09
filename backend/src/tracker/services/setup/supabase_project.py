@@ -40,7 +40,7 @@ from tracker.shared.constants.setup import (
     RegionGroup,
 )
 from tracker.shared.errors import (
-    SourceAuthError,
+    SourcePermissionError,
     SourceUnavailableError,
     ValidationFailedError,
 )
@@ -262,7 +262,9 @@ async def _create(
     """Create a project with a generated database password that is never kept."""
     io = ctx.io
     name = ctx.ask_until_valid(
-        lambda: io.ask("Name for the new project", default=SUPABASE_DEFAULT_PROJECT_NAME),
+        lambda: io.ask(
+            "Name for the new project", default=SUPABASE_DEFAULT_PROJECT_NAME, exact=True
+        ),
         values.project_name,
     )
     region = _choose_region(ctx)
@@ -325,7 +327,7 @@ async def _key_of_kind(
     """The first revealed key of a kind, or a new one when the project has none.
 
     Raises:
-        SourceAuthError: If the project has such a key but the token may not reveal it.
+        SourcePermissionError: If the project has such a key but the token may not reveal it.
     """
     of_kind = [key for key in keys if key.kind is kind]
     for key in of_kind:
@@ -333,11 +335,8 @@ async def _key_of_kind(
         if _is_whole_key(value, prefix):
             return value
     if of_kind:
-        message = (
-            f"the access token cannot read the project's {kind.value} key - make a token "
-            "with the 'API Keys' and 'API Key Secrets' permissions, then run this step again"
-        )
-        raise SourceAuthError(message)
+        message = f"Supabase says the access token may not read the project's {kind.value} key"
+        raise SourcePermissionError(message)
     name = PUBLISHABLE_KEY_NAME if kind is ApiKeyKind.PUBLISHABLE else SECRET_KEY_NAME
     ctx.io.say(f"The project has no {kind.value} key yet, so one named '{name}' is made.")
     created = await ctx.gateways.platform.create_api_key(project_ref, token, kind, name)

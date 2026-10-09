@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-09
+
+The fixes from the first real set-up test on a new account, and LinkedIn with
+one Allow click. This heading also covers the changes published as 0.6.0 to
+0.8.1, which went out without headings of their own.
+
 ### Added
 
 - One Supabase access token for the whole `tracker setup` run. It is asked
@@ -38,8 +44,8 @@ All notable changes to this project are recorded here. The format follows
   Configuration page only if Supabase refuses. The site is remembered as
   `NETLIFY_SITE_ID` in `.env` (not a secret), so running the step again
   publishes the newest dashboard to the same address. Contributors with
-  Node.js 22 can publish a local build instead; hosting it elsewhere still
-  works by typing its address.
+  Node.js 22 can publish a local build instead (`--build-here`); hosting it
+  elsewhere still works by typing its address.
 - `.github/workflows/dashboard-release.yml`: every push to `main` of the
   public template builds the dashboard once and publishes
   `dashboard.zip` and `dashboard.zip.sha256` on the rolling `latest` release.
@@ -48,6 +54,23 @@ All notable changes to this project are recorded here. The format follows
   PowerShell 7 and Windows PowerShell 5.1). Tests run `sh -n` on the installer
   and check its GitHub tool version comparison, and a Windows-only test checks
   that the computer's real `tzutil` answer maps to a known time zone.
+- LinkedIn connects with one click. The LinkedIn step no longer asks you to
+  copy a key or look up its expiry date. After a one-time step on your
+  LinkedIn application's **Auth** tab (add one address, copy two values), the
+  set-up opens LinkedIn's page, you click **Allow**, and Threadline saves the
+  new key and the day it expires by itself. Renewing it later is
+  `uv run tracker setup linkedin` and one click. The old way, pasting a key
+  made on LinkedIn's token page, is still there if the new way does not work.
+- The set-up watches the first run for two minutes. If the run stops in that
+  time, the set-up says so, with the reason and what to do, instead of
+  promising an e-mail that will not come.
+- A failed daily run now says why. When Claude stops with an error on GitHub,
+  the run's page shows one plain line titled "Why Claude stopped", such as a
+  refused key, the plan's usage limit, or Claude being busy, and what to do.
+  Nothing Claude read or wrote is shown.
+- The last screen says how to sign in. After "Set-up done." the set-up shows
+  your dashboard's address and the exact e-mail address that can sign in to
+  it.
 
 ### Changed
 
@@ -98,9 +121,65 @@ All notable changes to this project are recorded here. The format follows
   there. A stopped run's last line names the command to run again:
   `uv run tracker setup` for the core steps, `uv run tracker setup extras`
   for the extras.
+- The Supabase token is made with the "Create legacy token" link. Supabase
+  changed its Access Tokens page: "Generate new token" now opens a form for a
+  limited token, and on a new account it gets stuck on an empty project list.
+  Those limited tokens also cannot read your project's secret key yet. The
+  set-up now tells you to click the small link **Create legacy token** on the
+  left instead. If you paste a token that has too little access, the set-up
+  says so in plain words and tells you how to make the right one, rather than
+  calling it wrong.
+- Typing "y" keeps the suggestion. When the set-up suggests an answer in
+  brackets, such as `Your time zone [Europe/Paris]:`, typing `y`, `yes` or
+  `ok` now keeps it instead of giving an error. Names you choose, like the
+  project's, are still taken exactly as typed.
+- No more technical lines during the set-up. `uv run tracker setup` and
+  `uv run tracker doctor` now show only plain sentences. The technical details
+  go to `backend/setup.log`, and the set-up names that file if it stops, so
+  whoever helps you can read it.
+- No Node.js question for newcomers. The set-up no longer asks people who
+  happen to have Node.js whether to build the dashboard themselves.
+  Contributors testing their own changes can run
+  `uv run tracker setup dashboard --build-here`.
+- A "no" is remembered. If you skip Outlook or choosing your categories,
+  running `uv run tracker setup` again no longer asks again. It says "Skipped
+  earlier" with the command that adds it.
+- The doctor's database line reads as fine when it is: "all 17 structure
+  files applied".
+- Before the GitHub sign-in, the installers remind you to check which account
+  is signed in and to click "Use a different account" if it is the wrong one.
+- No more Node.js 20 warning on every run. The tool that installs uv on GitHub
+  moved to v10.2.0, which runs on Node.js 24.
 
 ### Fixed
 
+- The daily run on GitHub no longer stops half way, before judging anyone or
+  sending the e-mail. Claude started the assessment helpers in the background
+  and ended its turn to wait for them, which on GitHub ends the session. The
+  recipes now start them in the foreground and never end the turn early, and a
+  test keeps that wording in place.
+- Two daily runs no longer work at the same time. GitHub
+  already queued its own runs, but a run on the Mac, in Claude's cloud or by
+  hand could start while another was going, and both then collected, assessed
+  and recorded into the same day. `tracker run start` now stops with the code
+  `run_already_going`, naming where and when the other run started, and the
+  daily-run recipe then ends at once without closing anything. A run GitHub
+  left open after it was stopped no longer waits three hours: the next run on
+  GitHub closes it as interrupted straight away. `--force` starts a run anyway
+  when you know the other one has stopped, and closes that one as interrupted.
+- The installers no longer tell the account that publishes Threadline to make
+  Threadline private when it runs them: it is told to sign in with another
+  GitHub account instead, since that account cannot have a copy of its own
+  called `threadline`.
+- `tracker setup dashboard` no longer stops with a bare "answered status 401"
+  on a new Netlify account. Netlify teams made since 28 July 2026 keep every
+  new site private behind a Netlify sign-in, and Netlify's API has no setting
+  to change that. The step now recognises it (a 401 or 403, or a redirect to
+  Netlify's team login), stops at once instead of retrying, opens the site's
+  Netlify page and lists the clicks that make it public (Project
+  configuration, General, Visitor access, Edit visibility, Production:
+  Public), with why that is safe. It stops with its own code,
+  `dashboard_private`. The guide has a short "If it says 401" note.
 - A harmless warning from git no longer makes the set-up think the workflow
   file has unsaved changes, and a copy with nothing on GitHub to compare with
   is no longer nagged to push. The set-up reads git's answer only for these
@@ -355,6 +434,28 @@ All notable changes to this project are recorded here. The format follows
   setup dashboard` warns, in plain words, when the dashboard is newer than
   your copy of Threadline so you update your copy and database first. The
   file is read and not published.
+- The dashboard's sign-in page now says why a link was not sent. If you type
+  an address that has no dashboard login, it tells you to use the address you
+  chose for your dashboard login during set-up, instead of asking you to wait
+  and try again. If too many links were asked for, it says how long to wait.
+  Only a real connection problem still says to try again in a moment.
+- The Claude key is checked before it is saved. `claude setup-token` prints
+  the key over two lines, and the set-up used to keep only the first line
+  without a word. It now keeps the whole paste. It also refuses a key that is
+  cut short, an API key, or anything else, with a hint, before anything goes
+  to GitHub. Pressing Enter alone now really keeps the key GitHub already has.
+- On Windows, the one-click LinkedIn sign-in now notices when another program
+  already uses its port and says so, instead of sharing the port and maybe
+  never getting LinkedIn's answer.
+- If LinkedIn's answer arrives while the set-up is asking "Keep waiting?",
+  answering no no longer throws it away: the key is made, instead of the
+  set-up asking for the Client ID and secret again.
+- The set-up now follows the first daily run it started, and not a refresh
+  or an on-time start that GitHub began a few seconds later.
+- A LinkedIn key made with one click is now saved first. If LinkedIn cannot
+  say when it expires, the set-up asks for the date instead of stopping. If
+  the Client Secret cannot be saved in your database, the key is kept and
+  the set-up says one-click renewal is not set up and how to set it up later.
 
 ### Security
 
@@ -416,6 +517,16 @@ All notable changes to this project are recorded here. The format follows
   new messages the installers can stop with.
 - The `.env` privacy claim on Windows is now accurate: the file is private
   because it sits inside your user folder, not because of file permissions.
+- The guide, the operations page, the README, CONTRIBUTING and the Claude
+  set-up recipe follow the changes above, after a live test as a newcomer:
+  Netlify's "Sign up with GitHub" refuses a GitHub e-mail address with a "+"
+  (use **Sign up with email**); a page the set-up opens appears in your
+  default browser, so check which account it is signed in to; the Netlify
+  part lists the clicks that make a private site public, once, with why that
+  is safe; renewing the LinkedIn key is one command and one **Allow** click;
+  the Claude key is copied over both of its lines; a red cross on GitHub
+  points to the "Why Claude stopped" line; and `backend/setup.log` is named
+  as the place for the technical details.
 
 ## [0.5.0] - 2026-10-08
 

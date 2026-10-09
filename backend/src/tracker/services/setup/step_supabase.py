@@ -18,7 +18,7 @@ from tracker.services.setup.context import SetupContext
 from tracker.services.setup.fresh_project import ask_until_it_answers
 from tracker.services.setup.models import StepName
 from tracker.services.setup.supabase_project import find_or_create_project, read_keys
-from tracker.services.setup.supabase_session import require_supabase_token
+from tracker.services.setup.supabase_session import full_access_needed, require_supabase_token
 from tracker.shared.constants.setup import (
     SUPABASE_API_KEYS_PAGE,
     SUPABASE_HOST_SUFFIX,
@@ -103,9 +103,10 @@ def project_url(project_ref: str) -> str:
 async def _from_the_account(ctx: SetupContext) -> tuple[str, str, str]:
     """Find or create the project with this run's token, then read its keys."""
     token = await require_supabase_token(ctx)
-    project = await find_or_create_project(ctx, token)
+    with full_access_needed(ctx):
+        project = await find_or_create_project(ctx, token)
+        publishable, secret = await read_keys(ctx, token, project.ref)
     url = project_url(project.ref)
-    publishable, secret = await read_keys(ctx, token, project.ref)
     ctx.io.say(f"Read the address and both keys of '{project.name}'. Neither key is shown.")
     hint = (
         f"It exists, so give it a minute, then run 'uv run tracker setup {StepName.SUPABASE}' "

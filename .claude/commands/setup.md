@@ -14,6 +14,11 @@ accounts and click where you tell them.** This file is the whole recipe.
 `first run`, `check`). With nothing, do all of them in order, skipping what is
 already done.
 
+Before you start, tell them how long it takes: about 30 to 40 minutes of their
+own time if they already have GitHub, Supabase and Netlify accounts, and 50 to
+70 minutes if they create the accounts as they go. The first summary e-mail
+follows about ten minutes after the end.
+
 ## The rules
 
 1. **Plain words, one step at a time.** Short sentences. No jargon: say
@@ -95,8 +100,10 @@ Threadline runs every day from the person's own **private** copy on GitHub.
    in the background. The `workflow` permission is needed later, to push the
    daily-run file; without it GitHub refuses that push. The command prints a
    one-time code such as `ABCD-1234` and a link. Give them the code and the
-   link (<https://github.com/login/device>), tell them to paste the code there
-   and click Authorize. Wait until the command ends, then run
+   link (<https://github.com/login/device>), tell them to paste the code there,
+   check the account name at the top of the GitHub page (if it is not the
+   account they want Threadline on, click **Use a different account**), and
+   only then click Authorize. Wait until the command ends, then run
    `gh auth setup-git`, so git can download and upload their private copy
    without asking for a password.
    If they were already signed in, check the permission: run
@@ -141,15 +148,25 @@ this order, one message each, and wait for "done" between them. The exact
 clicks are in `docs/setup-your-accounts.md`; read the named part before you
 explain it, then explain it in your own plain words, and keep the warnings.
 
+Pages open in their default browser. If that browser is signed in to another
+GitHub, Supabase or Netlify account than the one they mean to use, tell them
+to check the account name at the top of each page, and to copy the page's
+address into a window signed in to the right account.
+
 1. **Supabase** (the database) — "Before you start" and part 2 of the guide.
    Only a free account is needed: the set-up creates the project itself with
-   one access token they paste into the set-up page. Tell them clearly: **the
+   one access token they paste into the set-up page. When the token page
+   opens, the token is made with the small **Create legacy token** link on the
+   left, not with the form that **Generate new token** opens (guide, 2a).
+   Tell them clearly: **the
    dashboard will only let in the e-mail address they sign up to Supabase
    with**, so sign up with the address they want to use every day (signing in
    with GitHub uses the GitHub account's main address).
 2. **Netlify** (publishes the dashboard) — part 5 of the guide. Only a free
-   account is needed (signing up with GitHub is quickest): the set-up
-   publishes the dashboard itself with a token they paste into the set-up page.
+   account is needed (signing up with GitHub is quickest; if Netlify answers
+   "Email address is invalid", their GitHub address has a "+" in it, so they
+   use **Sign up with email** instead): the set-up publishes the dashboard
+   itself with a token they paste into the set-up page.
 3. **The mailbox** — part 4 of the guide. Ask which mailbox they use. Gmail,
    iCloud, Yahoo, Fastmail and other IMAP mailboxes need an **app password**
    (the guide says where it is made for each); they make it now and keep the
@@ -163,8 +180,10 @@ explain it, then explain it in your own plain words, and keep the warnings.
    route (`uv run tracker setup extras`, guide 8c).
 
 LinkedIn (part 8a) only works for members in the EEA or Switzerland and takes
-about ten minutes of clicking: it is an extra, so say it can be added any day
-later with `uv run tracker setup linkedin --browser`.
+about ten minutes of clicking the first time: it is an extra, so say it can be
+added any day later with `uv run tracker setup linkedin --browser`. After that
+first time, a new key is that same command and one click on LinkedIn's
+**Allow** button.
 
 **Check:** they can sign in at <https://supabase.com> and
 <https://www.netlify.com>; the app password exists.
@@ -208,7 +227,10 @@ Two moments need a word from you:
   `claude setup-token`. Tell them: open the **Terminal** app (on a Mac:
   ⌘ + Space, type Terminal, Return), type `claude setup-token`, press Return,
   sign in in the browser, come back to Terminal, copy the long key that starts
-  with `sk-ant-` and paste it into the set-up page. Not into this chat. If
+  with `sk-ant-oat` (it is split over two lines: copy from the first letter to
+  the last, including the second line) and paste it into the set-up page. Not
+  into this chat. The set-up refuses a key cut short or an API key
+  (`sk-ant-api…`) and asks again. If
   Terminal answers `command not found`, the command-line tool is missing: do
   the **claude** line of part 1, then ask them to open a new Terminal window
   and try again. If they leave the key empty and GitHub has none, the wizard
@@ -217,10 +239,22 @@ Two moments need a word from you:
 - **"Publish it on Netlify now?"** — yes. The page then asks for a Netlify
   token: part 5 of the guide says where it is made. If they answer no twice,
   the set-up stops there, because the steps after it need the dashboard.
+  A new Netlify account keeps the site private: the set-up then says
+  `Netlify published your dashboard but keeps it private`, opens the project's
+  Netlify page and stops. Walk them through the clicks it lists, one at a
+  time: **Project configuration → General → Visitor access**, under **Project
+  visibility** click **Edit visibility** (choose **Customize this project's
+  visibility** if asked), set **Production** to **Public**, **Save**. Say
+  why it is safe: the dashboard has its own sign-in, and only their e-mail
+  address can open their data. Then run
+  `uv run tracker setup --browser` again; it carries on from the dashboard.
 
 The page's own last words ("All done", "Stopped before the end") are shown on
 the page only. The terminal does print the `Stopped: …` line when a step
-fails, and what you see last is the final check. If the page says **Stopped**,
+fails, and what you see last is the final check. The set-up shows only plain
+sentences; its technical log lines go to `~/threadline/backend/setup.log`
+(keys are never written there). When a stop is unclear, read the last lines
+of that file and explain what they mean in plain words. If the page says **Stopped**,
 or the command ends without `Everything Threadline needs is working.`: read
 the last lines, explain in plain words, fix what you can, and run
 `uv run tracker setup --browser` again — it carries on where it stopped. One
@@ -237,7 +271,13 @@ expected until part 5 below.
 
 0. Read what the wizard said about the first run before you promise anything.
    Three cases:
-   - `The summary e-mail arrives in about 10 minutes.` — an e-mail will come.
+   - `It is running; the summary e-mail comes in about 10 minutes.` — an
+     e-mail will come.
+   - `The first run stopped with a problem.` followed by the reason (the
+     set-up follows the run for two minutes) — do what that line says. For
+     `Claude did not accept the key saved on GitHub`, do the Claude key moment
+     from part 4 again, then `uv run tracker setup github --browser`, which
+     starts a new first run.
    - `No summary e-mail will come` (they have no mailbox with an app password,
      typically Outlook alone) — do **not** promise an e-mail. Offer to connect
      a Gmail or other mailbox (`uv run tracker setup mailbox --browser`, then
@@ -279,7 +319,9 @@ doctor's **On-time morning start** line says `ok`.
 
 ## Part 6 — the end (`check`)
 
-Say, in five lines at most: the dashboard address; that the summary comes
+Say, in five lines at most: the dashboard address and the e-mail address
+that signs in to it (the wizard's last screen names both after `Set-up done.`;
+tell them to write the address down); that the summary comes
 every day at the time they chose; that `docs/operations.md` is the page for
 later (renewing keys, pausing); that nothing is ever sent to anybody but them;
 and that they can ask you any time by opening this folder with Claude again

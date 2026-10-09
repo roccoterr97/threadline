@@ -82,7 +82,7 @@ def test_one_ctrl_c_on_the_page_stops_and_closes_the_server(
         if question is not None:
             forms[0].conversation.answer(question["id"], "Europe/Rome")
 
-    async def wizard(step: object, io: SetupIO | None = None) -> bool:
+    async def wizard(step: object, io: SetupIO | None = None, **_options: object) -> bool:
         assert io is not None
         saved.append(io.ask("Your time zone", default="UTC"))
         return True

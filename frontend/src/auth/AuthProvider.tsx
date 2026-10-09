@@ -4,6 +4,7 @@ import { logError } from '../lib/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient, isConfigured } from '../lib/supabaseClient';
 import { AuthContext, type AuthState, type AuthStatus } from './AuthContext';
+import { toSignInLinkError } from './signInLinkError';
 
 interface AuthProviderProps {
   children: ReactNode;
@@ -103,8 +104,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       },
     });
     if (error !== null) {
-      logError('auth.link_send_failed', { code: error.code ?? null });
-      throw new Error('sign-in link could not be sent');
+      logError('auth.link_send_failed', { code: error.code ?? null, status: error.status ?? null });
+      throw toSignInLinkError(error);
     }
   }, []);
 

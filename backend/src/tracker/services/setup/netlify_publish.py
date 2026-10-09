@@ -3,8 +3,9 @@
 The dashboard comes ready-made from the template's GitHub Release, checked
 against its SHA-256 and against the signed build provenance GitHub holds for
 it, which names the template's release workflow (or, for a contributor with
-Node.js, is built here). Its ``config.js`` holds the project address and the
-publishable key, nothing more. The owner pastes a Netlify personal access token, which one harmless
+Node.js who asks for it with ``--build-here``, is built here). Its
+``config.js`` holds the project address and the publishable key, nothing
+more. The owner pastes a Netlify personal access token, which one harmless
 read checks, which stays in memory for this run only and which is never
 written to ``.env``. The site is made once, under a random free name, and its
 identifier is kept in ``.env`` as ``NETLIFY_SITE_ID`` (not a secret), so
@@ -14,11 +15,12 @@ running the step again publishes the newest dashboard to the same address.
 from __future__ import annotations
 
 import asyncio
-from typing import Final
+from typing import Final, NoReturn
 
 from pydantic import SecretStr
 
 from tracker.infrastructure.netlify_api import NetlifySite
+from tracker.infrastructure.web_probe import WebPage
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.dashboard_package import (
@@ -41,7 +43,10 @@ from tracker.shared.constants.dashboard import (
     DEPLOY_READY_STATE,
     GITHUB_CLI_MISSING_FOR_DASHBOARD,
     GITHUB_CLI_SIGNED_OUT_FOR_DASHBOARD,
+    LOGIN_WALL_STATUSES,
+    NETLIFY_APP_URL,
     NETLIFY_SIGNUP_PAGE,
+    NETLIFY_TEAM_LOGIN_PAGE,
     NETLIFY_TOKEN_NAME,
     NETLIFY_TOKENS_PAGE,
     PAGE_OK_STATUS,
@@ -56,6 +61,7 @@ from tracker.shared.constants.dashboard import (
 )
 from tracker.shared.errors import (
     DashboardDeployError,
+    DashboardPrivateError,
     DashboardProvenanceError,
     SiteNameTakenError,
     ValidationFailedError,
@@ -70,6 +76,9 @@ _PUBLISHABLE_KEY: Final[str] = "SUPABASE_ANON_KEY"
 _SECRET_KEY: Final[str] = "SUPABASE_SERVICE_ROLE_KEY"
 
 _SECONDS_PER_MINUTE: Final[int] = 60
+
+#: The option of ``tracker setup`` that builds the dashboard here.
+BUILD_HERE_OPTION: Final[str] = "--build-here"
 
 _log = get_logger(__name__)
 
@@ -90,25 +99,37 @@ async def publish_on_netlify(ctx: SetupContext) -> str:
     token = await _netlify_token(ctx)
     site = await _site(ctx, token)
     await _deploy(ctx, token, site, archive)
-    await _check_live(ctx, site.address)
+    await _check_live(ctx, site)
     return site.address
 
 
 async def _prepared_archive(ctx: SetupContext) -> bytes:
     """The dashboard's files with their ``config.js``, zipped for Netlify."""
     settings = _browser_settings(ctx)
-    builder = ctx.gateways.local_build
-    if builder.available() and ctx.io.confirm(
-        "Node.js is installed and this folder has the dashboard's source. Build it here "
-        "instead of downloading the ready-made one? (Only for testing your own changes.)",
-        default=False,
-    ):
-        files = await _built_files(ctx)
+    if ctx.session.build_dashboard_here:
+        files = await _built_on_request(ctx)
     else:
         files = await _downloaded_or_built_files(ctx)
     archive = publishable_archive(files, settings)
     ctx.io.say("The dashboard is ready, with your project's address and its public key.")
     return archive
+
+
+async def _built_on_request(ctx: SetupContext) -> dict[str, bytes]:
+    """Build the dashboard here, as ``--build-here`` asked, for testing one's own changes.
+
+    Raises:
+        ValidationFailedError: If Node.js 22 or newer, or the dashboard's
+            source, is missing on this computer.
+    """
+    if not ctx.gateways.local_build.available():
+        message = (
+            "building the dashboard here needs Node.js 22 or newer and the dashboard's "
+            "source in the frontend folder - install Node.js, or run the step without "
+            f"{BUILD_HERE_OPTION} to use the ready-made dashboard"
+        )
+        raise ValidationFailedError(message)
+    return await _built_files(ctx)
 
 
 async def _built_files(ctx: SetupContext) -> dict[str, bytes]:
@@ -305,12 +326,20 @@ def _minutes() -> int:
     return max(1, round(DEPLOY_POLL_ATTEMPTS * DEPLOY_POLL_WAIT_SECONDS / _SECONDS_PER_MINUTE))
 
 
-async def _check_live(ctx: SetupContext, address: str) -> None:
-    """Open the address until it shows a web page, as the dashboard does."""
+async def _check_live(ctx: SetupContext, site: NetlifySite) -> None:
+    """Open the address until it shows a web page, as the dashboard does.
+
+    Raises:
+        DashboardPrivateError: If Netlify keeps the site behind its own login.
+        DashboardDeployError: If the address never shows the dashboard.
+    """
+    address = site.address
     status = 0
     for attempt in range(1, SITE_PROBE_ATTEMPTS + 1):
         page = await ctx.gateways.page_of(address)
         status = page.status
+        if _behind_netlify_login(page):
+            _stop_because_private(ctx, site, status)
         if status == PAGE_OK_STATUS and page.is_html:
             ctx.io.say(f"Check: {address} opens the dashboard.")
             return
@@ -321,3 +350,37 @@ async def _check_live(ctx: SetupContext, address: str) -> None:
         f"minute, then run 'uv run tracker setup {StepName.DASHBOARD}' again"
     )
     raise DashboardDeployError(message)
+
+
+def _behind_netlify_login(page: WebPage) -> bool:
+    """Whether the page asks for a login, or sent the visitor to Netlify's team login."""
+    return page.status in LOGIN_WALL_STATUSES or page.address.startswith(NETLIFY_TEAM_LOGIN_PAGE)
+
+
+def _stop_because_private(ctx: SetupContext, site: NetlifySite, status: int) -> NoReturn:
+    """Show how to make the site public in Netlify, open its page, and stop.
+
+    Netlify's API has no setting for a project's visibility, so this is the
+    one part of publishing the owner does by hand. Waiting does not help.
+
+    Raises:
+        DashboardPrivateError: Always.
+    """
+    _log.warning("netlify_site_private", site_id=site.id, status=status)
+    io = ctx.io
+    io.say("Netlify published your dashboard but keeps it private: new Netlify accounts")
+    io.say("hide every new site behind a Netlify sign-in, so your phone cannot open it.")
+    io.say("Make it public once. That is safe: the dashboard has its own sign-in, and only")
+    io.say("your e-mail address can open your data. On the Netlify page that opens:")
+    io.say(f"  1. Open your project, {site.name}, if it is not open already.")
+    io.say("  2. Click 'Project configuration', then 'General', then 'Visitor access'.")
+    io.say("  3. Under 'Project visibility', click 'Edit visibility'. If Netlify asks,")
+    io.say("     choose 'Customize this project's visibility'.")
+    io.say("  4. Set 'Production' to 'Public' (leave the previews as they are), then 'Save'.")
+    io.say(f"  5. Run 'uv run tracker setup {StepName.DASHBOARD}' again.")
+    io.open_page(site.admin_address or NETLIFY_APP_URL)
+    message = (
+        f"Netlify keeps {site.address} private (it answered status {status}) - "
+        "make it public as shown above"
+    )
+    raise DashboardPrivateError(message)

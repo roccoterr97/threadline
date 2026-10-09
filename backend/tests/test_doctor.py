@@ -173,8 +173,21 @@ async def test_migrations_check_tolerates_unknown_future_files(tmp_path: Path) -
 
     assert result.status is CheckStatus.OK
     assert "0099_future" in result.detail
-    confirmable = sum(marker is not None for marker in KNOWN_MIGRATIONS.values())
-    assert f"{confirmable} of {len(KNOWN_MIGRATIONS) + 1}" in result.detail
+    assert f"{len(KNOWN_MIGRATIONS)} of {len(KNOWN_MIGRATIONS) + 1} structure files applied" in (
+        result.detail
+    )
+
+
+async def test_migrations_check_reads_as_fine_when_every_file_is_in() -> None:
+    result = await MigrationsCheck(FakeAdmin(), migration_files()).run()
+
+    hidden = sum(marker is None for marker in KNOWN_MIGRATIONS.values())
+    assert result.status is CheckStatus.OK
+    assert result.detail == (
+        f"all {len(KNOWN_MIGRATIONS)} structure files applied ({hidden} leave nothing to "
+        "check directly; the newer files show they are in)"
+    )
+    assert "cannot" not in result.detail
 
 
 async def test_migrations_check_without_files_is_a_problem() -> None:

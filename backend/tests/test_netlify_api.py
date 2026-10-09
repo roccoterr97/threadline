@@ -86,6 +86,19 @@ async def test_a_site_with_only_a_plain_address_is_given_https() -> None:
     assert site.address == "https://threadline-abc123.netlify.app"
 
 
+async def test_a_site_s_page_in_netlify_is_read_only_when_it_is_on_netlify_s_own_site() -> None:
+    admin = {**SITE_JSON, "admin_url": "https://app.netlify.com/projects/threadline-abc123/"}
+    elsewhere = {**SITE_JSON, "admin_url": "https://app.netlify.com.example/projects/x"}
+    answers = iter([admin, elsewhere])
+    api = _api(lambda _: httpx.Response(201, json=next(answers)), [])
+
+    named = await api.create_site(TOKEN, "threadline-abc123")
+    unknown = await api.create_site(TOKEN, "threadline-abc123")
+
+    assert named.admin_address == "https://app.netlify.com/projects/threadline-abc123"
+    assert unknown.admin_address is None
+
+
 async def test_a_taken_name_has_its_own_error() -> None:
     answer = {"errors": {"subdomain": ["must be unique"]}}
     api = _api(lambda _: httpx.Response(422, json=answer), [])

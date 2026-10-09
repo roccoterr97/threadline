@@ -14,8 +14,10 @@ from tracker.cli import main as cli_main
 from tracker.domain.enums import RunTrigger
 from tracker.services.collection.models import READ_IN_PART_LINE
 from tracker.shared.config import AppEnv, LogLevel, Settings
+from tracker.shared.constants.claude import CLAUDE_STOPPED_TITLE
 from tracker.shared.constants.github import (
     CLAUDE_TOKEN_SECRET,
+    DAILY_RUN_TITLE,
     REQUIRED_SECRETS,
     VARIABLE_SETTINGS,
     WORKFLOW_DISPLAY_NAME,
@@ -52,6 +54,9 @@ def _commands(recipe: str) -> list[str]:
 
 CLAUDE_STEP: Final[dict[str, Any]] = _step("Run the recipe with Claude")
 GATE_STEP: Final[dict[str, Any]] = _step("Check the set-up")
+EXPLAIN_STEP: Final[dict[str, Any]] = _step("Say why Claude stopped")
+#: The first setup-uv release whose action runs on Node.js 24 (v6 ran on Node.js 20).
+SETUP_UV_FIRST_NODE_24_MAJOR: Final[int] = 7
 
 
 def test_the_file_name_is_the_one_the_refresh_button_calls() -> None:
@@ -94,18 +99,34 @@ def test_the_daily_run_and_a_refresh_take_turns_by_their_titles() -> None:
         "${{ inputs.mode == 'refresh' && 'Threadline refresh' || 'Threadline daily run' }}"
     )
     assert "daily=$(going 'Threadline daily run')" in gate
+    # The set-up finds the first run it started by this title.
+    assert f"'{DAILY_RUN_TITLE}'" in title
     assert "refreshes=$(going 'Threadline refresh')" in gate
     # An error from GitHub must never read as "nothing is going".
     assert "count=0" not in gate
     assert GATE_STEP["env"]["GH_TOKEN"] == "${{ github.token }}"
 
 
-def test_every_action_is_pinned_to_a_major_version() -> None:
+def test_every_action_is_pinned_to_a_major_version_or_a_releases_commit() -> None:
     used = [step["uses"] for step in STEPS if "uses" in step]
 
     assert used
     for action in used:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@v\d+", action), action
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@(v\d+|[0-9a-f]{40})", action), action
+        if "@v" not in action:
+            # A commit says which release it is, so it can be checked and updated.
+            assert re.search(rf"{re.escape(action)} # v\d+\.\d+\.\d+$", TEXT, re.MULTILINE)
+
+
+@pytest.mark.parametrize("name", ["threadline-run.yml", "ci.yml"])
+def test_uv_is_installed_by_a_setup_uv_release_that_runs_on_node_24(name: str) -> None:
+    text = (WORKFLOW_FILE.parent / name).read_text(encoding="utf-8")
+    pins = re.findall(r"astral-sh/setup-uv@(\S+) # (v\d+)\.", text)
+
+    assert pins
+    for commit, release in pins:
+        assert re.fullmatch(r"[0-9a-f]{40}", commit)
+        assert int(release.removeprefix("v")) >= SETUP_UV_FIRST_NODE_24_MAJOR
 
 
 def test_every_setting_is_read_from_the_place_the_setup_puts_it() -> None:
@@ -141,8 +162,29 @@ def test_the_gate_checks_exactly_the_required_secrets() -> None:
 def test_a_missing_secret_ends_the_run_green_and_every_later_step_is_skipped() -> None:
     assert "exit 0" in GATE_STEP["run"]
     for step in STEPS:
-        if step is not GATE_STEP:
-            assert step["if"] == "steps.gate.outputs.ready == 'true'"
+        if step is GATE_STEP:
+            continue
+        if step is EXPLAIN_STEP:
+            # It follows the Claude step, which is skipped whenever the gate stops.
+            assert step["if"] == "failure() && steps.claude.outcome == 'failure'"
+            continue
+        assert step["if"] == "steps.gate.outputs.ready == 'true'"
+
+
+def test_when_claude_stops_with_an_error_one_plain_line_says_why() -> None:
+    names = [step.get("name") for step in STEPS]
+    script = EXPLAIN_STEP["run"]
+
+    assert CLAUDE_STEP["id"] == "claude"
+    assert names.index("Say why Claude stopped") == names.index("Run the recipe with Claude") + 1
+    assert EXPLAIN_STEP["env"] == {"EXECUTION_FILE": "${{ steps.claude.outputs.execution_file }}"}
+    assert EXPLAIN_STEP["working-directory"] == "backend"
+    assert 'uv run tracker run why-claude-stopped "$EXECUTION_FILE"' in script
+    assert f"::error title={CLAUDE_STOPPED_TITLE}::$reason" in script
+    assert '>> "$GITHUB_STEP_SUMMARY"' in script
+    # Claude's own words stay hidden: the action is never asked to show them.
+    assert "show_full_output" not in CLAUDE_STEP["with"]
+    assert "display_report" not in CLAUDE_STEP["with"]
 
 
 @pytest.mark.parametrize("step", STEPS, ids=lambda step: step.get("name", "?"))

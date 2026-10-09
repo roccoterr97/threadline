@@ -15,6 +15,7 @@ from tracker.infrastructure.github_api import GitHubApi
 from tracker.infrastructure.github_cli import GitHubCli, GitRepository, TextFile, run_command
 from tracker.infrastructure.imap.connection import ImapConnection
 from tracker.infrastructure.linkedin.client import LinkedInSnapshotClient
+from tracker.infrastructure.linkedin.connection import LinkedInConnection
 from tracker.infrastructure.local_dashboard_build import LocalDashboardBuild
 from tracker.infrastructure.local_time_zone import detect_time_zone
 from tracker.infrastructure.microsoft.connection import MicrosoftConnection
@@ -28,7 +29,7 @@ from tracker.repositories import build_repositories
 from tracker.services.database_structure import list_migration_files
 from tracker.services.profile.applier import ProfileApplier
 from tracker.services.profile.choice import ChoiceSaver, ProfileFiles
-from tracker.services.setup.context import SetupContext
+from tracker.services.setup.context import SetupContext, SetupSession
 from tracker.services.setup.ports import SetupGateways, SetupIO
 from tracker.shared.clock import Clock, SystemClock
 from tracker.shared.config import REPOSITORY_ROOT
@@ -48,7 +49,11 @@ from tracker.shared.constants.setup import (
 
 
 def build_context(
-    env_path: Path, platform: SupabasePlatform, io: SetupIO | None = None
+    env_path: Path,
+    platform: SupabasePlatform,
+    io: SetupIO | None = None,
+    *,
+    build_dashboard_here: bool = False,
 ) -> SetupContext:
     """Put the real terminal, ``.env`` file and clients together.
 
@@ -56,6 +61,7 @@ def build_context(
         env_path: Where the ``.env`` file is.
         platform: An open Supabase platform client.
         io: The conversation; the terminal when omitted.
+        build_dashboard_here: Build the dashboard here instead of downloading it.
 
     Returns:
         The context every step works with.
@@ -68,6 +74,7 @@ def build_context(
         microsoft=MicrosoftConnection(connect, clock),
         mailbox=ImapConnection(connect, clock),
         check_linkedin=check_linkedin,
+        linkedin=LinkedInConnection(connect, clock),
         status_of=WebProbe().status_of,
         status_of_post=WebProbe().status_of_post,
         make_encryption_key=make_encryption_key,
@@ -89,7 +96,12 @@ def build_context(
         site_name_suffix=random_site_suffix,
         make_daily_start_key=make_daily_start_key,
     )
-    return SetupContext(io=io or TerminalIO(), env=EnvFile(env_path), gateways=gateways)
+    return SetupContext(
+        io=io or TerminalIO(),
+        env=EnvFile(env_path),
+        gateways=gateways,
+        session=SetupSession(build_dashboard_here=build_dashboard_here),
+    )
 
 
 def choice_saver(url: str, key: SecretStr, clock: Clock) -> ChoiceSaver:

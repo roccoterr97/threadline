@@ -25,6 +25,17 @@ To try the dashboard against your own Supabase project, copy
 values and run `npm run dev`. To look around without a database, run
 `npm run demo` instead: it uses made-up data kept in the browser tab.
 
+To publish your changed dashboard on your own Netlify site, the way the set-up
+does, build it from your copy instead of downloading the ready-made one:
+
+```bash
+cd backend
+uv run tracker setup dashboard --build-here
+```
+
+It needs Node.js 22 or newer and the `frontend` folder. Without the option,
+the set-up publishes the ready-made dashboard from the template's release.
+
 ## The checks
 
 Every change must pass all of these; CI runs the same list on every push and

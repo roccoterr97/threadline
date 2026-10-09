@@ -94,7 +94,8 @@ async def test_the_filled_in_github_page_and_the_supabase_page_open() -> None:
     assert world.io.opened == [token_page("you/threadline"), SUPABASE_TOKENS_PAGE]
     text = world.io.text()
     assert "'Only select repositories' and pick you/threadline" in text
-    assert "name it 'Threadline set-up'" in text
+    assert "click the small link 'Create legacy token'" in text
+    assert "Name it 'Threadline set-up'" in text
 
 
 async def test_the_github_token_page_is_filled_in_with_the_one_permission() -> None:

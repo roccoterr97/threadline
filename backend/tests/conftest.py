@@ -68,9 +68,10 @@ def isolated_environment(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> Iterator[None]:
-    """Hide the real ``.env`` and any inherited variable from every test."""
+    """Hide the real ``.env``, the set-up log and any inherited variable from every test."""
     configure_logging()
     monkeypatch.setattr(config, "ENV_FILE", tmp_path / "absent.env")
+    monkeypatch.setattr(config, "SETUP_LOG_FILE", tmp_path / "setup.log")
     for name in ENVIRONMENT_VARIABLES:
         monkeypatch.delenv(name, raising=False)
     config.reset_settings_cache()

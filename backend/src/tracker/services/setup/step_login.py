@@ -12,13 +12,14 @@ from tracker.domain.supabase import AuthSettings
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
-from tracker.services.setup.supabase_session import require_supabase_token
+from tracker.services.setup.supabase_session import full_access_needed, require_supabase_token
 from tracker.shared.constants.setup import (
     SIGNUP_CHECK_ATTEMPTS,
     SIGNUP_CHECK_WAIT_SECONDS,
     SUPABASE_SIGN_IN_PAGE,
 )
 from tracker.shared.errors import (
+    DatabaseUnavailableError,
     SourceAuthError,
     SourceUnavailableError,
     ValidationFailedError,
@@ -56,6 +57,27 @@ class LoginStep:
         admin.add_owner(user_id)
         io.say(f"{email} can now sign in to the dashboard, and nobody else can read it.")
         await _switch_off_signups(ctx)
+
+
+def login_address(ctx: SetupContext) -> str | None:
+    """The address the dashboard login was made for, read back from Supabase.
+
+    It is not kept in ``.env``, so it is asked for afresh; a set-up that is
+    carried on later, or was finished before, still names the right address.
+
+    Args:
+        ctx: The set-up's context.
+
+    Returns:
+        The owner login's address, or ``None`` when Supabase could not say.
+    """
+    try:
+        admin = ctx.admin()
+        addresses = (admin.user_email(user_id) for user_id in admin.owner_ids())
+        return next((address for address in addresses if address), None)
+    except (DatabaseUnavailableError, SourceAuthError) as error:
+        _log.warning("login_address_unavailable", code=error.code)
+        return None
 
 
 def _first_owner_address(ctx: SetupContext) -> str | None:
@@ -102,7 +124,10 @@ async def _switched_off_through_the_api(ctx: SetupContext) -> bool:
     ref = values.project_ref(ctx.require("SUPABASE_URL", StepName.SUPABASE))
     try:
         token = await require_supabase_token(ctx)
-        await ctx.gateways.platform.configure_auth(ref, token, AuthSettings(disable_signup=True))
+        with full_access_needed(ctx):
+            await ctx.gateways.platform.configure_auth(
+                ref, token, AuthSettings(disable_signup=True)
+            )
     except (SourceAuthError, SourceUnavailableError) as error:
         ctx.io.say(f"Supabase would not change the setting: {error.message}.")
         return False

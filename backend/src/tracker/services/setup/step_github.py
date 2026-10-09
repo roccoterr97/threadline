@@ -10,8 +10,9 @@ first daily run (``first_run``). Without it, the step lists the names and opens
 the page, can copy each value to the clipboard, and says where to press 'Run
 workflow' by hand.
 
-The Claude subscription key from ``claude setup-token`` is asked for here and
-goes straight to GitHub: it is never written to ``.env`` or anywhere else.
+The Claude subscription key from ``claude setup-token`` is asked for here
+(``claude_key`` checks it was copied whole) and goes straight to GitHub: it is
+never written to ``.env`` or anywhere else.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from typing import Final
 
 from pydantic import SecretStr
 
+from tracker.services.setup.claude_key import ask_claude_key
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import (
     FirstRun,
@@ -79,13 +81,15 @@ class GitHubStep:
         if repository is not None:
             offer_unsent_change(ctx)
         ctx.io.say("It needs your settings: secret ones as 'secrets', the rest as 'variables'.")
-        token = _ask_token(ctx)
+        token = ask_claude_key(ctx)
         if repository is not None and ctx.io.confirm(
             f"Save {len(secrets) + (token is not None)} secrets and {len(variables)} variables "
             f"in {repository} with the GitHub CLI now?",
             default=True,
         ):
-            self.first_run = _save_with_cli(ctx, repository, secrets, variables, token, by_email)
+            self.first_run = await _save_with_cli(
+                ctx, repository, secrets, variables, token, by_email
+            )
             return
         _show_by_hand(ctx, repository, secrets, variables, token)
         say_first_run_by_hand(ctx, repository)
@@ -161,25 +165,7 @@ def _say_github_cannot_send(ctx: SetupContext) -> None:
     io.say(f"  'uv run tracker setup {StepGroup.EXTRAS}'.")
 
 
-def _ask_token(ctx: SetupContext) -> SecretStr | None:
-    """Ask for the Claude subscription key; it is kept in memory only."""
-    io = ctx.io
-    io.say("GitHub also needs a key to use your Claude subscription. To make it:")
-    io.say("  Open a new terminal window, run claude setup-token, sign in in the browser,")
-    io.say("  then copy the long key it prints back in that window (it starts with sk-ant-).")
-    io.say("  It lasts one year.")
-    raw = io.ask_secret(
-        f"Paste that key for {CLAUDE_TOKEN_SECRET} (it is not shown), or leave it empty "
-        "to keep the key GitHub already has, if any"
-    )
-    cleaned = "".join(raw.split())
-    if not cleaned:
-        io.say(f"No new key: GitHub keeps the {CLAUDE_TOKEN_SECRET} it already has, if any.")
-        return None
-    return SecretStr(cleaned)
-
-
-def _save_with_cli(
+async def _save_with_cli(
     ctx: SetupContext,
     repository: str,
     secrets: tuple[str, ...],
@@ -191,7 +177,7 @@ def _save_with_cli(
     save_on_github(ctx, repository, secrets, variables, token)
     _remove_emptied(ctx, repository, secrets, variables)
     ctx.io.say("Done. GitHub has everything it needs to run Threadline on your copy.")
-    return start_first_run(
+    return await start_first_run(
         ctx,
         repository,
         summary_by_email=summary_by_email,

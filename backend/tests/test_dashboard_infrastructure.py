@@ -120,7 +120,24 @@ async def test_the_page_check_tells_a_web_page_from_anything_else(
     headers = {"Content-Type": content_type} if content_type else {}
     probe = WebProbe(_client(lambda _: httpx.Response(200, headers=headers, content=b"<p>")))
 
-    assert await probe.page_of("https://a.netlify.example") == WebPage(200, is_html)
+    page = await probe.page_of("https://a.netlify.example")
+
+    assert (page.status, page.is_html, page.address) == (200, is_html, "https://a.netlify.example")
+
+
+@pytest.mark.asyncio
+async def test_the_page_check_tells_where_a_redirect_ended() -> None:
+    site = "https://threadline-abc123.netlify.app"
+    login = "https://app.netlify.com/edge-access?domain=threadline-abc123.netlify.app"
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == site:
+            return httpx.Response(302, headers={"Location": login})
+        return httpx.Response(401, headers={"Content-Type": "text/html"}, content=b"<p>")
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(answer), follow_redirects=True)
+
+    assert await WebProbe(http).page_of(site) == WebPage(401, is_html=True, address=login)
 
 
 # --- The local build --------------------------------------------------------------

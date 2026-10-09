@@ -18,6 +18,7 @@ from tests.setup_world import (
     GOOD_PUBLISHABLE,
     GOOD_SECRET,
     GOOD_TOKEN,
+    NARROW_TOKEN,
     PROJECT_REF,
     PROJECT_URL,
     World,
@@ -26,23 +27,29 @@ from tests.setup_world import (
     release_downloads,
 )
 from tracker.domain.supabase import AuthSettings
+from tracker.infrastructure.netlify_api import NetlifySite
 from tracker.infrastructure.web_probe import WebPage
 from tracker.services.database_structure import KNOWN_MIGRATIONS
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.step_dashboard import DashboardStep
+from tracker.services.setup.supabase_session import TOO_LITTLE_ACCESS
 from tracker.shared.constants.dashboard import (
     CONFIG_FILE,
     DEPLOY_POLL_ATTEMPTS,
+    NETLIFY_APP_URL,
     NETLIFY_SIGNUP_PAGE,
+    NETLIFY_TEAM_LOGIN_PAGE,
     NETLIFY_TOKENS_PAGE,
     PROVENANCE_SOURCE_REF,
     SIGNER_WORKFLOW,
     SITE_NAME_ATTEMPTS,
     TEMPLATE_REPOSITORY,
 )
+from tracker.shared.constants.setup import SUPABASE_TOKENS_PAGE
 from tracker.shared.errors import (
     DashboardDeployError,
     DashboardPackageError,
+    DashboardPrivateError,
     DashboardProvenanceError,
     SourceAuthError,
     SourceRequestRejectedError,
@@ -69,6 +76,13 @@ def _context(world: World) -> SetupContext:
     """A context in a full set-up, where the Supabase step already took the run's token."""
     ctx = world.context()
     ctx.session.supabase_token = SecretStr(GOOD_TOKEN)
+    return ctx
+
+
+def _building_here(world: World) -> SetupContext:
+    """A context for ``tracker setup dashboard --build-here``."""
+    ctx = _context(world)
+    ctx.session.build_dashboard_here = True
     return ctx
 
 
@@ -250,6 +264,68 @@ async def test_a_site_that_takes_a_moment_to_answer_is_opened_again() -> None:
     assert world.env.values["DASHBOARD_BASE_URL"] == SITE
 
 
+#: What a private Netlify project answers: its team login, at the end of a redirect.
+TEAM_LOGIN = f"{NETLIFY_TEAM_LOGIN_PAGE}?domain=threadline-abc123.netlify.app&site_id=site-1"
+
+
+@pytest.mark.parametrize(
+    "private",
+    [
+        WebPage(status=401, is_html=True, address=TEAM_LOGIN),
+        WebPage(status=401, is_html=True, address=SITE),
+        WebPage(status=403, is_html=False, address=SITE),
+        WebPage(status=200, is_html=True, address=TEAM_LOGIN),
+    ],
+)
+async def test_a_private_netlify_site_stops_at_once_with_the_clicks_that_make_it_public(
+    private: WebPage,
+) -> None:
+    world = _world(FIRST_PUBLISH)
+    world.pages[SITE] = [private]
+
+    with pytest.raises(DashboardPrivateError, match="keeps .* private") as raised:
+        await DashboardStep().run(_context(world))
+
+    assert raised.value.code == "dashboard_private"
+    said = world.io.text()
+    assert "'Project configuration', then 'General', then 'Visitor access'" in said
+    assert "click 'Edit visibility'" in said
+    assert "Set 'Production' to 'Public'" in said
+    assert "the dashboard has its own sign-in" in said
+    assert "Run 'uv run tracker setup dashboard' again." in said
+    assert world.io.opened[-1] == NETLIFY_APP_URL
+    assert world.waits == []
+    assert "DASHBOARD_BASE_URL" not in world.env.values
+    assert world.env.values["NETLIFY_SITE_ID"] == "site-1"
+
+
+async def test_the_private_site_s_own_netlify_page_opens_when_netlify_names_it() -> None:
+    admin = f"{NETLIFY_APP_URL}/projects/threadline-abc123"
+    site = NetlifySite(id="site-9", name="threadline-abc123", address=SITE, admin_address=admin)
+    world = _world(FIRST_PUBLISH, {**configured_env(), "NETLIFY_SITE_ID": site.id})
+    world.netlify.sites[site.id] = site
+    world.pages[SITE] = [WebPage(status=401, is_html=True, address=TEAM_LOGIN)]
+
+    with pytest.raises(DashboardPrivateError):
+        await DashboardStep().run(_context(world))
+
+    assert world.io.opened[-1] == admin
+    assert "Open your project, threadline-abc123" in world.io.text()
+
+
+async def test_once_made_public_running_it_again_saves_the_address() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.pages[SITE] = [WebPage(status=401, is_html=True, address=TEAM_LOGIN), *LIVE]
+    with pytest.raises(DashboardPrivateError):
+        await DashboardStep().run(_context(world))
+    world.io.answers.extend(FIRST_PUBLISH)
+
+    await DashboardStep().run(_context(world))
+
+    assert world.env.values["DASHBOARD_BASE_URL"] == SITE
+    assert world.netlify.created == ["threadline-abc123"]
+
+
 async def test_running_it_again_redeploys_to_the_saved_site_without_asking_supabase_again() -> None:
     world = _world(FIRST_PUBLISH)
     await DashboardStep().run(_context(world))
@@ -342,7 +418,7 @@ async def test_gh_that_is_not_installed_is_told_apart_from_one_not_signed_in() -
 
 
 async def test_a_dashboard_check_that_cannot_run_still_offers_the_local_build() -> None:
-    world = _world([True, False, True, True, GOOD_NETLIFY_TOKEN])
+    world = _world([True, True, True, GOOD_NETLIFY_TOKEN])
     world.github.is_installed = False
     world.local_build.present = True
 
@@ -363,7 +439,7 @@ async def test_a_bad_checksum_is_found_before_the_provenance_is_asked_for() -> N
 
 
 async def test_an_unconfirmed_download_can_be_replaced_by_a_local_build() -> None:
-    world = _world([True, False, True, True, GOOD_NETLIFY_TOKEN])
+    world = _world([True, True, True, GOOD_NETLIFY_TOKEN])
     world.github.attestation_ok = False
     world.local_build.present = True
     world.local_build.files = {**BUILT_SITE, "index.html": b"<!doctype html>local"}
@@ -376,7 +452,7 @@ async def test_an_unconfirmed_download_can_be_replaced_by_a_local_build() -> Non
 
 
 async def test_an_unconfirmed_download_is_not_replaced_when_the_owner_declines() -> None:
-    world = _world([True, False, False])
+    world = _world([True, False])
     world.github.attestation_ok = False
     world.local_build.present = True
 
@@ -388,11 +464,11 @@ async def test_an_unconfirmed_download_is_not_replaced_when_the_owner_declines()
 
 
 async def test_a_local_build_needs_no_provenance() -> None:
-    world = _world([True, True, True, GOOD_NETLIFY_TOKEN])
+    world = _world([True, True, GOOD_NETLIFY_TOKEN])
     world.local_build.present = True
     world.github.attestation_ok = False
 
-    await DashboardStep().run(_context(world))
+    await DashboardStep().run(_building_here(world))
 
     assert world.github.attested == []
 
@@ -475,25 +551,36 @@ async def test_a_legacy_service_role_key_typed_as_the_public_one_never_reaches_t
     assert world.io.secret_prompts == []
 
 
-async def test_a_contributor_with_node_can_publish_a_local_build() -> None:
-    world = _world([True, True, True, GOOD_NETLIFY_TOKEN])
+async def test_build_here_publishes_a_local_build_without_downloading() -> None:
+    world = _world([True, True, GOOD_NETLIFY_TOKEN])
     world.local_build.present = True
     world.local_build.files = {**BUILT_SITE, "index.html": b"<!doctype html>local"}
     world.downloads = {}
 
-    await DashboardStep().run(_context(world))
+    await DashboardStep().run(_building_here(world))
 
     assert world.local_build.builds == 1
     assert _published_files(world)["index.html"] == b"<!doctype html>local"
 
 
-async def test_a_contributor_may_still_choose_the_ready_made_dashboard() -> None:
-    world = _world([True, False, True, GOOD_NETLIFY_TOKEN])
+async def test_build_here_without_node_stops_before_anything_is_published() -> None:
+    world = _world([True])
+
+    with pytest.raises(ValidationFailedError, match="needs Node.js 22 or newer"):
+        await DashboardStep().run(_building_here(world))
+
+    assert world.local_build.builds == 0
+    assert world.netlify.deployed == []
+
+
+async def test_having_node_alone_never_asks_to_build_here() -> None:
+    world = _world([True, True, GOOD_NETLIFY_TOKEN])
     world.local_build.present = True
 
     await DashboardStep().run(_context(world))
 
     assert world.local_build.builds == 0
+    assert "Build it here" not in world.io.text()
     assert world.env.values["DASHBOARD_BASE_URL"] == SITE
 
 
@@ -623,6 +710,20 @@ async def test_an_unreachable_supabase_also_falls_back_to_typing_the_two_values(
     assert "Supabase would not change the sign-in addresses" in world.io.text()
     assert f"  Redirect URLs: add {SITE}/**" in world.io.said
     assert world.env.values["DASHBOARD_BASE_URL"] == SITE
+
+
+async def test_a_scoped_token_falls_back_to_typing_the_two_values_with_the_fix() -> None:
+    world = _world([*FIRST_PUBLISH, True, NARROW_TOKEN])
+    ctx = world.context()
+
+    await DashboardStep().run(ctx)
+
+    assert world.io.opened.count(SUPABASE_TOKENS_PAGE) == 1
+    assert "click the small link 'Create legacy token'" in world.io.text()
+    said = f"Supabase would not change the sign-in addresses: {TOO_LITTLE_ACCESS}."
+    assert said in world.io.said
+    assert f"  Redirect URLs: add {SITE}/**" in world.io.said
+    assert ctx.session.supabase_token is None
 
 
 async def test_a_refused_token_also_falls_back_to_typing_the_two_values() -> None:

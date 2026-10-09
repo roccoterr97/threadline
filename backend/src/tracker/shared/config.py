@@ -37,6 +37,11 @@ REPOSITORY_ROOT: Final[Path] = Path(__file__).resolve().parents[4]
 #: The single ``.env`` file shared by the backend and the frontend build.
 ENV_FILE: Path = REPOSITORY_ROOT / ".env"
 
+#: Where ``tracker setup`` and ``tracker doctor`` write their log lines, so the
+#: person following them sees only plain sentences while the details stay at
+#: hand for whoever helps them. Kept out of git by the ``*.log`` rule.
+SETUP_LOG_FILE: Path = REPOSITORY_ROOT / "backend" / "setup.log"
+
 
 def in_project(path: Path) -> str:
     """Spell a path from the project's top folder, the way help text names it.

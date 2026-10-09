@@ -142,6 +142,17 @@ SITE_PROBE_WAIT_SECONDS: Final[float] = 3.0
 PAGE_OK_STATUS: Final[int] = 200
 HTML_MEDIA_TYPE: Final[str] = "text/html"
 
+#: Statuses a page answers when it is behind a host's login: a private or
+#: password-protected Netlify project, or a Vercel preview.
+LOGIN_WALL_STATUSES: Final[frozenset[int]] = frozenset({401, 403})
+
+#: Netlify's own site, where a project's settings live.
+NETLIFY_APP_URL: Final[str] = "https://app.netlify.com"
+
+#: Where Netlify sends a visitor of a private project ("Team protection").
+#: Teams made on or after 28 July 2026 make every new project private.
+NETLIFY_TEAM_LOGIN_PAGE: Final[str] = f"{NETLIFY_APP_URL}/edge-access"
+
 #: How the set-up introduces itself to Netlify's API, which asks every caller to.
 NETLIFY_USER_AGENT: Final[str] = (
     "Threadline set-up (+https://github.com/" + TEMPLATE_REPOSITORY + ")"

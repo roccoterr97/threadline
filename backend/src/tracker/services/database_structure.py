@@ -167,6 +167,25 @@ class StructureReport:
     missing: tuple[str, ...]
     unconfirmed: tuple[str, ...]
 
+    def may_not_have_run(self, name: str) -> bool:
+        """Whether an unconfirmed file may never have run.
+
+        It is taken to be applied only when a later file shows and no earlier
+        one is missing; one after a missing file, or after every file that
+        shows, may never have run.
+
+        Args:
+            name: An unconfirmed migration's name.
+
+        Returns:
+            ``True`` when it comes after a missing file or after every one that shows.
+        """
+        first_missing = min(self.missing, default=None)
+        newest_present = max(self.present, default=None)
+        after_a_gap = first_missing is not None and name > first_missing
+        after_the_last_seen = newest_present is None or name > newest_present
+        return after_a_gap or after_the_last_seen
+
 
 def list_migration_files(directory: Path) -> tuple[MigrationFile, ...]:
     """List the migration files in the order they must be applied.

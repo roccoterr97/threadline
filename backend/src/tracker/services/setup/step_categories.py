@@ -1,4 +1,7 @@
-"""Step 4b: your categories, chosen from a preset and your own. It can be skipped."""
+"""Step 4b: your categories, chosen from a preset and your own.
+
+It can be skipped; the skip is remembered, so a later full run does not ask again.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +9,7 @@ from tracker.services.profile.choice import SavedChoice
 from tracker.services.profile.chooser import CategoryChooser
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
+from tracker.services.setup.skipped_steps import remember_skip, skipped_earlier
 
 
 class CategoriesStep:
@@ -20,11 +24,14 @@ class CategoriesStep:
 
     async def run(self, ctx: SetupContext) -> None:
         """Explain categories, then ask for them, or keep the defaults when skipped."""
+        if skipped_earlier(ctx, self.name, "To choose them"):
+            return
         io = ctx.io
         io.say("Threadline puts each person you talk to in a category, such as")
         io.say("'Startup' or 'Investor'. You pick a list that fits what you track,")
         io.say("keep the categories you use, and add your own.")
         if not io.confirm("Choose your categories now?", default=True):
+            remember_skip(ctx, self.name)
             _say_defaults_kept(ctx)
             return
         choice = CategoryChooser(io).choose()

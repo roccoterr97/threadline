@@ -7,7 +7,7 @@ from collections.abc import Callable
 import typer
 
 from tracker.infrastructure.setup_form.conversation import NO, YES, Conversation, QuestionKind
-from tracker.infrastructure.terminal_io import copy_to_clipboard
+from tracker.infrastructure.terminal_io import answer_or_suggestion, copy_to_clipboard
 
 
 class FormIO:
@@ -37,11 +37,13 @@ class FormIO:
         self._conversation.say(text)
         self._echo(text)
 
-    def ask(self, prompt: str, *, default: str | None = None) -> str:
-        """Ask for a value that may be shown on screen."""
+    def ask(self, prompt: str, *, default: str | None = None, exact: bool = False) -> str:
+        """Ask for a value that may be shown on screen; "y" keeps a suggestion unless ``exact``."""
         self._echo(f"? {prompt}")
         answer = self._conversation.ask(QuestionKind.TEXT, prompt, default)
-        return answer if answer else (default or "")
+        if not answer:
+            return default or ""
+        return answer if exact else answer_or_suggestion(answer, default)
 
     def ask_secret(self, prompt: str) -> str:
         """Ask for a value in a hidden field; it is never echoed."""

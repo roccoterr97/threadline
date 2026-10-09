@@ -95,7 +95,7 @@ class CategoryChooser:
             for position, category in enumerate(chosen)
         )
         choice = Choice(preset=name, profile=profile, categories=(*numbered, UNKNOWN_CATEGORY))
-        self._io.say("your categories:")
+        self._io.say("Your categories:")
         for category in choice.categories:
             self._io.say(category_line(category))
         if not self._io.confirm("Save these? They replace your current categories.", default=True):

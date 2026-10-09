@@ -27,7 +27,7 @@ from tracker.services.setup.context import SetupContext
 from tracker.services.setup.daily_start import daily_start_ready, switch_on_daily_start
 from tracker.services.setup.github_copy import LinkedCopy, linked_copy
 from tracker.services.setup.models import StepName
-from tracker.services.setup.supabase_session import require_supabase_token
+from tracker.services.setup.supabase_session import full_access_needed, require_supabase_token
 from tracker.shared.constants.github import (
     FINE_GRAINED_TOKEN_PAGE,
     REFRESH_TOKEN_DAYS,
@@ -203,15 +203,16 @@ async def _save_and_deploy(ctx: SetupContext, ref: str, settings: dict[str, Secr
     io.say("Next, Supabase saves the helper's settings and puts it in place.")
     token = await require_supabase_token(ctx)
     platform = ctx.gateways.platform
-    await platform.set_secrets(ref, token, settings)
-    io.say(f"Saved the helper's {len(settings)} settings in Supabase.")
-    await platform.deploy_function(
-        ref,
-        token,
-        REFRESH_FUNCTION_SLUG,
-        ctx.gateways.refresh_function(),
-        verify_jwt=REFRESH_FUNCTION_VERIFY_JWT,
-    )
+    with full_access_needed(ctx):
+        await platform.set_secrets(ref, token, settings)
+        io.say(f"Saved the helper's {len(settings)} settings in Supabase.")
+        await platform.deploy_function(
+            ref,
+            token,
+            REFRESH_FUNCTION_SLUG,
+            ctx.gateways.refresh_function(),
+            verify_jwt=REFRESH_FUNCTION_VERIFY_JWT,
+        )
     io.say(f"Put the helper '{REFRESH_FUNCTION_SLUG}' in place.")
 
 

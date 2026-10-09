@@ -14,6 +14,7 @@ from typing import Protocol
 from pydantic import SecretStr
 
 from tracker.domain.daily_start import DailyStartStatus
+from tracker.domain.linkedin_sign_in import LinkedInApp, LinkedInGrant
 from tracker.domain.supabase import (
     ApiKey,
     ApiKeyKind,
@@ -22,7 +23,7 @@ from tracker.domain.supabase import (
     Organization,
     SupabaseProject,
 )
-from tracker.infrastructure.github_cli import GitHubRepository
+from tracker.infrastructure.github_cli import GitHubRepository, WorkflowRun
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
@@ -44,6 +45,7 @@ __all__ = [
     "GitHubApiPort",
     "GitHubPort",
     "GitPort",
+    "LinkedInPort",
     "MailboxPort",
     "MicrosoftPort",
     "NewProject",
@@ -64,8 +66,13 @@ class SetupIO(Protocol):
         """Show one line."""
         ...
 
-    def ask(self, prompt: str, *, default: str | None = None) -> str:
-        """Ask for a value that may be shown on screen."""
+    def ask(self, prompt: str, *, default: str | None = None, exact: bool = False) -> str:
+        """Ask for a value that may be shown on screen.
+
+        Where a suggestion is offered, "y", "yes" or "ok" keep it, as people
+        type those out of habit from the yes/no questions. ``exact`` turns that
+        off for an answer such as a name, where "y" could be meant as typed.
+        """
         ...
 
     def ask_secret(self, prompt: str) -> str:
@@ -122,6 +129,10 @@ class SupabaseAdminPort(StructureProbe, Protocol):
 
     def find_user_id(self, email: str) -> str | None:
         """Find a login by address."""
+        ...
+
+    def user_email(self, user_id: str) -> str | None:
+        """Read the address a login signs in with."""
         ...
 
     def create_confirmed_user(self, email: str) -> str | None:
@@ -247,6 +258,31 @@ class MailboxPort(Protocol):
         ...
 
 
+class LinkedInPort(Protocol):
+    """Making the LinkedIn key with the owner's own application, and keeping its secret."""
+
+    async def sign_in(
+        self,
+        app: LinkedInApp,
+        show_page: Callable[[str], None],
+        keep_waiting: Callable[[], bool],
+    ) -> LinkedInGrant:
+        """Open LinkedIn's consent page, wait for the owner's "Allow" and return the key."""
+        ...
+
+    async def expiry_of(self, app: LinkedInApp, token: SecretStr) -> datetime | None:
+        """Ask LinkedIn when a key stops working; ``None`` when it does not say."""
+        ...
+
+    async def saved_client_secret(self, access: StoreAccess) -> SecretStr | None:
+        """Read the application's Client Secret from the encrypted store."""
+        ...
+
+    async def save_client_secret(self, access: StoreAccess, secret: SecretStr) -> None:
+        """Keep the application's Client Secret, encrypted."""
+        ...
+
+
 class ChoiceStore(Protocol):
     """Where the owner's category choice is kept."""
 
@@ -318,6 +354,18 @@ class GitHubPort(Protocol):
 
     def disable_workflow(self, repository: str) -> None:
         """Switch the Threadline workflow off, so it stops starting on its schedule."""
+        ...
+
+    def recent_runs(self, repository: str) -> tuple[WorkflowRun, ...]:
+        """The newest runs started with 'Run workflow', newest first."""
+        ...
+
+    def workflow_run(self, repository: str, run_id: int) -> WorkflowRun:
+        """Read where one run is."""
+        ...
+
+    def run_notes(self, repository: str, run_id: int, title: str) -> tuple[str, ...]:
+        """Read the notes with one title that a run's jobs left."""
         ...
 
 
@@ -420,6 +468,8 @@ class SetupGateways:
         microsoft: The mailbox sign-in.
         mailbox: The IMAP mailbox's live check and its encrypted password.
         check_linkedin: Makes one small LinkedIn call with a key.
+        linkedin: Makes the LinkedIn key with the owner's application, and keeps
+            the application's secret.
         status_of: Opens a web address and returns its status.
         status_of_post: Sends an empty POST with no sign-in and returns the status.
         make_encryption_key: Generates a new encryption key.
@@ -448,6 +498,7 @@ class SetupGateways:
     microsoft: MicrosoftPort
     mailbox: MailboxPort
     check_linkedin: Callable[[SecretStr], Awaitable[None]]
+    linkedin: LinkedInPort
     status_of: Callable[[str], Awaitable[int]]
     status_of_post: Callable[[str], Awaitable[int]]
     make_encryption_key: Callable[[], str]

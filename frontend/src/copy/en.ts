@@ -54,6 +54,12 @@ export const login = {
   sent: (email: string) =>
     `Check your inbox. We sent a sign-in link to ${email}. It may take a minute, and it sometimes lands in the junk folder.`,
   failed: 'We could not send the link just now. Please wait a moment and try again.',
+  unknownAddress:
+    'This address cannot sign in. Use the email address you chose for your dashboard login during set-up. It is usually the one you use for Supabase.',
+  tooManyLinks: (seconds: number | null) =>
+    seconds === null
+      ? 'Too many links were asked for. Please wait a while, up to an hour, then try again.'
+      : `Too many links were asked for. Please wait ${seconds === 1 ? '1 second' : `${seconds} seconds`}, then try again.`,
   invalidEmail: 'That does not look like an email address. Please check it and try again.',
   checkingSession: 'Checking whether you are signed in…',
 } as const;
