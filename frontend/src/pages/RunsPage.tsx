@@ -1,16 +1,17 @@
-import { useQuery } from '@tanstack/react-query';
 import { fetchRecentRuns, runsQueryKey } from '../api/runs';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
+import { RefreshFailedNote } from '../components/RefreshFailedNote';
 import { RunRow } from '../components/RunRow';
 import * as copy from '../copy/en';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { useReadQuery } from '../hooks/useReadQuery';
 
 /** The history of automatic updates, with plain-English problems. */
 export function RunsPage() {
   usePageTitle(copy.runs.title);
-  const runs = useQuery({ queryKey: runsQueryKey, queryFn: fetchRecentRuns });
+  const runs = useReadQuery({ queryKey: runsQueryKey, queryFn: fetchRecentRuns });
 
   return (
     <div className="flex flex-col gap-6">
@@ -18,6 +19,8 @@ export function RunsPage() {
         <h1 className="text-2xl font-semibold text-ink">{copy.runs.title}</h1>
         <p className="mt-1 text-ink-muted">{copy.runs.subtitle}</p>
       </div>
+
+      <RefreshFailedNote show={runs.refreshFailed} />
 
       {runs.isPending && <LoadingState label={copy.states.loadingRuns} />}
 

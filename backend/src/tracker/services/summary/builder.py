@@ -28,7 +28,8 @@ from tracker.schemas.summary import (
     SummaryPerson,
     SummaryProblem,
 )
-from tracker.services.runs.run_recorder import derive_run_status, triggers_of_kind
+from tracker.services.runs.run_recorder import triggers_of_kind
+from tracker.services.runs.run_status import COLLECT_STEPS, derive_status_of_run
 from tracker.services.summary.once_a_day import summary_went_out
 from tracker.services.summary.problem_messages import explain
 from tracker.services.summary.renderer import format_day, render_email
@@ -40,6 +41,7 @@ from tracker.shared.constants.summary import (
     KEY_REMINDER_DAYS,
     MAX_PEOPLE_PER_SECTION,
     RECENT_RUNS_SCANNED,
+    REPLY_LATE_COLLECTION_DAYS,
     REPLY_WINDOW_FALLBACK_HOURS,
 )
 from tracker.shared.errors import ValidationFailedError
@@ -178,7 +180,8 @@ class SummaryBuilder:
         if run is None:
             return (), RunStatus.SUCCESS
         steps = self._repositories.run_step_logs.list_for_run(run.id)
-        status = derive_run_status([step.status for step in steps])
+        # The summary is the run's last step: it cannot be among the steps yet.
+        status = derive_status_of_run(steps, run.trigger, summary_pending=True)
         if not steps:
             return (explain(None, None),), status
         problems = tuple(
@@ -186,6 +189,8 @@ class SummaryBuilder:
             for step in steps
             if step.status is not RunStatus.SUCCESS
         )
+        if COLLECT_STEPS.isdisjoint(step.step for step in steps):
+            return (explain(None, None), *problems), status
         return problems, status
 
     def _daily_history(self) -> _DailyHistory:
@@ -230,18 +235,30 @@ class SummaryBuilder:
         overview: list[PersonOverview],
         since: datetime,
     ) -> list[PersonOverview]:
-        """List the people who wrote back since a given moment."""
+        """List the people who wrote back since a given moment.
+
+        A reply counts when it was sent since then, or when it was only stored
+        since then (the mailbox was unreachable the morning it arrived) and was
+        sent not long before: a first import of old mail is stored all at once
+        and is no reply.
+        """
         by_person = {row.person_id: row for row in overview}
         if not by_person:
             return []
-        latest_inbound: dict[UUID, datetime] = {}
-        for thread in self._repositories.conversations.list_for_people(list(by_person)):
-            inbound = thread.last_inbound_at
-            owner = thread.person_id
-            if owner is None or inbound is None or inbound < since:
-                continue
-            latest_inbound[owner] = max(inbound, latest_inbound.get(owner, inbound))
-        return [by_person[person_id] for person_id in latest_inbound]
+        threads = self._repositories.conversations.list_for_people(list(by_person))
+        replied: dict[UUID, None] = {
+            thread.person_id: None
+            for thread in threads
+            if thread.person_id is not None
+            and thread.last_inbound_at is not None
+            and thread.last_inbound_at >= since
+        }
+        owner_of = {thread.id: thread.person_id for thread in threads if thread.person_id}
+        oldest_sent = since - timedelta(days=REPLY_LATE_COLLECTION_DAYS)
+        for message in self._repositories.messages.list_inbound_stored_since(list(owner_of), since):
+            if message.sent_at >= oldest_sent:
+                replied[owner_of[message.conversation_id]] = None
+        return [by_person[person_id] for person_id in replied]
 
     def _key_reminder(self) -> str | None:
         """Return the LinkedIn key reminder, or ``None`` while the key is fresh.
@@ -255,8 +272,7 @@ class SummaryBuilder:
         if days_left > KEY_REMINDER_DAYS:
             return None
         renew = (
-            "Renewing takes about five minutes: see 'Renew the LinkedIn key' in "
-            "docs/operations.md."
+            "Renewing takes about five minutes: see 'Renew the LinkedIn key' in docs/operations.md."
         )
         if days_left < 0:
             return (

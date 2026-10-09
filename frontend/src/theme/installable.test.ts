@@ -80,6 +80,12 @@ describe('the home-screen install', () => {
     expect(pngSize('/icons/apple-touch-icon-180.png')).toBe('180x180');
   });
 
+  it('draws to the screen edges and keeps its controls clear of the notch and home bar', () => {
+    expect(html).toContain('viewport-fit=cover');
+    expect(readText('src/index.css')).toContain('env(safe-area-inset-left)');
+    expect(readText('src/components/BottomNav.tsx')).toContain('env(safe-area-inset-bottom)');
+  });
+
   it('is allowed by the content security policy', () => {
     expect(readText('vercel.json')).toContain("manifest-src 'self'");
   });

@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from tracker.domain.enums import RunStatus, RunStep, RunTrigger
 from tracker.domain.models import RunLog, RunStepLog
 from tracker.repositories import Repositories
-from tracker.services.runs.run_status import derive_run_status
+from tracker.services.runs.run_status import derive_status_of_run
 from tracker.shared.constants.runs import (
     INTERRUPTED_RUN_AFTER_HOURS,
     RUN_INTERRUPTED_CODE,
@@ -74,7 +74,7 @@ def _close(
         ),
         None,
     )
-    status = derive_run_status([step.status for step in recorded])
+    status = derive_status_of_run(recorded, run.trigger)
     if stopped_at is not None:
         repositories.run_step_logs.bulk_upsert([_interrupted_step(run, stopped_at)])
         status = RunStatus.FAILED

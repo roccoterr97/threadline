@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import * as copy from '../copy/en';
 import { CategoryNameIndex, DraftProblem } from '../domain/categorySettings';
-import { DataUnavailableError, NotSignedInError, RefusalReason, RefusedError } from '../lib/errors';
+import {
+  DataUnavailableError,
+  NotAllowedError,
+  NotSignedInError,
+  RefusalReason,
+  RefusedError,
+} from '../lib/errors';
 import { categoryEditFailureText } from './useCategoryEditor';
 
 describe('categoryEditFailureText', () => {
@@ -22,6 +28,7 @@ describe('categoryEditFailureText', () => {
     ],
     [new RefusedError(RefusalReason.InUse, 'x'), copy.categorySettings.failed.generic],
     [new NotSignedInError('x'), copy.categorySettings.failed.signedOut],
+    [new NotAllowedError('x'), copy.categorySettings.failed.notAllowed],
     [new DataUnavailableError('x'), copy.categorySettings.failed.generic],
   ])('explains %o in plain words', (error, text) => {
     expect(categoryEditFailureText(error)).toBe(text);

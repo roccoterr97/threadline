@@ -14,7 +14,7 @@ import type { SaveOutcome } from '../components/SaveFeedback';
 import * as copy from '../copy/en';
 import { problemForIndex, type SortChange } from '../domain/categorySettings';
 import { useClock } from '../lib/ClockContext';
-import { NotSignedInError, RefusalReason, RefusedError } from '../lib/errors';
+import { NotAllowedError, NotSignedInError, RefusalReason, RefusedError } from '../lib/errors';
 import type { CategoryChanges, CategoryInsert, CategoryKey } from '../types/database';
 
 /** One change the settings page can make. `label` names it in the feedback. */
@@ -71,6 +71,7 @@ async function perform(action: CategoryAction, now: Date): Promise<string> {
 /** Turns a failure into one sentence the owner can act on; never the database's words. */
 export function categoryEditFailureText(error: Error): string {
   if (error instanceof NotSignedInError) return failed.signedOut;
+  if (error instanceof NotAllowedError) return failed.notAllowed;
   if (!(error instanceof RefusedError)) return failed.generic;
   if (error.reason === RefusalReason.BreaksRule) return failed.breaksRule;
   if (error.reason !== RefusalReason.Duplicate) return failed.generic;

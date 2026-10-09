@@ -272,6 +272,12 @@ jobs:
           # The same permissions as .claude/settings.json, passed explicitly:
           # the action does not always apply the project's allow list, and the
           # assessment needs the Skill and Agent tools to start its helpers.
+          # Writing is allowed in work/ only, where the assessor leaves its
+          # verdict files. Everything else in the repository is refused as
+          # well, so a hostile message that talks the assessor into writing
+          # code or settings (which the next command would run with the
+          # secrets in its environment) finds nothing it may write.
           claude_args: >-
             --max-turns 200
-            --allowedTools "Bash(cd:*),Bash(uv run tracker:*),Bash(mkdir:*),Read,Write,Skill,Task,Agent"
+            --allowedTools "Bash(cd:*),Bash(uv run tracker:*),Bash(mkdir:*),Read,Edit(/work/**),Skill,Task,Agent"
+            --disallowedTools "Edit(/backend/**),Edit(/frontend/**),Edit(/supabase/**),Edit(/docs/**),Edit(/profile/**),Edit(/.claude/**),Edit(/.github/**),Edit(/.*),Edit(/*.md),Edit(/LICENSE),Edit(/install.sh),Edit(/install.ps1)"

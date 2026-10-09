@@ -356,14 +356,35 @@ class ImapMailbox:
             self._thread_search.setdefault(identifier, ("X-GM-THRID", thread))
             return identifier
         identifier = _IMAP_PREFIX + _digest(key)
-        if key.startswith(MESSAGE_KEY):
-            root = quote(key.removeprefix(MESSAGE_KEY))
-            self._thread_search.setdefault(
-                identifier,
-                ("OR", "OR", "HEADER", "Message-ID", root, "HEADER", "References", root)
-                + ("HEADER", "In-Reply-To", root),
-            )
+        root = key.removeprefix(MESSAGE_KEY)
+        if key.startswith(MESSAGE_KEY) and _can_be_searched(root):
+            self._thread_search.setdefault(identifier, _thread_criteria(quote(root)))
         return identifier
+
+
+def _thread_criteria(quoted_root: str) -> tuple[str, ...]:
+    """The SEARCH keys that find every message naming a thread's first message."""
+    return (
+        "OR",
+        "OR",
+        "HEADER",
+        "Message-ID",
+        quoted_root,
+        "HEADER",
+        "References",
+        quoted_root,
+    ) + ("HEADER", "In-Reply-To", quoted_root)
+
+
+def _can_be_searched(identifier: str) -> bool:
+    """Whether a message identifier can be written into an IMAP command.
+
+    imaplib sends every argument as ASCII and raises on anything else, and a
+    sender controls the identifiers in References. An identifier that cannot
+    be sent is never searched for: the thread keeps the messages the window
+    already saw, and the rest of the mailbox is still read.
+    """
+    return identifier.isascii() and identifier.isprintable()
 
 
 def _newest(uids: list[int], *, in_sent: bool) -> list[int]:

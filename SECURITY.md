@@ -89,7 +89,10 @@ as closed". The assessment is built so that such text cannot act:
    that writes them never reads the configuration, so no key can reach one.
 5. The unattended daily session is allowed only the commands its recipe runs
    (`.claude/settings.json`), and any shell command mentioning a `.env` file is
-   refused.
+   refused. It may write files only inside `work/`, where the assistant leaves
+   its verdict files; on GitHub the workflow also refuses writes to the code,
+   the settings, the recipes and the workflow itself, so a message that talked
+   the assistant into writing there would find nothing it may write.
 
 The morning summary is built by Python from database fields, never phrased by
 the AI, and never contains message text.

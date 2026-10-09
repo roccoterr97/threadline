@@ -183,6 +183,67 @@ def test_the_replied_section_lists_who_wrote_back_since_the_previous_run(
     assert names(email.content.replied) == ["Greta Lindqvist"]
 
 
+def _collected_message(conversation: str, *, sent: str, collected: str) -> dict[str, str]:
+    """An inbound message, sent and stored at the moments given."""
+    return {
+        "id": str(uuid4()),
+        "conversation_id": conversation,
+        "source_message_id": str(uuid4()),
+        "direction": "inbound",
+        "sent_at": sent,
+        "created_at": collected,
+        "sender_identifier": "someone",
+        "body": "Made-up reply.",
+    }
+
+
+def test_a_reply_collected_late_is_listed_the_morning_it_is_collected(settings: Settings) -> None:
+    client = sample_client()
+    clara_thread = "d0000000-0000-4000-8000-000000000005"
+    client.tables["messages"].append(
+        _collected_message(
+            clara_thread, sent="2026-09-16T20:00:00Z", collected="2026-09-17T20:00:00Z"
+        )
+    )
+    builder = SummaryBuilder(build_repositories(as_client(client)), settings, FixedClock(NOW))
+
+    email = builder.build(TODAYS_RUN)
+
+    assert sorted(names(email.content.replied)) == ["Clara Nyman", "Greta Lindqvist"]
+
+
+def test_old_mail_stored_for_the_first_time_is_not_a_reply(settings: Settings) -> None:
+    client = sample_client()
+    bruno_thread = "d0000000-0000-4000-8000-000000000003"
+    client.tables["messages"].append(
+        _collected_message(
+            bruno_thread, sent="2026-09-01T09:00:00Z", collected="2026-09-17T20:00:00Z"
+        )
+    )
+    builder = SummaryBuilder(build_repositories(as_client(client)), settings, FixedClock(NOW))
+
+    email = builder.build(TODAYS_RUN)
+
+    assert names(email.content.replied) == ["Greta Lindqvist"]
+
+
+def test_a_reply_collected_before_the_previous_summary_is_not_listed_again(
+    settings: Settings,
+) -> None:
+    client = sample_client()
+    clara_thread = "d0000000-0000-4000-8000-000000000005"
+    client.tables["messages"].append(
+        _collected_message(
+            clara_thread, sent="2026-09-16T20:00:00Z", collected="2026-09-17T04:00:00Z"
+        )
+    )
+    builder = SummaryBuilder(build_repositories(as_client(client)), settings, FixedClock(NOW))
+
+    email = builder.build(TODAYS_RUN)
+
+    assert names(email.content.replied) == ["Greta Lindqvist"]
+
+
 def test_a_refresh_between_two_mornings_does_not_shorten_the_replied_section(
     settings: Settings,
 ) -> None:
@@ -315,6 +376,37 @@ def test_a_run_that_recorded_no_step_says_so_instead_of_staying_silent(
     assert "stopped before it could read anything" in email.content.problems[0].what_happened
 
 
+def test_a_run_that_collected_nothing_is_partial_and_says_so(settings: Settings) -> None:
+    client = sample_client()
+    client.tables["run_step_logs"] = [
+        row
+        for row in client.tables["run_step_logs"]
+        if row["run_id"] == str(YESTERDAYS_RUN) and row["step"] == RunStep.ASSESS.value
+    ]
+    client.tables["run_step_logs"][0]["run_id"] = str(TODAYS_RUN)
+    builder = SummaryBuilder(build_repositories(as_client(client)), settings, FixedClock(NOW))
+
+    email = builder.build(TODAYS_RUN)
+
+    assert email.content.run_status is RunStatus.PARTIAL
+    assert email.content.problems[0].step is None
+
+
+def test_the_summary_does_not_wait_for_its_own_step_to_call_a_run_a_success(
+    settings: Settings,
+) -> None:
+    steps = [
+        row
+        for row in sample_client().tables["run_step_logs"]
+        if row["run_id"] == str(YESTERDAYS_RUN) and row["step"] != RunStep.SUMMARY_EMAIL.value
+    ]
+    client = sample_client()
+    client.tables["run_step_logs"] = steps
+    builder = SummaryBuilder(build_repositories(as_client(client)), settings, FixedClock(NOW))
+
+    assert builder.build(YESTERDAYS_RUN).content.run_status is RunStatus.SUCCESS
+
+
 def test_a_run_that_does_not_exist_is_refused(settings: Settings) -> None:
     with pytest.raises(ValidationFailedError):
         build(settings, uuid4())
@@ -384,13 +476,15 @@ def test_the_summary_never_carries_message_text(settings: Settings) -> None:
         assert body not in bodies.html_body
 
 
-def test_the_summary_reads_no_message_row_at_all(settings: Settings) -> None:
+def test_the_summary_reads_no_message_text_at_all(settings: Settings) -> None:
     client = sample_client()
     repositories = build_repositories(as_client(client))
 
     SummaryBuilder(repositories, settings, FixedClock(NOW)).build(TODAYS_RUN)
 
-    assert "messages" not in {table for table, _ in client.executed}
+    message_reads = [columns for table, columns in client.columns_read if table == "messages"]
+    assert message_reads
+    assert all("body" not in columns and columns != "*" for columns in message_reads)
 
 
 # --- the "replied since" window counts from the last summary that went out ------

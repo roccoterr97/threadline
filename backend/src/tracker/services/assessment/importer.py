@@ -106,6 +106,24 @@ class _Writes:
     review_items: list[ReviewItem] = field(default_factory=list)
 
 
+@dataclass(frozen=True, slots=True)
+class _Answer:
+    """A verdict file that passed every check, with what its batch says about it.
+
+    Attributes:
+        verdicts: The verdicts, in the order the batch listed the people.
+        batch_path: The batch file the verdicts answer.
+        generated_at: When the batch was written, so a verdict can be compared
+            with what happened to the person since.
+        covered_through: Per person, the newest message the assistant was given.
+    """
+
+    verdicts: tuple[PersonVerdict, ...]
+    batch_path: Path
+    generated_at: datetime
+    covered_through: dict[UUID, datetime]
+
+
 class _AllowedCategories:
     """The category keys a verdict may use, read when the first file needs them.
 
@@ -234,8 +252,7 @@ class AssessmentImporter:
             ValidationFailedError: If the file does not pass every check. The
                 database is left untouched.
         """
-        verdicts, _ = self._validated(path, self._allowed_categories())
-        return self._apply(verdicts)
+        return self._apply(self._validated(path, self._allowed_categories()))
 
     def _allowed_categories(self) -> _AllowedCategories:
         """The categories every file of one import is checked against."""
@@ -244,17 +261,15 @@ class AssessmentImporter:
     def _import_one(self, path: Path, categories: _AllowedCategories) -> ImportResult:
         """Import one file, turning a refusal into a counted rejection."""
         try:
-            verdicts, batch_path = self._validated(path, categories)
-            outcome = self._apply(verdicts)
+            answer = self._validated(path, categories)
+            outcome = self._apply(answer)
         except ValidationFailedError as error:
             _log.warning("verdict_file_rejected", file=path.name, reason=error.message)
             return ImportResult(rejected=(RejectedFile(path=path, reason=error.message),))
-        _discard(path, batch_path)
+        _discard(path, answer.batch_path)
         return outcome
 
-    def _validated(
-        self, path: Path, categories: _AllowedCategories
-    ) -> tuple[tuple[PersonVerdict, ...], Path]:
+    def _validated(self, path: Path, categories: _AllowedCategories) -> _Answer:
         """Parse a result file and check it against the batch it answers.
 
         Args:
@@ -262,7 +277,7 @@ class AssessmentImporter:
             categories: The categories a verdict may use.
 
         Returns:
-            The verdicts that passed, and the batch file they answer.
+            The verdicts that passed, with the batch they answer.
 
         Raises:
             ValidationFailedError: If the file cannot be read, does not match
@@ -274,20 +289,27 @@ class AssessmentImporter:
             message = f"no batch named '{verdict_file.batch_id}' was exported"
             raise ValidationFailedError(message)
         batch = parse_batch(_read(batch_path))
-        verdicts = validate_against_batch(
-            verdict_file, batch, self._clock.today(), categories.keys()
+        return _Answer(
+            verdicts=validate_against_batch(
+                verdict_file, batch, self._clock.today(), categories.keys()
+            ),
+            batch_path=batch_path,
+            generated_at=batch.generated_at,
+            covered_through={
+                dossier.person_id: dossier.newest_message_at or batch.generated_at
+                for dossier in batch.people
+            },
         )
-        return verdicts, batch_path
 
-    def _apply(self, verdicts: Sequence[PersonVerdict]) -> ImportResult:
+    def _apply(self, answer: _Answer) -> ImportResult:
         """Write one validated file's verdicts, all tables at once."""
-        if not verdicts:
+        if not answer.verdicts:
             return ImportResult()
-        known = self._read_known(verdicts)
+        known = self._read_known(answer.verdicts)
         writes = _Writes()
         outcome = ImportResult()
-        for verdict in verdicts:
-            outcome = outcome.merged_with(self._plan_person(verdict, known, writes))
+        for verdict in answer.verdicts:
+            outcome = outcome.merged_with(self._plan_person(verdict, answer, known, writes))
         self._plan_purge(writes)
         self._flush(writes)
         return outcome
@@ -352,15 +374,23 @@ class AssessmentImporter:
     def _plan_person(
         self,
         verdict: PersonVerdict,
+        answer: _Answer,
         known: _Known,
         writes: _Writes,
     ) -> ImportResult:
         """Work out every row one verdict changes, and add it to ``writes``.
 
         A person the owner ruled out after the batch was exported is left as
-        he left them: the verdict was written without knowing his answer.
+        he left them: the verdict was written without knowing his answer. The
+        same goes for a person who was hidden from the dashboard after the
+        export, and for one assessed again since the batch was written, whose
+        verdict is older than what is stored.
         """
-        if _owner_declined(verdict.person_id, known):
+        if (
+            _owner_declined(verdict.person_id, known)
+            or _hidden_since_export(verdict.person_id, known)
+            or _assessed_since(verdict, answer, known)
+        ):
             return ImportResult()
         person = known.people[verdict.person_id]
         threads = known.conversations.get(verdict.person_id, [])
@@ -377,7 +407,9 @@ class AssessmentImporter:
             _plan_noise(person, threads, writes)
             return ImportResult(marked_noise=1)
         writes.people.append(self._updated_person(person, verdict, state, known, writes))
-        writes.states.append(self._state_row(person, state, threads, known))
+        writes.states.append(
+            self._state_row(person, state, answer.covered_through[person.id], known)
+        )
         asked = _plan_review_item(person, state, known, writes, self._wording)
         return ImportResult(assessed=1, sent_to_review=int(asked))
 
@@ -412,10 +444,16 @@ class AssessmentImporter:
         self,
         person: Person,
         state: AssessedState,
-        threads: Sequence[Conversation],
+        covered_through: datetime,
         known: _Known,
     ) -> PersonState:
-        """Build the ``person_states`` row, reusing the existing row's identifier."""
+        """Build the ``person_states`` row, reusing the existing row's identifier.
+
+        The row says the person was assessed up to ``covered_through``, the
+        newest message the assistant was given, never up to what the database
+        holds by now: a message stored while the assistant worked must still be
+        judged next time.
+        """
         previous = known.states.get(person.id)
         now = self._clock.now()
         return PersonState(
@@ -429,7 +467,7 @@ class AssessmentImporter:
             signal=state.signal,
             confidence=state.confidence,
             assessed_at=now,
-            assessed_through=_latest(thread.last_message_at for thread in threads) or now,
+            assessed_through=covered_through,
         )
 
     def _flush(self, writes: _Writes) -> None:
@@ -446,11 +484,10 @@ class AssessmentImporter:
 def _discard(verdict_path: Path, batch_path: Path) -> None:
     """Remove a verdict file and the batch it answered once they have been applied.
 
-    A verdict is a snapshot of one moment. Applying it again later stamps the
-    person as assessed up to *today's* newest message, which makes them
-    permanently ineligible for re-assessment: their status would freeze while
-    the real conversation moved on. The verdict file therefore goes first. The
-    batch goes with it because it holds message text that has no further use.
+    A verdict is a snapshot of one moment. Applying it again later would put an
+    old judgement over a conversation that has moved on, so the verdict file
+    goes first. The batch goes with it because it holds message text that has
+    no further use.
     Rejected files stay where they are, for the assistant to answer again.
 
     Args:
@@ -502,6 +539,46 @@ def _owner_declined(person_id: UUID, known: _Known) -> bool:
         item.kind is ReviewKind.RELEVANCE and item.answer is ReviewAnswer.NO
         for item in known.review_items.get(person_id, [])
     )
+
+
+def _hidden_since_export(person_id: UUID, known: _Known) -> bool:
+    """Whether the person has been taken off the list since the batch was written.
+
+    The export never sends a person whose relevance is already noise, so a
+    person found as noise here changed afterwards: the owner pressed "Not
+    relevant" on the dashboard, answered "no", or a repair removed a relay
+    address. In every case that is a later decision than the verdict. Nothing
+    separates the owner's hiding from the assistant's own noise verdicts in the
+    data, and nothing needs to: the assistant's noise people were never in a
+    batch. A "yes" on record does not change this, because the database makes a
+    person relevant the moment the owner says yes, so hiding came after it.
+
+    Args:
+        person_id: The person to check.
+        known: What the database already holds.
+
+    Returns:
+        True when the person is noise now.
+    """
+    return known.people[person_id].relevance is Relevance.NOISE
+
+
+def _assessed_since(verdict: PersonVerdict, answer: _Answer, known: _Known) -> bool:
+    """Whether the person was assessed again after this verdict's batch was written.
+
+    A verdict file that waited on disk (it was refused once, or the import was
+    late) would otherwise overwrite a newer assessment with an older one.
+
+    Args:
+        verdict: The verdict about the person.
+        answer: The verdict file and its batch.
+        known: What the database already holds.
+
+    Returns:
+        True when the stored assessment is newer than the batch.
+    """
+    previous = known.states.get(verdict.person_id)
+    return previous is not None and previous.assessed_at > answer.generated_at
 
 
 def _owner_confirmed_relevant(person_id: UUID, known: _Known) -> bool:
@@ -568,9 +645,7 @@ def _plan_review_item(
     """
     if not state.needs_review:
         return False
-    asked = any(
-        item.kind is ReviewKind.RELEVANCE for item in known.review_items.get(person.id, [])
-    )
+    asked = any(item.kind is ReviewKind.RELEVANCE for item in known.review_items.get(person.id, []))
     if asked:
         return False
     writes.review_items.append(

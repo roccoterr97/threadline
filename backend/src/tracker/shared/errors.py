@@ -52,6 +52,18 @@ class SourceUnavailableError(TrackerError):
     code = "source_unavailable"
 
 
+class SourceFailedError(TrackerError):
+    """A source stopped on something nobody planned for.
+
+    The collection hands this back in place of the unexpected error, so one
+    source's surprise is recorded as that source's failed step and the other
+    sources are still read. The surprise itself is logged by its type only: its
+    text could carry a piece of somebody's mail.
+    """
+
+    code = "source_failed"
+
+
 class SourceRequestRejectedError(SourceUnavailableError):
     """A service understood a request but refused to carry it out (a 4xx answer).
 

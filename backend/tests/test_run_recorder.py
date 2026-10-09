@@ -15,9 +15,9 @@ from tracker.services.runs.run_recorder import (
     RunRecorder,
     StepOutcome,
     StepResult,
-    derive_run_status,
     unconfigured_steps,
 )
+from tracker.services.runs.run_status import derive_run_status
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
 from tracker.shared.constants.runs import INTERRUPTED_RUN_AFTER_HOURS, RUN_INTERRUPTED_CODE
@@ -217,6 +217,43 @@ def test_finishing_a_half_done_run_records_it_as_partial(recorder: RunRecorder) 
     assert finished.finished_at == NOW
 
 
+def record_all(recorder: RunRecorder, run_id: UUID, *steps: RunStep) -> None:
+    """Record each step as finished."""
+    for step in steps:
+        recorder.record_step(run_id, StepOutcome(step, StepResult.SUCCESS))
+
+
+def test_a_daily_run_that_sent_no_summary_is_at_most_partial(recorder: RunRecorder) -> None:
+    run = recorder.start(RunTrigger.GITHUB)
+    record_all(recorder, run.id, RunStep.COLLECT_EMAIL, RunStep.ASSESS)
+
+    assert recorder.finish(run.id).status is RunStatus.PARTIAL
+
+
+def test_a_daily_run_that_collected_nothing_is_at_most_partial(recorder: RunRecorder) -> None:
+    run = recorder.start(RunTrigger.GITHUB)
+    record_all(recorder, run.id, RunStep.SUMMARY_EMAIL)
+
+    assert recorder.finish(run.id).status is RunStatus.PARTIAL
+
+
+def test_a_daily_run_with_a_collect_step_and_a_summary_is_a_success(recorder: RunRecorder) -> None:
+    run = recorder.start(RunTrigger.GITHUB)
+    record_all(recorder, run.id, RunStep.COLLECT_EMAIL, RunStep.ASSESS, RunStep.SUMMARY_EMAIL)
+
+    assert recorder.finish(run.id).status is RunStatus.SUCCESS
+
+
+def test_a_refresh_needs_no_summary_but_still_needs_a_collect_step(recorder: RunRecorder) -> None:
+    clean = recorder.start(RunTrigger.REFRESH)
+    record_all(recorder, clean.id, RunStep.COLLECT_EMAIL, RunStep.ASSESS)
+    without_collect = recorder.start(RunTrigger.REFRESH)
+    record_all(recorder, without_collect.id, RunStep.ASSESS)
+
+    assert recorder.finish(clean.id).status is RunStatus.SUCCESS
+    assert recorder.finish(without_collect.id).status is RunStatus.PARTIAL
+
+
 def test_finishing_a_run_that_never_recorded_a_step_records_it_as_failed(
     recorder: RunRecorder,
 ) -> None:
@@ -390,8 +427,14 @@ def test_a_run_without_linkedin_set_up_is_a_success_when_the_rest_worked(
 ) -> None:
     recorder = RunRecorder(repositories, FixedClock(NOW), frozenset({RunStep.COLLECT_LINKEDIN}))
     run = recorder.start(RunTrigger.CLOUD)
-    for step in (RunStep.COLLECT_LINKEDIN, RunStep.COLLECT_EMAIL, RunStep.ASSESS):
-        recorder.record_step(run.id, StepOutcome(step, StepResult.SUCCESS))
+    record_all(
+        recorder,
+        run.id,
+        RunStep.COLLECT_LINKEDIN,
+        RunStep.COLLECT_EMAIL,
+        RunStep.ASSESS,
+        RunStep.SUMMARY_EMAIL,
+    )
 
     assert recorder.finish(run.id).status is RunStatus.SUCCESS
 

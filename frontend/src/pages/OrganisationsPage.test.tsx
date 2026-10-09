@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchCategories } from '../api/categories';
 import { fetchPeople } from '../api/people';
 import { fetchStatusLabels } from '../api/statusLabels';
+import { PEOPLE_MAX_ROWS } from '../constants/dashboard';
 import * as copy from '../copy/en';
 import { DataUnavailableError } from '../lib/errors';
 import { expectNoAxeViolations } from '../test/axe';
@@ -247,5 +248,18 @@ describe('OrganisationsPage — accessibility', () => {
     const { container } = renderPage('/organisations?waiting=me');
     await organisationsTable();
     await expectNoAxeViolations(container);
+  });
+});
+
+describe('OrganisationsPage — a list cut at the cap', () => {
+  it('warns that the organisations may be missing people', async () => {
+    fetchPeopleMock.mockResolvedValue(
+      Array.from({ length: PEOPLE_MAX_ROWS }, (_, index) => ({
+        ...samplePeople[0]!,
+        person_id: `p-cut-${String(index)}`,
+      })),
+    );
+    renderPage();
+    expect(await screen.findByText(copy.states.peopleCut(PEOPLE_MAX_ROWS))).toBeInTheDocument();
   });
 });

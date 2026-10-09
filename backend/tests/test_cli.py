@@ -81,6 +81,7 @@ def test_healthcheck_without_configuration_fails_on_one_line_and_says_what_to_do
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     monkeypatch.setattr("sys.argv", ["tracker", "healthcheck"])
 
     with pytest.raises(SystemExit) as raised:
@@ -93,8 +94,24 @@ def test_healthcheck_without_configuration_fails_on_one_line_and_says_what_to_do
     assert "configuration_invalid" in errors[0]
     assert "Traceback" not in errors[0]
     assert captured.out.strip().splitlines() == [
-        "PROBLEM  A setting is missing or wrong. Fix: run 'uv run tracker setup'; "
-        "on GitHub, add the missing secrets with 'uv run tracker setup github'."
+        "PROBLEM  A setting is missing or wrong. Fix: run 'uv run tracker setup'."
+    ]
+
+
+def test_healthcheck_without_configuration_on_github_points_at_the_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setattr("sys.argv", ["tracker", "healthcheck"])
+
+    with pytest.raises(SystemExit) as raised:
+        main()
+
+    assert raised.value.code == 1
+    assert capsys.readouterr().out.strip().splitlines() == [
+        "PROBLEM  A setting is missing or wrong. Fix: add the missing secrets with "
+        "'uv run tracker setup github'."
     ]
 
 

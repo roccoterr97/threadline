@@ -10,9 +10,16 @@ raised to remove.
 
 Which record survives is not arbitrary: the one carrying a real name wins over
 the one named after an address, because that is the name the owner will
-recognise. Everything the other record holds — its identities, its threads, the
-owner's notes, and its correction if the survivor has none — moves across
-before it is removed.
+recognise. Everything the other record holds — its identities, its threads and
+the owner's notes — moves across before it is removed. What the owner corrected
+by hand is combined field by field: the survivor's own values stay, and only
+the fields it leaves empty are filled from the other record.
+
+The merged person is a different person from either record, so the earlier
+assessments are dropped and the next run judges them again, with all their
+threads. Relevance becomes the stronger of the two (relevant over unsure over
+noise), so a hidden or never-assessed record cannot hide a person the other
+record already showed.
 """
 
 from __future__ import annotations
@@ -21,9 +28,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from uuid import UUID, uuid4
 
-from tracker.domain.enums import ReviewAnswer, ReviewKind
+from tracker.domain.categories import UNKNOWN_CATEGORY_KEY
+from tracker.domain.enums import Relevance, ReviewAnswer, ReviewKind
 from tracker.domain.identity import is_shown_as_address
-from tracker.domain.models import Person, PersonOverride, PersonState, ReviewItem
+from tracker.domain.models import Person, PersonOverride, ReviewItem
 from tracker.repositories import Repositories
 from tracker.shared.logging import get_logger
 
@@ -31,6 +39,12 @@ _log = get_logger(__name__)
 
 # A "same person?" question is about two different records.
 _PAIR_SIZE = 2
+
+# What the owner can set by hand on a person; each is empty until he does.
+_CORRECTION_FIELDS = ("status", "waiting_on", "next_action", "due_date", "person_type", "note")
+
+# How much a relevance value shows the person: the larger one wins a merge.
+_RELEVANCE_STRENGTH = {Relevance.NOISE: 0, Relevance.UNSURE: 1, Relevance.RELEVANT: 2}
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,16 +182,17 @@ class PersonMerger:
 
         Args:
             survivor: The record that stays.
-            absorbed: The record whose addresses, threads, assessment,
-                correction, notes and questions move across before it is
-                removed.
+            absorbed: The record whose addresses, threads, correction, notes
+                and questions move across before it is removed.
 
         Returns:
             How many identities and how many threads moved.
         """
         identities = self._move_identities(survivor, absorbed)
         conversations = self._move_conversations(survivor, absorbed)
-        self._move_state_and_correction(survivor, absorbed)
+        self._combine_people(survivor, absorbed)
+        self._combine_corrections(survivor, absorbed)
+        self._forget_assessments(survivor)
         self._move_notes(survivor, absorbed)
         self._repoint_questions(survivor, absorbed)
         self._repositories.people.delete_by_ids([absorbed.id])
@@ -209,27 +224,64 @@ class PersonMerger:
         )
         return len(threads)
 
-    def _move_state_and_correction(self, survivor: Person, absorbed: Person) -> None:
-        """Keep the survivor's assessment and correction, or take the other's.
+    def _combine_people(self, survivor: Person, absorbed: Person) -> None:
+        """Give the survivor the stronger relevance and what the other record knew.
 
-        Only one of each may exist per person, so nothing is overwritten: the
-        absorbed record's values are taken only where the survivor has none.
-
-        The copy gets a new primary key. The absorbed record's own row still
-        exists at this point (the database removes it only when the record
-        itself goes, at the end of :meth:`join`), so reusing its key would
-        collide with it.
+        The survivor is read again: a record joined earlier in the same run
+        (the linker folds several company records into one person) may already
+        have changed it. Its category, role and organisation stay when it has
+        them; relevance is the stronger of the two.
         """
-        if not self._repositories.person_states.list_for_people([survivor.id]):
-            states = self._repositories.person_states.list_for_people([absorbed.id])
-            self._repositories.person_states.bulk_upsert(
-                [_moved_to(state, survivor) for state in states]
-            )
-        if not self._repositories.person_overrides.list_for_people([survivor.id]):
-            overrides = self._repositories.person_overrides.list_for_people([absorbed.id])
-            self._repositories.person_overrides.bulk_upsert(
-                [_moved_to(override, survivor) for override in overrides]
-            )
+        current = self._repositories.people.get(survivor.id)
+        if current is None:
+            return
+        combined = current.model_copy(
+            update={
+                "relevance": max(
+                    current.relevance, absorbed.relevance, key=_RELEVANCE_STRENGTH.__getitem__
+                ),
+                "person_type": _first_known_type(current.person_type, absorbed.person_type),
+                "role_title": current.role_title or absorbed.role_title,
+                "organisation_id": current.organisation_id or absorbed.organisation_id,
+            }
+        )
+        if combined != current:
+            self._repositories.people.bulk_upsert([combined])
+
+    def _combine_corrections(self, survivor: Person, absorbed: Person) -> None:
+        """Keep every correction the owner made, the survivor's winning on a clash.
+
+        Only one correction row may exist per person, so nothing is replaced
+        outright: a field the survivor left empty is filled from the absorbed
+        record's, and a field both set keeps the survivor's.
+
+        When the survivor has no row, the absorbed record's is copied under a
+        new primary key: its own row still exists at this point (the database
+        removes it only when the record itself goes, at the end of :meth:`join`),
+        so reusing its key would collide with it.
+        """
+        overrides = self._repositories.person_overrides
+        theirs = overrides.find_for_person(absorbed.id)
+        if theirs is None:
+            return
+        mine = overrides.find_for_person(survivor.id)
+        if mine is None:
+            overrides.bulk_upsert([_moved_to(theirs, survivor)])
+            return
+        filled = _filled_from(mine, theirs)
+        if filled != mine:
+            overrides.bulk_upsert([filled])
+
+    def _forget_assessments(self, survivor: Person) -> None:
+        """Drop the survivor's assessment so the merged person is judged again.
+
+        The assessment described one record's threads. With the other record's
+        threads now added, and perhaps a different relevance, it no longer says
+        what is true; a person with none is picked up by the next assessment.
+        The absorbed record's assessment goes with the record.
+        """
+        states = self._repositories.person_states.list_for_people([survivor.id])
+        self._repositories.person_states.delete_by_ids([state.id for state in states])
 
     def _move_notes(self, survivor: Person, absorbed: Person) -> None:
         """Give the survivor the notes the owner typed on the absorbed record.
@@ -278,9 +330,25 @@ def _current(person_id: UUID, merged_into: dict[UUID, UUID]) -> UUID:
     return person_id
 
 
-def _moved_to[RowT: (PersonState, PersonOverride)](row: RowT, survivor: Person) -> RowT:
-    """Copy one per-person row onto the survivor under a fresh primary key."""
+def _moved_to(row: PersonOverride, survivor: Person) -> PersonOverride:
+    """Copy a correction onto the survivor under a fresh primary key."""
     return row.model_copy(update={"id": uuid4(), "person_id": survivor.id})
+
+
+def _filled_from(mine: PersonOverride, theirs: PersonOverride) -> PersonOverride:
+    """Fill the fields of one correction that are empty from another's."""
+    return mine.model_copy(
+        update={
+            field: getattr(theirs, field)
+            for field in _CORRECTION_FIELDS
+            if getattr(mine, field) is None
+        }
+    )
+
+
+def _first_known_type(preferred: str, fallback: str) -> str:
+    """Prefer a real category over "not known", the survivor's before the other's."""
+    return fallback if preferred == UNKNOWN_CATEGORY_KEY else preferred
 
 
 def _confirmed_pairs(questions: Sequence[ReviewItem]) -> list[ReviewItem]:

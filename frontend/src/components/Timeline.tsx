@@ -33,7 +33,7 @@ export function Timeline({ entries }: TimelineProps) {
           </div>
 
           {entry.channel !== 'linkedin' && (
-            <p className="mt-2 font-medium text-ink">{entry.subject ?? copy.person.noSubject}</p>
+            <p className="mt-2 font-medium break-words text-ink">{entry.subject ?? copy.person.noSubject}</p>
           )}
 
           {entry.body === null ? (

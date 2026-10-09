@@ -144,6 +144,35 @@ def test_a_due_date_the_assistant_gave_is_kept() -> None:
     assert state.due_date == date(2026, 9, 21)
 
 
+def test_the_date_follows_the_owner_correction_of_who_owes_the_move() -> None:
+    """The owner says the move is theirs, so the follow-up is today, not in five days."""
+    timing = ContactTiming(last_message_at=datetime(2026, 9, 10, 9, 0, tzinfo=UTC))
+    corrections = OwnerCorrections(waiting_on=WaitingOn.ME)
+
+    state = decide(_values(waiting_on=WaitingOn.THEM), timing, corrections, NOW, UTC_CALENDAR)
+
+    assert state.waiting_on is WaitingOn.ME
+    assert state.due_date == TODAY
+
+
+def test_a_correction_to_nobody_leaves_no_automatic_date() -> None:
+    timing = ContactTiming(last_message_at=datetime(2026, 9, 10, 9, 0, tzinfo=UTC))
+    corrections = OwnerCorrections(waiting_on=WaitingOn.NOBODY)
+
+    state = decide(_values(waiting_on=WaitingOn.THEM), timing, corrections, NOW, UTC_CALENDAR)
+
+    assert state.due_date is None
+
+
+def test_a_due_date_the_owner_set_is_never_replaced_by_the_automatic_one() -> None:
+    timing = ContactTiming(last_message_at=datetime(2026, 9, 10, 9, 0, tzinfo=UTC))
+    corrections = OwnerCorrections(waiting_on=WaitingOn.ME, due_date=date(2026, 10, 2))
+
+    state = decide(_values(waiting_on=WaitingOn.THEM), timing, corrections, NOW, UTC_CALENDAR)
+
+    assert state.due_date == date(2026, 10, 2)
+
+
 def test_low_confidence_goes_to_review() -> None:
     assert needs_review(_values(confidence=Decimal("0.59")))
     assert not needs_review(_values(confidence=Decimal("0.6")))

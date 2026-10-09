@@ -18,7 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from email.message import EmailMessage
-from typing import Protocol
+from typing import Final, Protocol
 
 from pydantic import SecretStr
 
@@ -89,6 +89,13 @@ class SmtpAccount:
     company: str
 
 
+#: Said when the saved app password holds a character that is not plain ASCII.
+_NOT_ASCII_PASSWORD: Final[str] = (
+    "{} refused the app password for sending: the saved one holds a character "
+    "that is not a plain letter or digit (often a space pasted along with it)"
+)
+
+
 class SmtpMailer:
     """Signs in to the owner's SMTP server and, when asked, hands one message over."""
 
@@ -141,7 +148,7 @@ class SmtpMailer:
         try:
             if self._account.port != SMTP_TLS_PORT:
                 client.starttls(context=ssl.create_default_context())
-            client.login(self._account.username, self._password.get_secret_value())
+            self._sign_in(client)
             if message is not None:
                 client.send_message(message)
         except smtplib.SMTPAuthenticationError:
@@ -151,6 +158,16 @@ class SmtpMailer:
             raise self._unavailable("smtp_send_failed", error) from None
         finally:
             _quit(client)
+
+    def _sign_in(self, client: SmtpClient) -> None:
+        """Sign in; a password that is not plain ASCII is reported as a refused one."""
+        try:
+            client.login(self._account.username, self._password.get_secret_value())
+        except UnicodeError:
+            # smtplib sends the password as ASCII: a pasted non-breaking space
+            # or accented letter can never be a real app password.
+            _log.warning("smtp_password_not_ascii", host=self._account.host)
+            raise MailboxPasswordError(_NOT_ASCII_PASSWORD.format(self._account.company)) from None
 
     def _open(self) -> SmtpClient:
         """Connect, trying again a bounded number of times."""

@@ -128,7 +128,7 @@ class IdentityMatcher:
         if not new:
             return {}
         index = _NameIndex(self._read_all_people(), self._read_all_identities())
-        counts = _count_new_names(new)
+        counts = _count_names_on_this_side(new, index)
         organisations = self._organisations_for(new, pending)
         placed: dict[tuple[Channel, str], UUID] = {}
         for participant in new:
@@ -150,7 +150,8 @@ class IdentityMatcher:
         Args:
             participant: The identity to place.
             index: Who is already known, by normalised name.
-            counts: How many new identities share each normalised name per channel.
+            counts: How many people, stored or new, share each normalised name
+                per channel.
             organisations: Organisation identifier per e-mail domain.
             pending: Collects the records to write.
 
@@ -376,6 +377,20 @@ class _NameIndex:
             if channel not in self._channels[person_id] and self._channels[person_id]
         ]
 
+    def on_channel(self, name: str, channel: Channel) -> int:
+        """Count the people with this name who are already reachable on a channel.
+
+        Args:
+            name: The normalised name to look for.
+            channel: The channel to look on.
+
+        Returns:
+            How many known people carry the name on that channel.
+        """
+        return sum(
+            1 for person_id in self._by_name.get(name, []) if channel in self._channels[person_id]
+        )
+
     def plausibly_the_same(self, derived: str) -> list[UUID]:
         """List the people an address-derived name could belong to.
 
@@ -432,13 +447,33 @@ def _deduplicate(participants: list[RawParticipant]) -> list[RawParticipant]:
     return list(unique.values())
 
 
-def _count_new_names(new: list[RawParticipant]) -> dict[tuple[Channel, str], int]:
-    """Count how many *new* identities per channel share each normalised name."""
+def _count_names_on_this_side(
+    new: list[RawParticipant],
+    index: _NameIndex,
+) -> dict[tuple[Channel, str], int]:
+    """Count the people per channel who will carry each normalised name.
+
+    A name is unique on a side only when nobody else on that side has it: not
+    another identity collected in this run, and not somebody already stored.
+    The stored people are counted before the run places anyone, so the people
+    it creates are counted once, as new identities.
+
+    Args:
+        new: The participants about to be placed.
+        index: Who is already known.
+
+    Returns:
+        The count for every (channel, normalised name) among the new participants.
+    """
     counts: dict[tuple[Channel, str], int] = defaultdict(int)
     for participant in new:
         name = normalise_name(participant.display_name)
-        if name:
-            counts[(participant.channel, name)] += 1
+        if not name:
+            continue
+        key = (participant.channel, name)
+        if key not in counts:
+            counts[key] = index.on_channel(name, participant.channel)
+        counts[key] += 1
     return counts
 
 
@@ -460,9 +495,7 @@ def _name_from_identifier(participant: RawParticipant, rules: RulePack) -> str:
     A work address such as ``alessia.conti@quick-solve.example`` plainly spells
     one; anything else, including a shared sender's address, is shown as is.
     """
-    if participant.channel is not Channel.EMAIL or is_relay_identity(
-        participant.identifier, rules
-    ):
+    if participant.channel is not Channel.EMAIL or is_relay_identity(participant.identifier, rules):
         return participant.identifier
     return shown_name_from_address(participant.identifier) or participant.identifier
 
@@ -476,9 +509,7 @@ def _organisation_key_of(participant: RawParticipant, rules: RulePack) -> str | 
     """
     if participant.organisation_name:
         return _NAME_KEY_PREFIX + organisation_key(participant.organisation_name)
-    if participant.channel is not Channel.EMAIL or is_relay_identity(
-        participant.identifier, rules
-    ):
+    if participant.channel is not Channel.EMAIL or is_relay_identity(participant.identifier, rules):
         return None
     domain = email_domain(participant.identifier)
     return domain if domain and organisation_name_from_domain(domain) else None
@@ -513,4 +544,3 @@ def _question(
             other_channel=", ".join(other_channels) or "another channel",
         ),
     )
-

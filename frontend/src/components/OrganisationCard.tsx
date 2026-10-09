@@ -2,6 +2,7 @@ import * as copy from '../copy/en';
 import type { OrganisationSummary } from '../domain/organisations';
 import type { Clock } from '../lib/clock';
 import { formatRelative } from '../lib/format';
+import { CARD_LINK } from './linkStyles';
 import { OrganisationLink } from './OrganisationLink';
 import { OrganisationStateBadges } from './OrganisationStateBadges';
 
@@ -13,11 +14,8 @@ interface OrganisationCardProps {
 /** One organisation as a stacked card — the phone-width view of a table row. */
 export function OrganisationCard({ organisation, clock }: OrganisationCardProps) {
   return (
-    <li className="rounded-token-lg border border-line bg-surface p-4 shadow-card">
-      <OrganisationLink
-        name={organisation.name}
-        className="text-lg font-semibold text-accent underline underline-offset-2"
-      />
+    <li className="relative rounded-token-lg border border-line bg-surface p-4 shadow-card">
+      <OrganisationLink name={organisation.name} className={CARD_LINK} />
       {organisation.name === null && (
         <p className="mt-1 text-sm text-ink-muted">{copy.organisations.noOrganisationHint}</p>
       )}

@@ -280,7 +280,9 @@ class ImapSession:
             client.login(self._account.username, self._password.get_secret_value())
         except imaplib.IMAP4.abort:
             raise
-        except imaplib.IMAP4.error:
+        # imaplib sends the password as ASCII, so a pasted non-breaking space or
+        # accented letter can never be a real app password: treat it as refused.
+        except (imaplib.IMAP4.error, UnicodeError):
             _log.warning("imap_password_refused", host=self._account.host)
             message = f"{self._account.company} refused the app password"
             raise MailboxPasswordError(message) from None

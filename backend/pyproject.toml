@@ -1,6 +1,6 @@
 [project]
 name = "tracker"
-version = "0.3.0"
+version = "0.5.1"
 description = "Threadline: every conversation, one clear line. Collection, assessment and reporting jobs."
 requires-python = ">=3.12,<3.13"
 license = "MIT"

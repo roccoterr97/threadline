@@ -1,3 +1,4 @@
+import { PEOPLE_MAX_ROWS } from '../constants/dashboard';
 import type { CategoryKey, ContactStatus, PeopleOverviewRow, WaitingOn } from '../types/database';
 
 /** Every status the assistant can give, in the order a conversation moves. */
@@ -208,4 +209,12 @@ export function applyPeopleView(
   return people
     .filter((row) => matchesFilters(row, view))
     .sort((a, b) => comparePeople(a, b, view.sort));
+}
+
+/**
+ * True when the people list was cut short at the safety cap, so older people
+ * are missing and every count built from it may be too low.
+ */
+export function peopleListIsCut(shown: number): boolean {
+  return shown >= PEOPLE_MAX_ROWS;
 }

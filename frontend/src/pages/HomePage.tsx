@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { fetchUpcomingMeetings, upcomingMeetingsQueryKey } from '../api/meetings';
 import { fetchPeople, peopleQueryKey } from '../api/people';
@@ -10,8 +9,10 @@ import { ErrorState } from '../components/ErrorState';
 import { HeadlineCounters } from '../components/HeadlineCounters';
 import { HiddenPersonNotice } from '../components/HiddenPersonNotice';
 import { LoadingState } from '../components/LoadingState';
+import { PeopleCutNotice } from '../components/PeopleCutNotice';
 import { PeopleFilters } from '../components/PeopleFilters';
 import { PeopleTable } from '../components/PeopleTable';
+import { RefreshFailedNote } from '../components/RefreshFailedNote';
 import { RunBanner } from '../components/RunBanner';
 import { StatusGrid } from '../components/StatusGrid';
 import { ViewSwitch } from '../components/ViewSwitch';
@@ -30,6 +31,7 @@ import {
 } from '../domain/peopleView';
 import { assessRunHealth } from '../domain/runHealth';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { useReadQuery } from '../hooks/useReadQuery';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
 
@@ -39,10 +41,10 @@ export function HomePage() {
   const clock = useClock();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const people = useQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
+  const people = useReadQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
   const vocabularyState = useVocabulary();
-  const runs = useQuery({ queryKey: runsQueryKey, queryFn: fetchRecentRuns });
-  const meetings = useQuery({
+  const runs = useReadQuery({ queryKey: runsQueryKey, queryFn: fetchRecentRuns });
+  const meetings = useReadQuery({
     queryKey: upcomingMeetingsQueryKey,
     queryFn: () => fetchUpcomingMeetings(clock.now()),
   });
@@ -52,6 +54,11 @@ export function HomePage() {
   // Until the categories are known no `type` in the address can be trusted, so it reads as "all".
   const typeOptions = vocabulary === null ? [] : categoriesInUse(vocabulary.categories, allPeople);
   const view = readPeopleView(searchParams, typeOptions.map((category) => category.key));
+  const refreshFailed =
+    people.refreshFailed ||
+    runs.refreshFailed ||
+    meetings.refreshFailed ||
+    (vocabularyState.status === 'ready' && vocabularyState.refreshFailed);
   const ready = people.isSuccess && vocabulary !== null;
   const failed = people.isError || vocabularyState.status === 'error';
   const visiblePeople = applyPeopleView(allPeople, view);
@@ -72,6 +79,10 @@ export function HomePage() {
       <ViewSwitch />
 
       <HiddenPersonNotice />
+
+      <RefreshFailedNote show={refreshFailed} />
+
+      <PeopleCutNotice shown={allPeople.length} />
 
       {runs.isSuccess && <RunBanner health={assessRunHealth(runs.data, clock)} clock={clock} />}
 

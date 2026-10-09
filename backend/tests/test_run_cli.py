@@ -248,6 +248,32 @@ def test_no_second_summary_is_built_once_the_connector_sent_the_first(
     assert not out.exists()
 
 
+def test_a_summary_that_cannot_be_built_is_recorded_as_a_failed_summary_step(
+    runner: CliRunner,
+    database: FakeSupabaseClient,
+    settings: Settings,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert settings.supabase_url
+
+    def refuse(*_arguments: object) -> None:
+        message = "database request failed on people_overview.list_every"
+        raise DatabaseUnavailableError(message)
+
+    monkeypatch.setattr("tracker.cli.commands.run.SummaryBuilder.build_for", refuse)
+    started = runner.invoke(build_cli(), ["run", "start", "--trigger", "cloud"])
+    run_id = _printed_run_id(started.output)
+
+    result = runner.invoke(build_cli(), ["summary", "build", "--out", str(tmp_path / "s.json")])
+
+    assert isinstance(result.exception, DatabaseUnavailableError)
+    (step,) = [row for row in database.tables["run_step_logs"] if row["run_id"] == run_id]
+    assert step["step"] == RunStep.SUMMARY_EMAIL.value
+    assert step["status"] == RunStatus.FAILED.value
+    assert step["error_code"] == DatabaseUnavailableError.code
+
+
 def test_a_closed_runs_summary_can_still_be_built_by_hand(
     runner: CliRunner, database: FakeSupabaseClient, settings: Settings, tmp_path: Path
 ) -> None:
@@ -490,7 +516,8 @@ def test_finish_with_clean_prints_what_the_two_separate_commands_print(
     assert settings.supabase_url
     started = runner.invoke(build_cli(), ["run", "start", "--trigger", "manual"])
     run_id = _printed_run_id(started.output)
-    runner.invoke(build_cli(), ["run", "step", "--step", "assess", "--result", "success"])
+    for step in ("collect_email", "assess", "summary_email"):
+        runner.invoke(build_cli(), ["run", "step", "--step", step, "--result", "success"])
 
     result = runner.invoke(build_cli(), ["run", "finish", "--clean"])
 

@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { useId } from 'react';
 import {
   categorySuggestionsQueryKey,
@@ -9,6 +8,7 @@ import { CategoryList } from '../components/CategoryList';
 import { ErrorState } from '../components/ErrorState';
 import { HiddenCategories } from '../components/HiddenCategories';
 import { LoadingState } from '../components/LoadingState';
+import { RefreshFailedNote } from '../components/RefreshFailedNote';
 import { SaveFeedback } from '../components/SaveFeedback';
 import { SuggestionChips } from '../components/SuggestionChips';
 import { VOCABULARY_STALE_TIME_MS } from '../constants/dashboard';
@@ -16,6 +16,7 @@ import * as copy from '../copy/en';
 import { useCategories } from '../hooks/useCategories';
 import { useCategoryEditor } from '../hooks/useCategoryEditor';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { useReadQuery } from '../hooks/useReadQuery';
 
 /**
  * The settings page. Today it holds one thing: the owner's categories, which
@@ -26,7 +27,7 @@ export function SettingsPage() {
   usePageTitle(copy.settings.title);
   const headingId = useId();
   const categories = useCategories();
-  const suggestions = useQuery({
+  const suggestions = useReadQuery({
     queryKey: categorySuggestionsQueryKey,
     queryFn: fetchCategorySuggestions,
     staleTime: VOCABULARY_STALE_TIME_MS,
@@ -49,6 +50,8 @@ export function SettingsPage() {
         </div>
 
         {editor.feedback !== null && <SaveFeedback outcome={editor.feedback} />}
+
+        <RefreshFailedNote show={categories.refreshFailed || suggestions.refreshFailed} />
 
         {categories.isPending && <LoadingState label={copy.settings.loading} />}
 

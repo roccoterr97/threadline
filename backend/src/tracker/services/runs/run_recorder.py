@@ -3,7 +3,7 @@
 The steps of a daily run are independent: LinkedIn failing does not stop the
 mailbox, and neither stops the assessment. What the run *is* — a clean morning,
 a half-done one or a lost one — is therefore decided at the end, from the steps
-that were actually recorded, by :func:`derive_run_status`.
+that were actually recorded, by :func:`derive_status_of_run`.
 
 Recording the same step twice updates the row it already wrote, so a recipe
 that is re-run after a hiccup leaves one row per step rather than two.
@@ -23,7 +23,7 @@ from tracker.domain.enums import RunStatus, RunStep, RunTrigger
 from tracker.domain.models import RunLog, RunStepLog
 from tracker.repositories import Repositories
 from tracker.services.runs.interrupted_runs import close_interrupted_runs
-from tracker.services.runs.run_status import derive_run_status
+from tracker.services.runs.run_status import derive_status_of_run
 from tracker.shared.clock import Clock
 from tracker.shared.config import Settings
 from tracker.shared.constants.runs import INTERRUPTED_RUN_AFTER_HOURS
@@ -231,7 +231,7 @@ class RunRecorder:
         finished = run.model_copy(
             update={
                 "finished_at": self._clock.now(),
-                "status": derive_run_status([step.status for step in steps]),
+                "status": derive_status_of_run(steps, run.trigger),
             }
         )
         self._repositories.run_logs.bulk_upsert([finished])

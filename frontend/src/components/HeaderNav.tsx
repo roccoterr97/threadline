@@ -16,14 +16,15 @@ function linkClass(isActive: boolean): string {
 }
 
 /**
- * The main menu inside the header, from tablet width up. On a phone the same
- * links live in the bottom bar instead, so the header never wraps. The
+ * The main menu inside the header, from laptop width up (1024px). Below that,
+ * on a phone or a tablet, the same links live in the bottom bar instead: the
+ * header has no room for all of them beside "Refresh" and "Sign out". The
  * current page is marked by colour and announced (see `currentNavPath`).
  */
 export function HeaderNav({ reviewCount }: HeaderNavProps) {
   const current = currentNavPath(useLocation());
   return (
-    <nav aria-label={copy.nav.headerLabel} className="hidden items-center gap-1 md:flex">
+    <nav aria-label={copy.nav.headerLabel} className="hidden items-center gap-1 lg:flex">
       {NAV_ITEMS.map((item) => (
         <Link
           key={item.to}

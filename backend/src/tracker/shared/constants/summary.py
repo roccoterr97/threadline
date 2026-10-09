@@ -38,6 +38,12 @@ MAX_PEOPLE_PER_SECTION: Final[int] = 10
 #: measure from — the first run, or a run after a long pause.
 REPLY_WINDOW_FALLBACK_HOURS: Final[int] = 24
 
+#: How many days before the start of "replied since yesterday" a message may
+#: have been sent and still count as a reply, when it was only stored after
+#: that start (a source was down for a morning). Without this limit a first
+#: import of old mail, which is all stored at once, would list everyone.
+REPLY_LATE_COLLECTION_DAYS: Final[int] = 3
+
 #: Recent daily runs read when looking for the last one whose summary went out.
 #: Refreshes are not counted, so however many there were, ten is a week and a
 #: half of mornings, which is more than enough to find yesterday's.

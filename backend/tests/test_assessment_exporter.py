@@ -77,6 +77,21 @@ def test_a_person_never_assessed_is_exported(
     assert batch.people[0].threads[0].exchange_count == 1
 
 
+def test_the_dossier_says_which_is_the_newest_message_it_covers(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    person = make_person()
+    thread = make_thread(person, last_inbound=moment(16), last_outbound=moment(14))
+    seed(repositories, people=[person], threads=[thread])
+
+    result = _exporter(repositories, clock, tmp_path).export()
+
+    batch = parse_batch(result.batch_paths[0].read_text(encoding="utf-8"))
+    assert batch.people[0].newest_message_at == moment(16)
+
+
 def test_a_person_the_owner_answered_no_about_is_not_exported(
     repositories: Repositories,
     clock: FixedClock,

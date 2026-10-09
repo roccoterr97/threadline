@@ -23,17 +23,27 @@ export async function fetchPerson(personId: string): Promise<PeopleOverviewRow |
   );
 }
 
-/** Every conversation this person has, each with its messages in date order. */
+/**
+ * Every conversation this person has, each with its messages in date order.
+ *
+ * A very long conversation is capped at `TIMELINE_MESSAGE_LIMIT` messages. The
+ * cap is applied to the newest messages (asked for newest first, then turned
+ * round), so what is left out is the oldest history, never the latest reply.
+ */
 export async function fetchPersonConversations(
   personId: string,
 ): Promise<ConversationWithMessages[]> {
   const supabase = getSupabaseClient();
-  return runQuery('person.conversations', conversationsSchema, () =>
+  const conversations = await runQuery('person.conversations', conversationsSchema, () =>
     supabase
       .from('conversations')
       .select('*, messages(*)')
       .eq('person_id', personId)
-      .order('sent_at', { referencedTable: 'messages', ascending: true })
+      .order('sent_at', { referencedTable: 'messages', ascending: false })
       .limit(TIMELINE_MESSAGE_LIMIT, { referencedTable: 'messages' }),
   );
+  return conversations.map((conversation) => ({
+    ...conversation,
+    messages: [...conversation.messages].reverse(),
+  }));
 }

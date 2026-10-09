@@ -25,7 +25,7 @@ from tracker.domain.enums import Channel, RunStep
 from tracker.services.collection.models import CollectionReport, SaveStep
 from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
 from tracker.shared.concurrency import gather_all
-from tracker.shared.errors import TrackerError
+from tracker.shared.errors import SourceFailedError, TrackerError
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
@@ -141,6 +141,8 @@ async def _read(source: Source) -> _Read:
     except TrackerError as error:
         _log.error("source_not_read", step=source.step.value, code=error.code, detail=error.message)
         return _Read(source, failure=error)
+    except Exception as error:  # a surprise in one source must not stop the others
+        return _Read(source, failure=_unexpected("source_not_read", source, error))
 
 
 def _store(read: _Read) -> SourceOutcome:
@@ -154,6 +156,25 @@ def _store(read: _Read) -> SourceOutcome:
             "source_not_stored", step=read.source.step.value, code=error.code, detail=error.message
         )
         return SourceOutcome(read.source, failure=error)
+    except Exception as error:  # a surprise in one source must not stop the others
+        failure = _unexpected("source_not_stored", read.source, error)
+        return SourceOutcome(read.source, failure=failure)
+
+
+def _unexpected(event: str, source: Source, error: Exception) -> SourceFailedError:
+    """Log an error nobody planned for, by its type, and give it a failure code.
+
+    Only the type is logged: the text of an error raised while reading mail can
+    carry a piece of the mail.
+    """
+    _log.error(
+        event,
+        step=source.step.value,
+        code=SourceFailedError.code,
+        error_type=type(error).__name__,
+    )
+    message = f"{source.channel.value} stopped on an unexpected {type(error).__name__}"
+    return SourceFailedError(message)
 
 
 def _step_outcome(outcome: SourceOutcome) -> StepOutcome | None:

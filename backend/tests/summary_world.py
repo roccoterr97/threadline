@@ -50,6 +50,7 @@ def sample_client(*, today: date = TODAY) -> FakeSupabaseClient:
         {
             "people_overview": overview_rows(data, today=today),
             "conversations": data["conversations"],
+            "messages": data["messages"],
             "review_items": data["review_items"],
             "run_logs": data["run_logs"],
             "run_step_logs": data["run_step_logs"],

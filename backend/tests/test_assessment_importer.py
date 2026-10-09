@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -414,6 +415,69 @@ def test_an_override_survives_a_contrary_verdict_while_the_rest_updates(
     assert state.summary == "They went quiet."
 
 
+def _hide(repositories: Repositories, person: Person) -> None:
+    """What the dashboard's "Not relevant" button does: only the person's relevance changes."""
+    repositories.people.bulk_upsert([person.model_copy(update={"relevance": Relevance.NOISE})])
+
+
+def test_a_verdict_does_not_bring_back_a_person_hidden_after_the_export(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    _hide(repositories, person)
+    chain.answer(verdict_payload(person.id))
+
+    outcome = chain.importer.import_all()
+
+    kept = repositories.people.get(person.id)
+    assert outcome.assessed == 0
+    assert kept is not None
+    assert kept.relevance is Relevance.NOISE
+    assert repositories.person_states.find_for_person(person.id) is None
+    assert chain.importer.result_files() == ()
+
+
+def test_a_hidden_person_stays_hidden_even_when_an_older_yes_is_on_record(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """A "yes" makes a person relevant at once, so hiding them is the later decision."""
+    person = talkative_person(repositories)
+    seed(repositories, review_items=[make_answer(person, answer=ReviewAnswer.YES)])
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    _hide(repositories, person)
+    chain.answer(verdict_payload(person.id))
+
+    outcome = chain.importer.import_all()
+
+    kept = repositories.people.get(person.id)
+    assert outcome.assessed == 0
+    assert kept is not None
+    assert kept.relevance is Relevance.NOISE
+
+
+def test_hiding_one_person_does_not_stop_the_rest_of_the_file(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    anna = talkative_person(repositories)
+    bruno = talkative_person(repositories, "Bruno Sala", source="thread-2")
+    chain = build_chain(repositories, clock, tmp_path, [anna, bruno])
+    _hide(repositories, anna)
+    chain.answer(verdict_payload(anna.id), verdict_payload(bruno.id))
+
+    outcome = chain.importer.import_all()
+
+    assert outcome.assessed == 1
+    assert repositories.person_states.find_for_person(anna.id) is None
+    assert repositories.person_states.find_for_person(bruno.id) is not None
+
+
 def test_a_person_answered_no_is_gone_from_the_next_export(
     repositories: Repositories,
     clock: FixedClock,
@@ -514,9 +578,12 @@ def test_a_noise_verdict_never_undoes_a_correction_by_hand(
     kept = repositories.people.get(person.id)
     assert kept is not None
     assert kept.relevance is not Relevance.NOISE
-    bodies = [m.body for m in repositories.messages.list_for_conversations(
-        [t.id for t in repositories.conversations.list_for_person(person.id)]
-    )]
+    bodies = [
+        m.body
+        for m in repositories.messages.list_for_conversations(
+            [t.id for t in repositories.conversations.list_for_person(person.id)]
+        )
+    ]
     assert any(body for body in bodies), "message text must survive an override"
 
 
@@ -565,6 +632,75 @@ def test_a_verdict_file_is_applied_once_and_then_removed(
     assert second.assessed == 0, "an applied file must not be applied again"
     assert chain.importer.result_files() == ()
     assert repositories.person_states.list_for_people([person.id])[0].assessed_through == stamped
+
+
+def test_a_message_stored_after_the_export_is_not_marked_as_assessed(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """The verdict covers what the assistant read, not what arrived while it worked."""
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    thread = repositories.conversations.list_for_person(person.id)[0]
+    repositories.conversations.bulk_upsert(
+        [thread.model_copy(update={"last_message_at": moment(17), "last_inbound_at": moment(17)})]
+    )
+    chain.answer(verdict_payload(person.id))
+
+    chain.importer.import_all()
+
+    state = repositories.person_states.find_for_person(person.id)
+    assert state is not None
+    assert state.assessed_through == moment(16)
+    assert AssessmentExporter(repositories, clock, tmp_path / "again").pending_people() == 1
+
+
+def test_a_batch_without_the_newest_message_date_is_covered_up_to_its_own_export(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """A batch written before the date was added still imports, with the export time."""
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    batch_path = chain.batches / f"{chain.batch_id}.json"
+    old_batch = json.loads(batch_path.read_text(encoding="utf-8"))
+    for dossier in old_batch["people"]:
+        del dossier["newest_message_at"]
+    batch_path.write_text(json.dumps(old_batch), encoding="utf-8")
+    chain.answer(verdict_payload(person.id))
+
+    outcome = chain.importer.import_all()
+
+    state = repositories.person_states.find_for_person(person.id)
+    assert outcome.assessed == 1
+    assert state is not None
+    assert state.assessed_through == clock.now()
+
+
+def test_a_verdict_older_than_the_last_assessment_of_that_person_is_skipped(
+    repositories: Repositories,
+    clock: FixedClock,
+    tmp_path: Path,
+) -> None:
+    """A leftover file from an earlier export must not undo a newer assessment."""
+    person = talkative_person(repositories)
+    chain = build_chain(repositories, clock, tmp_path, [person])
+    newer = make_state(person, assessed_through=moment(17), assessed_at=moment(18, 8)).model_copy(
+        update={"summary": "Assessed after the export."}
+    )
+    seed(repositories, states=[newer])
+    chain.answer(verdict_payload(person.id, summary="Written from the old batch."))
+
+    outcome = chain.importer.import_all()
+
+    state = repositories.person_states.find_for_person(person.id)
+    assert outcome.assessed == 0
+    assert outcome.rejected == ()
+    assert state is not None
+    assert state.summary == "Assessed after the export."
+    assert chain.importer.result_files() == ()
 
 
 def test_a_rejected_verdict_file_stays_where_it_is(

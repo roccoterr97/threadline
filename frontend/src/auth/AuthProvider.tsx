@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { logError } from '../lib/logger';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -49,6 +50,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isConfigured() ? 'loading' : 'not-configured',
   );
   const [email, setEmail] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (status !== 'signed-out') return;
+    // Whoever signs in next on this device must never see this person's data,
+    // not even for the moment before their own is fetched. Doing it here, once
+    // the screens behind the sign-in guard have gone, covers every way a
+    // session can end: signing out, an expired session, another tab.
+    queryClient.clear();
+  }, [status, queryClient]);
 
   useEffect(() => {
     if (!isConfigured()) return;

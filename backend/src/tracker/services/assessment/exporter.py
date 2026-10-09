@@ -283,6 +283,7 @@ def _build_dossier(facts: _PersonFacts) -> PersonDossier:
     return PersonDossier(
         person_id=facts.person.id,
         full_name=facts.person.full_name,
+        newest_message_at=_latest(thread.last_message_at for thread in facts.threads),
         known_person_type=facts.person.person_type,
         known_role_title=facts.person.role_title,
         owner_answers=_answer_sentences(facts.review_items),

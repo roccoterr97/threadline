@@ -46,6 +46,38 @@ describe('demo data — the same contracts as the real database', () => {
     expect(lastContacts).toEqual([...lastContacts].sort().reverse());
   });
 
+  it('reads the list in pages, like the real database', async () => {
+    const everyone = await fetchPeople();
+    const supabase = getSupabaseClient();
+    const second = await supabase
+      .from('people_overview')
+      .select('*')
+      .order('last_contact_at', { ascending: false, nullsFirst: false })
+      .order('person_id', { ascending: true })
+      .range(2, 4);
+    const rows = second.data as Array<{ person_id: string }>;
+    expect(rows.map((row) => row.person_id)).toEqual(
+      everyone.slice(2, 5).map((person) => person.person_id),
+    );
+  });
+
+  it('orders and caps the messages inside each conversation when asked to', async () => {
+    const supabase = getSupabaseClient();
+    const newestOnly = await supabase
+      .from('conversations')
+      .select('*, messages(*)')
+      .order('sent_at', { referencedTable: 'messages', ascending: false })
+      .limit(1, { referencedTable: 'messages' });
+    const conversations = newestOnly.data as Array<{ id: string; messages: Array<{ sent_at: string }> }>;
+    const everything = await supabase.from('conversations').select('*, messages(*)');
+    const full = everything.data as typeof conversations;
+    expect(conversations.length).toBe(full.length);
+    for (const conversation of conversations) {
+      const all = full.find((row) => row.id === conversation.id)!.messages.map((m) => m.sent_at);
+      expect(conversation.messages.map((m) => m.sent_at)).toEqual([[...all].sort().at(-1)]);
+    }
+  });
+
   it('files nobody under the category the owner has not added', async () => {
     const people = await fetchPeople();
     expect(people.some((person) => person.person_type === DEMO_UNUSED_CATEGORY)).toBe(false);

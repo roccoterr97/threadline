@@ -1,5 +1,9 @@
 import type { ConversationWithMessages } from '../api/schemas';
-import { MESSAGE_FOLD_CHARACTERS, MESSAGE_FOLD_LINES } from '../constants/dashboard';
+import {
+  MESSAGE_FOLD_CHARACTERS,
+  MESSAGE_FOLD_LINES,
+  TIMELINE_MESSAGE_LIMIT,
+} from '../constants/dashboard';
 import type { Channel, Direction } from '../types/database';
 
 /** One message, ready to render, with the conversation context it needs. */
@@ -31,6 +35,14 @@ export function buildTimeline(
       })),
     )
     .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+}
+
+/**
+ * True when a conversation reached the message limit, so older messages of it
+ * may be missing from the history.
+ */
+export function timelineIsCut(conversations: readonly ConversationWithMessages[]): boolean {
+  return conversations.some((conversation) => conversation.messages.length >= TIMELINE_MESSAGE_LIMIT);
 }
 
 /** A message's opening, and whether anything was left out to make it. */

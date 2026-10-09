@@ -18,7 +18,7 @@ export function SortSelect({ value, onChange }: SortSelectProps) {
   const id = useId();
   return (
     <div className="flex items-center gap-2">
-      <label htmlFor={id} className="text-sm font-medium text-ink-muted">
+      <label htmlFor={id} className="w-20 shrink-0 text-sm font-medium text-ink-muted sm:w-auto">
         {copy.home.sortLabel}
       </label>
       <select
@@ -28,7 +28,7 @@ export function SortSelect({ value, onChange }: SortSelectProps) {
           const next = PEOPLE_SORTS.find((sort) => sort === event.target.value);
           if (next !== undefined) onChange(next);
         }}
-        className="min-h-11 rounded-token-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink"
+        className="min-h-11 min-w-0 flex-1 rounded-token-md border border-line-strong bg-surface px-3 py-2 text-base text-ink sm:flex-none"
       >
         {PEOPLE_SORTS.map((sort) => (
           <option key={sort} value={sort}>

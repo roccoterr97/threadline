@@ -12,9 +12,13 @@ import type { CategoryColour, ContactStatus, Signal, WaitingOn } from '../types/
 /** The meanings a badge can carry. Each one always shows its own text label. */
 export type BadgeTone = 'positive' | 'warn' | 'danger' | 'neutral' | 'calm';
 
-/** Shape shared by every badge; the colour classes are added on top. */
+/**
+ * Shape shared by every badge; the colour classes are added on top. A long
+ * label may break anywhere on a phone's cards; in the laptop table it must
+ * not, or a column would squeeze a word in two.
+ */
 export const BADGE_BASE =
-  'inline-flex items-center gap-1.5 rounded-token-sm border px-2 py-0.5 text-sm font-medium';
+  'inline-flex max-w-full items-center gap-1.5 rounded-token-sm border px-2 py-0.5 text-sm font-medium max-lg:wrap-anywhere';
 
 /** The colour classes behind each tone. */
 export const TONE_CLASSES: Record<BadgeTone, string> = {

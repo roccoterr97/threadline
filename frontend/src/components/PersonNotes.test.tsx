@@ -9,7 +9,12 @@ import {
 import { PERSON_NOTES_LIMIT } from '../constants/notes';
 import * as copy from '../copy/en';
 import { noteExcerpt } from '../domain/notes';
-import { DataUnavailableError, NotSignedInError, TableMissingError } from '../lib/errors';
+import {
+  DataUnavailableError,
+  NotAllowedError,
+  NotSignedInError,
+  TableMissingError,
+} from '../lib/errors';
 import { expectNoAxeViolations } from '../test/axe';
 import { renderWithProviders } from '../test/renderWithProviders';
 import { scrollIntoViewCalls } from '../test/scrollIntoView';
@@ -162,6 +167,15 @@ describe('PersonNotes — adding', () => {
     await user.type(screen.getByRole('textbox', { name: copy.notes.fieldLabel }), 'Hello');
     await user.click(screen.getByRole('button', { name: copy.notes.save }));
     expect(await screen.findByRole('alert')).toHaveTextContent(copy.notes.failed.signedOut);
+  });
+
+  it('says the account is not allowed, rather than signed out, when the save was forbidden', async () => {
+    addNoteMock.mockRejectedValue(new NotAllowedError('notes.add'));
+    const { user } = renderNotes();
+    await user.click(await screen.findByRole('button', { name: copy.notes.add }));
+    await user.type(screen.getByRole('textbox', { name: copy.notes.fieldLabel }), 'Hello');
+    await user.click(screen.getByRole('button', { name: copy.notes.save }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.notes.failed.notAllowed);
   });
 
   it('puts the keyboard back on "Add a note" when the form is closed without saving', async () => {

@@ -66,7 +66,10 @@ export class DemoQuery implements PromiseLike<SupabaseResult> {
   private action: Action = { kind: 'select' };
   private readonly filters: RowFilter[] = [];
   private readonly orderings: Ordering[] = [];
+  private readonly embeddedOrderings = new Map<string, Ordering[]>();
+  private readonly embeddedLimits = new Map<string, number>();
   private rowLimit: number | null = null;
+  private firstRow = 0;
   private single = false;
 
   constructor(
@@ -123,17 +126,27 @@ export class DemoQuery implements PromiseLike<SupabaseResult> {
     return this;
   }
 
-  /** Orders the rows. Embedded rows are already stored in date order. */
+  /** Orders the rows, or the rows embedded under `referencedTable`. */
   order(column: string, options: OrderOptions = {}): this {
-    if (options.referencedTable !== undefined) return this;
     const ascending = options.ascending ?? true;
-    this.orderings.push({ column, ascending, nullsFirst: options.nullsFirst ?? !ascending });
+    const ordering = { column, ascending, nullsFirst: options.nullsFirst ?? !ascending };
+    const table = options.referencedTable;
+    if (table === undefined) this.orderings.push(ordering);
+    else this.embeddedOrderings.set(table, [...(this.embeddedOrderings.get(table) ?? []), ordering]);
     return this;
   }
 
-  /** Caps the rows. The demo's embedded lists are far below any cap. */
+  /** Caps the rows, or the rows embedded under `referencedTable` in each row. */
   limit(count: number, options: LimitOptions = {}): this {
     if (options.referencedTable === undefined) this.rowLimit = count;
+    else this.embeddedLimits.set(options.referencedTable, count);
+    return this;
+  }
+
+  /** Takes rows `from` to `to`, both counted from 0 and both included, like the real one. */
+  range(from: number, to: number): this {
+    this.firstRow = from;
+    this.rowLimit = to - from + 1;
     return this;
   }
 
@@ -151,6 +164,20 @@ export class DemoQuery implements PromiseLike<SupabaseResult> {
 
   private matches(row: object): boolean {
     return this.filters.every((filter) => filter(row));
+  }
+
+  /** Orders and caps each list embedded in a row, as asked with `referencedTable`. */
+  private shapeEmbedded(row: object): object {
+    const shaped: Record<string, object[]> = {};
+    const tables = new Set([...this.embeddedOrderings.keys(), ...this.embeddedLimits.keys()]);
+    for (const table of tables) {
+      const embedded: unknown = valueOf(row, table);
+      if (!Array.isArray(embedded)) continue;
+      const items = embedded.filter((item): item is object => typeof item === 'object' && item !== null);
+      const ordered = items.sort(byOrderings(this.embeddedOrderings.get(table) ?? []));
+      shaped[table] = ordered.slice(0, this.embeddedLimits.get(table));
+    }
+    return { ...row, ...shaped };
   }
 
   private run(): SupabaseResult {
@@ -173,9 +200,10 @@ export class DemoQuery implements PromiseLike<SupabaseResult> {
     const rows = this.database.read(this.table);
     if (rows === null) return NO_SUCH_TABLE;
     const found = rows.filter((row) => this.matches(row)).sort(byOrderings(this.orderings));
-    const limited = this.rowLimit === null ? found : found.slice(0, this.rowLimit);
+    const end = this.rowLimit === null ? undefined : this.firstRow + this.rowLimit;
+    const limited = found.slice(this.firstRow, end);
     // A copy, so the page can never change the demo's tables by accident.
-    const copies = structuredClone(limited);
+    const copies = structuredClone(limited).map((row) => this.shapeEmbedded(row));
     return success(this.single ? (copies[0] ?? null) : copies);
   }
 }

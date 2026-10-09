@@ -151,8 +151,6 @@ class PeopleLinker:
                 continue
             survivor = by_id[only.person_id]
             PersonMerger(self._repositories).join(survivor, by_id[record.person_id])
-            states = self._repositories.person_states.list_for_people([survivor.id])
-            self._repositories.person_states.delete_by_ids([state.id for state in states])
             joined += 1
         return joined, ambiguous
 

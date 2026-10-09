@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 import {
   DataUnavailableError,
+  NotAllowedError,
   NotSignedInError,
   RefusalReason,
   RefusedError,
@@ -63,13 +64,14 @@ function toDomainError(
   const { error, status } = result;
   const code = error?.code ?? null;
 
-  if (
-    status === UNAUTHORISED_STATUS ||
-    status === FORBIDDEN_STATUS ||
-    code === EXPIRED_TOKEN_CODE
-  ) {
+  if (status === UNAUTHORISED_STATUS || code === EXPIRED_TOKEN_CODE) {
     logError('query.not_signed_in', { event, code, status: status ?? null });
     return new NotSignedInError(event);
+  }
+
+  if (status === FORBIDDEN_STATUS) {
+    logError('query.not_allowed', { event, code, status: status ?? null });
+    return new NotAllowedError(event);
   }
 
   if (code !== null && MISSING_TABLE_CODES.has(code)) {
@@ -96,6 +98,7 @@ function toDomainError(
  * @param schema Runtime shape the answer must match.
  * @param execute The Supabase query builder call.
  * @throws {NotSignedInError} when the session is missing or expired.
+ * @throws {NotAllowedError} when the account is signed in but not allowed.
  * @throws {DataUnavailableError} when the database refused or was unreachable.
  * @throws {UnexpectedDataError} when the answer did not match the schema.
  */
@@ -129,6 +132,7 @@ export async function runQuery<T>(
  * @param execute The Supabase query builder call.
  * @param options Which refusals are an expected outcome rather than an error.
  * @throws {NotSignedInError} when the session is missing or expired.
+ * @throws {NotAllowedError} when the account is signed in but not allowed.
  * @throws {RefusedError} when the database refused it on purpose (a rule, a
  *   duplicate, or a row something still points at).
  * @throws {DataUnavailableError} when the write failed for any other reason.

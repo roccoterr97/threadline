@@ -9,14 +9,15 @@ in this order:
    :data:`GONE_QUIET_AFTER_DAYS` days. A first message that was never answered
    stays "contacted, no reply yet", and a meeting or a process under way is left
    alone, because waiting is what those look like while they run.
-2. **A missing due date** is filled in — today when the owner owes the next
-   move, five working days after the last contact when they do. "Today" and
-   "working day" are the owner's: read in their time zone, skipping their
-   weekend (see :class:`OwnerCalendar`).
-3. **Low confidence** or an unsure verdict sends the person to the review list
-   instead of the main table.
-4. **The owner's corrections win.** Anything he set by hand survives, whatever
+2. **The owner's corrections win.** Anything he set by hand survives, whatever
    the assistant concluded; everything he did not set still updates.
+3. **A missing due date** is filled in — today when the owner owes the next
+   move, five working days after the last contact when they do. It comes after
+   the corrections, so it follows who the owner says owes the move, and a date
+   he set himself is never replaced. "Today" and "working day" are the owner's:
+   read in their time zone, skipping their weekend (see :class:`OwnerCalendar`).
+4. **Low confidence** or an unsure verdict sends the person to the review list
+   instead of the main table.
 
 A noise verdict skips all four: the person is dropped. The exception is a person
 the owner has already judged himself. That person is kept, goes through the same
@@ -270,8 +271,12 @@ def decide(
     if state.is_noise:
         state = replace(state, needs_review=True)
     state = _apply_gone_quiet(state, timing, now)
-    state = _fill_due_date(state, timing, now, calendar)
-    return _apply_corrections(state, corrections)
+    # The owner's corrections come before the date is filled in: a date worked
+    # out for "waiting on them" would be wrong for a person the owner says is
+    # waiting on him. An owner-set due date is already on the state by then, so
+    # it is never replaced.
+    state = _apply_corrections(state, corrections)
+    return _fill_due_date(state, timing, now, calendar)
 
 
 def _apply_gone_quiet(state: AssessedState, timing: ContactTiming, now: datetime) -> AssessedState:

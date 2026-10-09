@@ -105,12 +105,20 @@ class DossierOverride(BaseModel):
 
 
 class PersonDossier(BaseModel):
-    """Everything the assistant is given about one person."""
+    """Everything the assistant is given about one person.
+
+    ``newest_message_at`` is the newest message the dossier covers. The import
+    stamps the person as assessed up to this moment, not up to whatever the
+    database holds by then, so a message stored while the assistant was working
+    is still judged next time. A batch written before this field existed omits
+    it; the import then falls back to the batch's own ``generated_at``.
+    """
 
     model_config = _STRICT
 
     person_id: UUID
     full_name: str
+    newest_message_at: datetime | None = None
     known_person_type: CategoryKey
     known_role_title: str | None = None
     known_organisation_name: str | None = None

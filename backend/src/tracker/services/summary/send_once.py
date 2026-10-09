@@ -22,9 +22,9 @@ from uuid import UUID
 from tracker.domain.enums import RunStatus, RunStep
 from tracker.domain.models import RunLog
 from tracker.services.assessment.work_files import remove_work_file
-from tracker.services.runs.run_recorder import RunRecorder
+from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
 from tracker.services.summary.once_a_day import OnceADay, summary_went_out
-from tracker.shared.errors import ValidationFailedError
+from tracker.shared.errors import TrackerError, ValidationFailedError
 from tracker.shared.logging import get_logger
 
 #: Added to the summary file's name to name the file that says it was sent.
@@ -88,6 +88,25 @@ class SendOnce:
             self._marker.write_text(str(run_id), encoding="utf-8")
         except OSError as error:
             _log.warning("summary_sent_marker_not_written", error_type=type(error).__name__)
+
+    def record_build_failure(self, run: RunLog | None, error_code: str) -> None:
+        """Record that a run's summary could not be built, as its failed ``summary_email`` step.
+
+        Without the step the run would close without a word about its summary.
+        Only a run still open is touched, and a step that cannot be recorded is
+        logged, not raised: the build's own error is the one to show.
+
+        Args:
+            run: The run the summary would have reported on.
+            error_code: The stable code of what stopped the build.
+        """
+        if run is None or run.status is not RunStatus.RUNNING:
+            return
+        outcome = StepOutcome(RunStep.SUMMARY_EMAIL, StepResult.FAILED, error_code=error_code)
+        try:
+            self._recorder.record_step(run.id, outcome)
+        except TrackerError as error:
+            _log.error("summary_build_step_not_recorded", run_id=str(run.id), code=error.code)
 
     def refuse_a_new_summary(self, run: RunLog | None) -> None:
         """Stop a second summary for a run still open whose summary already went out.

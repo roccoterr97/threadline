@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import {
   fetchPerson,
@@ -8,16 +7,21 @@ import {
 } from '../api/person';
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
+import { InfoNote } from '../components/InfoNote';
 import { LoadingState } from '../components/LoadingState';
+import { TAP_LINK } from '../components/linkStyles';
 import { MarkNoiseAction } from '../components/MarkNoiseAction';
 import { PersonCorrection } from '../components/PersonCorrection';
 import { PersonHeader } from '../components/PersonHeader';
 import { PersonNotes } from '../components/PersonNotes';
 import { PersonSummary } from '../components/PersonSummary';
+import { RefreshFailedNote } from '../components/RefreshFailedNote';
 import { Timeline } from '../components/Timeline';
+import { TIMELINE_MESSAGE_LIMIT } from '../constants/dashboard';
 import * as copy from '../copy/en';
-import { buildTimeline } from '../domain/timeline';
+import { buildTimeline, timelineIsCut } from '../domain/timeline';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { useReadQuery } from '../hooks/useReadQuery';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
 import { personOrigin } from '../lib/personOrigin';
@@ -37,11 +41,11 @@ export function PersonPage() {
   const { personId = '' } = useParams<{ personId: string }>();
   const origin = personOrigin(useLocation().state);
 
-  const person = useQuery({
+  const person = useReadQuery({
     queryKey: personQueryKey(personId),
     queryFn: () => fetchPerson(personId),
   });
-  const conversations = useQuery({
+  const conversations = useReadQuery({
     queryKey: timelineQueryKey(personId),
     queryFn: () => fetchPersonConversations(personId),
   });
@@ -73,11 +77,7 @@ export function PersonPage() {
         title={copy.person.notFound.title}
         body={copy.person.notFound.body}
         action={
-          <Link
-            to={origin.address}
-            state={origin.state}
-            className="font-medium text-accent underline underline-offset-2"
-          >
+          <Link to={origin.address} state={origin.state} className={`font-medium ${TAP_LINK}`}>
             {origin.label}
           </Link>
         }
@@ -89,13 +89,13 @@ export function PersonPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <Link
-        to={origin.address}
-        state={origin.state}
-        className="self-start text-accent underline underline-offset-2"
-      >
+      <Link to={origin.address} state={origin.state} className={`self-start ${TAP_LINK}`}>
         {origin.label}
       </Link>
+
+      <RefreshFailedNote
+        show={person.refreshFailed || conversations.refreshFailed || vocabulary.refreshFailed}
+      />
 
       <PersonHeader person={person.data} vocabulary={vocabulary.vocabulary} />
 
@@ -118,6 +118,9 @@ export function PersonPage() {
           )}
           {conversations.isSuccess && timeline.length === 0 && (
             <EmptyState title={copy.person.timelineTitle} body={copy.person.timelineEmpty} />
+          )}
+          {conversations.isSuccess && timelineIsCut(conversations.data) && (
+            <InfoNote>{copy.person.timelineCut(TIMELINE_MESSAGE_LIMIT)}</InfoNote>
           )}
           {timeline.length > 0 && <Timeline entries={timeline} />}
         </section>

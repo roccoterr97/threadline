@@ -1,10 +1,11 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchCategories } from '../api/categories';
 import { fetchUpcomingMeetings } from '../api/meetings';
-import { fetchPeople } from '../api/people';
+import { fetchPeople, peopleQueryKey } from '../api/people';
 import { fetchRecentRuns } from '../api/runs';
 import { fetchStatusLabels } from '../api/statusLabels';
+import { PEOPLE_MAX_ROWS } from '../constants/dashboard';
 import * as copy from '../copy/en';
 import { DataUnavailableError } from '../lib/errors';
 import { expectNoAxeViolations } from '../test/axe';
@@ -117,6 +118,71 @@ describe('HomePage — the four states', () => {
     renderWithProviders(<HomePage />);
     expect(await screen.findByRole('table', { name: copy.home.tableCaption })).toBeInTheDocument();
     expect(shownPeople()).toBe(12);
+  });
+});
+
+describe('HomePage — an update that fails after the list was shown', () => {
+  it('keeps the people on screen and says the update did not work', async () => {
+    const { queryClient } = renderWithProviders(<HomePage />);
+    await screen.findByRole('table', { name: copy.home.tableCaption });
+
+    fetchPeopleMock.mockRejectedValue(new DataUnavailableError('people.list'));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: peopleQueryKey });
+    });
+
+    expect(await screen.findByText(copy.states.refreshFailed)).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: copy.home.tableCaption })).toBeInTheDocument();
+    expect(screen.queryByText(copy.states.errorBody)).not.toBeInTheDocument();
+    expect(shownPeople()).toBe(12);
+  });
+
+  it('takes the note away again once an update works', async () => {
+    const { queryClient } = renderWithProviders(<HomePage />);
+    await screen.findByRole('table', { name: copy.home.tableCaption });
+    fetchPeopleMock.mockRejectedValueOnce(new DataUnavailableError('people.list'));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: peopleQueryKey });
+    });
+    await screen.findByText(copy.states.refreshFailed);
+
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: peopleQueryKey });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(copy.states.refreshFailed)).not.toBeInTheDocument();
+    });
+  });
+
+  it('still shows the full error when there is nothing to show yet', async () => {
+    fetchPeopleMock.mockRejectedValue(new DataUnavailableError('people.list'));
+    renderWithProviders(<HomePage />);
+    expect(await screen.findByText(copy.states.errorBody)).toBeInTheDocument();
+    expect(screen.queryByText(copy.states.refreshFailed)).not.toBeInTheDocument();
+  });
+});
+
+describe('HomePage — a list cut at the cap', () => {
+  const cutList = () =>
+    Array.from({ length: PEOPLE_MAX_ROWS }, (_, index) => ({
+      ...samplePeople[0]!,
+      person_id: `p-cut-${String(index)}`,
+      waiting_on: 'them' as const,
+    }));
+
+  it('warns that the numbers may be too low', async () => {
+    fetchPeopleMock.mockResolvedValue(cutList());
+    // The filter hides every row: the notice counts the whole list, and drawing
+    // thousands of table rows in the test DOM is slow enough to time out on CI.
+    renderWithProviders(<HomePage />, { route: '/?waiting=me' });
+    await screen.findByText(copy.home.emptyFiltered.title);
+    expect(screen.getByText(copy.states.peopleCut(PEOPLE_MAX_ROWS))).toBeInTheDocument();
+  });
+
+  it('shows no warning for a list read in full', async () => {
+    renderWithProviders(<HomePage />);
+    await screen.findByRole('table', { name: copy.home.tableCaption });
+    expect(screen.queryByText(copy.states.peopleCut(PEOPLE_MAX_ROWS))).not.toBeInTheDocument();
   });
 });
 

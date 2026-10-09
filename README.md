@@ -31,9 +31,10 @@ networking — or define your own categories. See
 Live demo: <https://try-threadline.vercel.app>
 
 See the dashboard with made-up data before setting anything up. You need
-[Node.js](https://nodejs.org) 22 or newer; no accounts and no settings.
-Download the code first (the green **Code → Download ZIP** button on this
-page), then in a terminal, inside that folder:
+[Node.js](https://nodejs.org) 22 or newer; no accounts and no settings. The
+green **Code → Download ZIP** button on this page is all the download you
+need (if you already installed Threadline, part 1 of the guide, use its
+`threadline` folder instead). Then in a terminal, inside that folder:
 
 ```bash
 cd frontend

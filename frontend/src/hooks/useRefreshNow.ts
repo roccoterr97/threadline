@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { fetchRunSince, refreshRunQueryKey, requestRefresh } from '../api/refresh';
 import { REFRESH_DONE_SHOWN_MS } from '../constants/dashboard';
 import {
@@ -8,6 +8,7 @@ import {
   refusalStatus,
   type RefreshOutcome,
   type RefreshStatus,
+  watchTimeLeftMs,
 } from '../domain/refresh';
 import { useClock } from '../lib/ClockContext';
 
@@ -22,6 +23,7 @@ type StartedOutcome = Extract<RefreshOutcome, { kind: 'started' }>;
 function useRefreshWatch(started: StartedOutcome | null) {
   const clock = useClock();
   const requestedAt = started?.requestedAt ?? null;
+  const [, setWatchChecks] = useState(0);
   const watch = useQuery({
     queryKey: [...refreshRunQueryKey, requestedAt?.toISOString() ?? null],
     queryFn: () => (requestedAt === null ? Promise.resolve(null) : fetchRunSince(requestedAt)),
@@ -33,6 +35,22 @@ function useRefreshWatch(started: StartedOutcome | null) {
       return nextCheckDelay(query.state.dataUpdateCount, progress.kind);
     },
   });
+
+  useEffect(() => {
+    if (requestedAt === null) return;
+    // Polling stops by itself at the limit, and a run that never shows up
+    // changes nothing on screen. Re-render once the limit has passed so the
+    // "timed out" state is reached and the button is freed.
+    const timeLeft = watchTimeLeftMs(requestedAt, clock.now());
+    if (timeLeft === 0) return;
+    const timer = setTimeout(() => {
+      setWatchChecks((checks) => checks + 1);
+    }, timeLeft);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [requestedAt, clock]);
+
   if (requestedAt === null) return null;
   return { run: watch.data ?? null, progress: refreshProgress(watch.data ?? null, requestedAt, clock.now()) };
 }

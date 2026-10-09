@@ -86,8 +86,16 @@ export function watchStart(requestedAt: Date): Date {
   return new Date(requestedAt.getTime() - REFRESH_RUN_MATCH_SLACK_MS);
 }
 
+/** How long the dashboard keeps watching a refresh, in milliseconds. */
+const WATCH_LIMIT_MS = REFRESH_WATCH_LIMIT_MINUTES * MILLISECONDS_PER_MINUTE;
+
 function watchIsOver(requestedAt: Date, now: Date): boolean {
-  return now.getTime() - requestedAt.getTime() >= REFRESH_WATCH_LIMIT_MINUTES * MILLISECONDS_PER_MINUTE;
+  return now.getTime() - requestedAt.getTime() >= WATCH_LIMIT_MS;
+}
+
+/** How much of the watch limit is left, or 0 once it has passed. */
+export function watchTimeLeftMs(requestedAt: Date, now: Date): number {
+  return Math.max(0, requestedAt.getTime() + WATCH_LIMIT_MS - now.getTime());
 }
 
 /**

@@ -65,6 +65,8 @@ class FakeSmtp:
 
     def login(self, user: str, password: str) -> object:
         self.calls.append(f"login {user}")
+        # smtplib writes the name and password into its AUTH exchange as ASCII.
+        password.encode("ascii")
         if self.refuse_login:
             raise smtplib.SMTPAuthenticationError(535, b"5.7.8 Username and Password not accepted")
         return None
@@ -269,6 +271,22 @@ def test_a_refused_app_password_is_recorded_and_never_shown(
     assert step["error_code"] == "mailbox_password_refused"
 
 
+def test_a_password_with_a_hidden_non_ascii_character_is_a_refused_password(
+    imap_settings: Settings, tmp_path: Path
+) -> None:
+    client = sample_client()
+    path = written_summary(imap_settings, tmp_path, client)
+    account = SmtpAccount("smtp.gmail.com", 465, MAILBOX, "Gmail", "Google")
+    pasted = SecretStr("abcd\u00a0abcdabcdabcd")
+    mailer = SmtpMailer(account, pasted, connect=lambda *_: FakeSmtp(), sleep=lambda _: None)
+
+    with pytest.raises(MailboxPasswordError, match="Google refused the app password") as raised:
+        sender_for(imap_settings, client, mailer).send(path)
+
+    assert "abcd" not in raised.value.message
+    assert summary_step(client)["error_code"] == "mailbox_password_refused"
+
+
 def test_an_unreachable_server_is_tried_a_few_times_then_recorded(
     imap_settings: Settings, tmp_path: Path
 ) -> None:
@@ -335,6 +353,24 @@ def test_a_subject_without_the_prefix_sends_nothing(
         sender_for(imap_settings, client, mailer_on(server)).send(path)
 
     assert server.sent == []
+
+
+@pytest.mark.parametrize("subject", ["Your day\nBcc: a@b.example", "Your day\r", "Your\x00day"])
+def test_a_subject_with_a_line_break_or_control_character_sends_nothing(
+    imap_settings: Settings, tmp_path: Path, subject: str
+) -> None:
+    client = sample_client()
+    path = written_summary(imap_settings, tmp_path, client)
+    summary = SummaryEmail.model_validate_json(path.read_text(encoding="utf-8"))
+    tampered = summary.model_copy(update={"subject": summary.subject_prefix + subject})
+    path.write_text(tampered.model_dump_json(), encoding="utf-8")
+    server = FakeSmtp()
+
+    with pytest.raises(ValidationFailedError, match="subject"):
+        sender_for(imap_settings, client, mailer_on(server)).send(path)
+
+    assert server.calls == []
+    assert summary_step(client)["error_code"] == "validation_failed"
 
 
 def test_a_missing_file_is_recorded_as_failed(imap_settings: Settings, tmp_path: Path) -> None:

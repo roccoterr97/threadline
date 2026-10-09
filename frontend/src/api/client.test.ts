@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 import {
   DataUnavailableError,
+  NotAllowedError,
   NotSignedInError,
   RefusalReason,
   RefusedError,
@@ -26,6 +27,12 @@ describe('runQuery', () => {
     await expect(
       runQuery('test', schema, answer({ error: { message: 'no' }, status: 401 })),
     ).rejects.toBeInstanceOf(NotSignedInError);
+  });
+
+  it('raises a "not allowed" error on a 403, because the person is signed in', async () => {
+    const failure = runQuery('test', schema, answer({ error: { message: 'no' }, status: 403 }));
+    await expect(failure).rejects.toBeInstanceOf(NotAllowedError);
+    await expect(failure).rejects.not.toBeInstanceOf(NotSignedInError);
   });
 
   it('raises a "not signed in" error when the token has expired', async () => {
@@ -78,9 +85,15 @@ describe('runMutation', () => {
     await expect(runMutation('test', answer({}))).resolves.toBeUndefined();
   });
 
-  it('raises a "not signed in" error when the write was forbidden', async () => {
+  it('raises a "not allowed" error, not a "signed out" one, when the write was forbidden', async () => {
+    const failure = runMutation('test', answer({ error: { message: 'denied' }, status: 403 }));
+    await expect(failure).rejects.toBeInstanceOf(NotAllowedError);
+    await expect(failure).rejects.not.toBeInstanceOf(NotSignedInError);
+  });
+
+  it('raises a "not signed in" error when the write came without a valid session', async () => {
     await expect(
-      runMutation('test', answer({ error: { message: 'denied' }, status: 403 })),
+      runMutation('test', answer({ error: { message: 'no' }, status: 401 })),
     ).rejects.toBeInstanceOf(NotSignedInError);
   });
 

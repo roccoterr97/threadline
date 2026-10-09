@@ -76,6 +76,8 @@ class FakeImapServer:
     def login(self, user: str, password: str) -> Answer:
         """Accept only the right app password."""
         self.log.append(("LOGIN", user))
+        # imaplib writes the password into its command as ASCII.
+        password.encode("ascii")
         if password != self.password:
             message = "[AUTHENTICATIONFAILED] Invalid credentials (Failure)"
             raise imaplib.IMAP4.error(message)
@@ -110,6 +112,9 @@ class FakeImapServer:
     def uid(self, command: str, *args: str) -> Answer:
         """Answer SEARCH and FETCH; anything else is logged and refused."""
         self.log.append(("UID", command, *args))
+        for argument in args:
+            # imaplib writes every argument as ASCII and raises on anything else.
+            argument.encode("ascii")
         self._maybe_drop()
         if not self._open:
             message = f"command {command} illegal in state AUTH"

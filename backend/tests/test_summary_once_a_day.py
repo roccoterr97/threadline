@@ -19,7 +19,7 @@ from tracker.cli.main import build_cli
 from tracker.domain.enums import RunStatus, RunStep, RunTrigger
 from tracker.domain.models import RunLog
 from tracker.repositories import build_repositories
-from tracker.services.runs.run_recorder import RunRecorder
+from tracker.services.runs.run_recorder import RunRecorder, StepOutcome, StepResult
 from tracker.services.summary.builder import SummaryBuilder
 from tracker.services.summary.once_a_day import OnceADay
 from tracker.services.summary.sender import SentSummary, SkippedSummary, SummarySender
@@ -125,15 +125,15 @@ def test_a_skipped_summary_leaves_the_run_clean(imap_settings: Settings, tmp_pat
     path = written_summary(imap_settings, tmp_path, client)
     clock = FixedClock(NOW)
     _sender(imap_settings, client, FakeSmtp(), clock).send(path, second)
+    recorder = RunRecorder(build_repositories(as_client(client)), clock)
+    recorder.record_step(second, StepOutcome(RunStep.COLLECT_EMAIL, StepResult.SUCCESS))
 
-    finished = RunRecorder(build_repositories(as_client(client)), clock).finish(second)
+    finished = recorder.finish(second)
 
     assert finished.status is RunStatus.SUCCESS
 
 
-def test_send_again_sends_a_second_copy_on_purpose(
-    imap_settings: Settings, tmp_path: Path
-) -> None:
+def test_send_again_sends_a_second_copy_on_purpose(imap_settings: Settings, tmp_path: Path) -> None:
     client = sample_client()
     _summary_of(client, TODAYS_RUN, "sent")
     second = _open_run(client, NOW)

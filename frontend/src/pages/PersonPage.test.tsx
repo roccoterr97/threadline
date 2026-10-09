@@ -6,8 +6,9 @@ import { clearOverride, fetchOverride, markPersonAsNoise, saveOverride } from '.
 import { peopleQueryKey } from '../api/people';
 import { fetchPerson, fetchPersonConversations } from '../api/person';
 import { fetchStatusLabels } from '../api/statusLabels';
+import { TIMELINE_MESSAGE_LIMIT } from '../constants/dashboard';
 import * as copy from '../copy/en';
-import { DataUnavailableError, NotSignedInError } from '../lib/errors';
+import { DataUnavailableError, NotAllowedError, NotSignedInError } from '../lib/errors';
 import { peopleListState } from '../lib/peopleListAddress';
 import { expectNoAxeViolations } from '../test/axe';
 import {
@@ -298,6 +299,13 @@ describe('PersonPage — corrections', () => {
     );
   });
 
+  it('explains a forbidden read as a matter of permission, not of a lost session', async () => {
+    fetchPersonMock.mockRejectedValue(new NotAllowedError('person.get'));
+    renderPerson();
+    expect(await screen.findByText(copy.states.notAllowed)).toBeInTheDocument();
+    expect(screen.queryByText(copy.states.notSignedIn)).not.toBeInTheDocument();
+  });
+
   it('says so plainly when the save was refused because the sign-in ran out', async () => {
     saveOverrideMock.mockRejectedValue(new NotSignedInError('override.save'));
 
@@ -309,6 +317,17 @@ describe('PersonPage — corrections', () => {
     const banner = await screen.findByRole('alert');
     expect(banner).toHaveTextContent(copy.override.failedSignedOut);
     expect(banner).toHaveFocus();
+  });
+
+  it('says the account is not allowed, rather than signed out, when the save was forbidden', async () => {
+    saveOverrideMock.mockRejectedValue(new NotAllowedError('override.save'));
+
+    const { user } = renderPerson();
+    await openCorrection(user);
+    await pickStatus(user);
+    await user.click(screen.getByRole('button', { name: copy.override.save }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(copy.override.failedNotAllowed);
   });
 
   it('puts the old status back and explains itself when the save fails', async () => {
@@ -608,5 +627,37 @@ describe('PersonPage — accessibility', () => {
     await openCorrection(user);
     await user.click(await screen.findByRole('button', { name: copy.person.showMore }));
     await expectNoAxeViolations(container);
+  });
+});
+
+describe('PersonPage — a very long conversation', () => {
+  const longConversation = () => {
+    const [first] = sampleConversations;
+    const template = first!.messages[0]!;
+    return [
+      {
+        ...first!,
+        messages: Array.from({ length: TIMELINE_MESSAGE_LIMIT }, (_, index) => ({
+          ...template,
+          id: `long-${String(index)}`,
+        })),
+      },
+    ];
+  };
+
+  it('says that older messages may be left out', async () => {
+    fetchConversationsMock.mockResolvedValue(longConversation());
+    renderPerson();
+    expect(
+      await screen.findByText(copy.person.timelineCut(TIMELINE_MESSAGE_LIMIT)),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing when the whole history is shown', async () => {
+    renderPerson();
+    await screen.findByRole('heading', { level: 1, name: PERSON.full_name });
+    expect(
+      screen.queryByText(copy.person.timelineCut(TIMELINE_MESSAGE_LIMIT)),
+    ).not.toBeInTheDocument();
   });
 });

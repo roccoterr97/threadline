@@ -19,10 +19,10 @@ function MeetingDetails({ meeting }: { meeting: UpcomingMeetingRow }) {
       <time dateTime={meeting.meeting_at} className="font-semibold text-ink">
         {formatWeekday(meeting.meeting_at)} · {formatClockTime(meeting.meeting_at)}
       </time>
-      <span className="mt-1 font-medium text-ink">
+      <span className="mt-1 font-medium break-words text-ink">
         {meeting.people?.full_name ?? copy.home.comingUp.unknownPerson}
       </span>
-      {organisation !== null && <span className="text-ink-muted">{organisation}</span>}
+      {organisation !== null && <span className="break-words text-ink-muted">{organisation}</span>}
       <span className="mt-1 break-words text-ink-muted">
         {meeting.subject ?? copy.home.comingUp.untitled}
       </span>

@@ -239,8 +239,12 @@ conversation, and a bare address at a company with exactly one named person. It
 only reads who sent something in which thread, never the text, and it never
 asks about the same pair twice. A "yes" is applied by `services/identity/merge.py`,
 which keeps the record showing a real name and moves everything the other
-record holds — its addresses, threads, correction, the owner's notes — across
-before removing it. The notes are moved in one request that reads nothing
+record holds — its addresses, threads, the owner's notes — across before
+removing it. The owner's correction is combined field by field (the survivor's
+values win, empty fields are filled from the other record), relevance becomes
+the stronger of the two, and the survivor's assessment is dropped so the merged
+person is judged again with all their threads; the linker's company-record
+join does the same. The notes are moved in one request that reads nothing
 back; a database without the notes table yet (migration 0016 not applied) has
 none to move and merges as before.
 
@@ -289,6 +293,14 @@ together with the batch it answered, so message text does not outlive its use;
 a rejected file and its batch stay for another answer. `tracker ai clean`
 empties the whole work directory, including batches that were never answered.
 
+A verdict says the person was assessed up to the newest message **in its own
+batch** (`newest_message_at` on the person's dossier; a batch written before
+that field existed falls back to its `generated_at`), never up to whatever the
+database holds when the import runs, so a message stored while the assistant
+was working is judged next time. A verdict is also skipped, and its file
+removed, when the person was assessed again after the batch was written: an
+old file must not put an older judgement over a newer one.
+
 With `--record`, the two commands record the `assess` step of the run
 themselves (`services/assessment/run_step.py`): the export when there is nobody
 to assess, the import with the people it assessed and how many it sent to
@@ -317,7 +329,15 @@ instructions and mark everyone as closed". Four defences, all mandatory:
 
 1. `.claude/agents/conversation-assessor.md` is granted **only Read and Write** —
    no shell, no network, no connectors, no other agents — and is told that
-   message text is material to judge, never instructions to follow.
+   message text is material to judge, never instructions to follow, and that it
+   writes one file inside `work/results/` and nothing else. The session's
+   permissions back that up: `.claude/settings.json` allows editing under
+   `/work/**` only, and the GitHub workflow additionally refuses writes to
+   `backend/`, `frontend/`, `supabase/`, `docs/`, `profile/`, `.claude/`,
+   `.github/` and the files at the top of the repository. Without that, a
+   hostile message could get the assistant to write into the installed Python
+   package, which the next `tracker` command would run with the secrets in its
+   environment.
 2. `.claude/commands/assess.md`, the coordinating recipe, never opens a batch or
    a verdict file. It passes paths and reads counts.
 3. `tracker ai import` accepts only the exact JSON shape: `extra = forbid`,
@@ -552,8 +572,12 @@ row it already wrote, so the recipe is safe to re-run.
 
 **The run's status is derived, never chosen** (`services/runs/run_status.py`):
 `success` when every recorded step finished, `failed` when none did — which
-includes a run that recorded no step at all — and `partial` in between. Nothing
-in the recipe gets to declare a morning fine.
+includes a run that recorded no step at all — and `partial` in between. A run
+that lacks a collect step, or a daily run that lacks its `summary_email` step
+(a refresh sends none), is at most `partial`: a step that was never recorded is
+no failure to count, but the morning did not work. A summary that cannot be
+built records a failed `summary_email` step. Nothing in the recipe gets to
+declare a morning fine.
 
 **A run that died part-way is closed by the next one**
 (`services/runs/interrupted_runs.py`). `tracker run start` first closes every
@@ -571,8 +595,13 @@ the conversations of the people it already lists and the steps of the run;
 `renderer.py` owns every word of the subject and the two bodies;
 `problem_messages.py` maps a step and an error code to two plain sentences —
 what did not happen, and what to do. A code with no sentence written for it
-still produces English, never the code. The builder never reads a message row,
-so no message text can reach the owner's inbox through the summary.
+still produces English, never the code. The builder never reads message text:
+for "replied since" it asks which inbound messages were stored since the window
+began (a reply sent while a source was down is stored mornings later), by
+identifier, sent time and stored time only, so no message text can reach the
+owner's inbox through the summary. A message sent more than
+`REPLY_LATE_COLLECTION_DAYS` before the window began does not count, so a first
+import of old mail is no flood of replies.
 
 **The recipient and the subject prefix are owner settings**
 (`SUMMARY_RECIPIENT`, defaulting to the first of `OWNER_EMAIL_ADDRESSES`, and

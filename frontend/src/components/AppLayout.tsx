@@ -25,8 +25,8 @@ interface AppLayoutProps {
 /**
  * The frame every signed-in screen sits inside: header, navigation, content.
  *
- * From tablet width up the menu sits in the header. On a phone the header
- * keeps only the name, "Refresh" and "Sign out", the menu moves to a bar at the bottom,
+ * From laptop width up the menu sits in the header. On a phone or a tablet the
+ * header keeps only the name, "Refresh" and "Sign out", the menu moves to a bar at the bottom,
  * and the content gets extra room below so nothing hides behind that bar.
  * What "Refresh now" is doing shows on one line under the header.
  */
@@ -54,7 +54,7 @@ export function AppLayout({ banner }: AppLayoutProps) {
         <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
           <Link
             to="/"
-            className="flex min-h-11 min-w-0 items-center gap-2 rounded-token-md text-base font-semibold text-ink"
+            className="flex min-h-11 min-w-11 items-center gap-2 rounded-token-md text-base font-semibold text-ink"
           >
             <Logo />
             {/* The narrowest phones keep only the logo; the name is still read out. */}
@@ -84,7 +84,7 @@ export function AppLayout({ banner }: AppLayoutProps) {
 
       <main
         id={MAIN_ID}
-        className="mx-auto max-w-6xl px-4 pt-6 pb-[calc(5.5rem_+_env(safe-area-inset-bottom))] md:pb-6"
+        className="mx-auto max-w-6xl px-4 pt-6 pb-[calc(5.5rem_+_env(safe-area-inset-bottom))] lg:pb-6"
       >
         <Outlet />
       </main>

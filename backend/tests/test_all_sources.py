@@ -36,7 +36,7 @@ from tracker.services.collection.models import CollectionReport, SaveStep
 from tracker.services.runs.run_recorder import RunRecorder
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
-from tracker.shared.errors import DatabaseUnavailableError, SourceAuthError
+from tracker.shared.errors import DatabaseUnavailableError, SourceAuthError, SourceFailedError
 
 EVENTS = [
     graph_event("e-intro"),
@@ -55,12 +55,17 @@ def fake_source(
     *,
     read_fails: bool = False,
     save_fails: bool = False,
+    read_crashes: bool = False,
+    save_crashes: bool = False,
     not_configured: bool = False,
 ) -> Source:
     """A source that notes when it is read and stored instead of doing either."""
 
     def save() -> CollectionReport:
         diary.append(f"{channel.value} stored")
+        if save_crashes:
+            message = "ordinal not in range"
+            raise KeyError(message)
         if save_fails:
             message = "the database did not answer"
             raise DatabaseUnavailableError(message)
@@ -75,6 +80,9 @@ def fake_source(
         diary.append(f"{channel.value} read started")
         await asyncio.sleep(0)
         diary.append(f"{channel.value} read finished")
+        if read_crashes:
+            message = "ordinal not in range"
+            raise UnicodeEncodeError("ascii", "é", 0, 1, message)
         if read_fails:
             message = "the key was refused"
             raise SourceAuthError(message)
@@ -137,6 +145,32 @@ def test_a_source_that_cannot_be_stored_never_stops_the_next_one() -> None:
 
     assert isinstance(email.failure, DatabaseUnavailableError)
     assert calendar.succeeded
+
+
+def test_a_source_that_crashes_while_reading_is_a_coded_failure_and_the_others_carry_on() -> None:
+    diary: list[str] = []
+
+    linkedin, email, calendar = AllSourcesCollector(
+        three_sources(diary, read_crashes=True)
+    ).collect()
+
+    assert isinstance(email.failure, SourceFailedError)
+    assert email.failure.code == "source_failed"
+    assert not email.succeeded
+    assert linkedin.succeeded
+    assert calendar.succeeded
+
+
+def test_a_source_that_crashes_while_storing_is_a_coded_failure_and_the_next_one_is_stored() -> (
+    None
+):
+    diary: list[str] = []
+
+    _, email, calendar = AllSourcesCollector(three_sources(diary, save_crashes=True)).collect()
+
+    assert isinstance(email.failure, SourceFailedError)
+    assert calendar.succeeded
+    assert "calendar stored" in diary
 
 
 def test_a_source_that_is_not_set_up_is_neither_a_success_nor_a_failure() -> None:

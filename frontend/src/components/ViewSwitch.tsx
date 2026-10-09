@@ -15,13 +15,13 @@ function linkClass({ isActive }: { isActive: boolean }): string {
 /**
  * The phone's way between the People page and the organisations page. The
  * bottom bar has room for four pages, so the two views of the same list
- * share its first place and this switch sits at the top of both. From tablet
+ * share its first place and this switch sits at the top of both. From laptop
  * width up the header menu lists both pages and the switch is not drawn.
  * The current view is marked as the current page, never by colour alone.
  */
 export function ViewSwitch() {
   return (
-    <nav aria-label={copy.organisations.switchLabel} className="flex gap-2 md:hidden">
+    <nav aria-label={copy.organisations.switchLabel} className="flex gap-2 lg:hidden">
       <NavLink to={PEOPLE_PATH} end className={linkClass}>
         {copy.nav.home}
       </NavLink>

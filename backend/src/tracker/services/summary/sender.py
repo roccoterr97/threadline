@@ -8,11 +8,12 @@ the file was changed after Python wrote it, and nothing is sent.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Protocol
+from typing import Final, Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -30,6 +31,10 @@ from tracker.shared.errors import ConfigurationError, TrackerError, ValidationFa
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
+
+
+#: Unicode categories of control characters and line and paragraph separators.
+_NOT_TEXT_CATEGORIES: Final[frozenset[str]] = frozenset({"Cc", "Zl", "Zp"})
 
 
 class Mailer(Protocol):
@@ -108,6 +113,11 @@ def read_summary(path: Path) -> SummaryEmail:
     except ValidationError as error:
         message = f"{path} is not a summary built by 'tracker summary build'"
         raise ValidationFailedError(message) from error
+
+
+def _has_control_character(text: str) -> bool:
+    """Whether a header value holds a line break or another character that is not text."""
+    return any(unicodedata.category(character) in _NOT_TEXT_CATEGORIES for character in text)
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +239,9 @@ class SummarySender:
             raise ConfigurationError(message)
         if summary.recipient != settings.summary_recipient_address:
             message = "the summary file names a different recipient than your settings"
+            raise ValidationFailedError(message)
+        if _has_control_character(summary.subject):
+            message = "the summary subject holds a line break or another control character"
             raise ValidationFailedError(message)
         prefix = settings.summary_subject_prefix
         if summary.subject_prefix != prefix or not summary.subject.startswith(prefix):

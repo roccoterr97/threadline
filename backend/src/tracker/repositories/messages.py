@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from itertools import batched
 from typing import ClassVar, Final
 from uuid import UUID
 
 from supabase import Client
 
+from tracker.domain.enums import Direction
 from tracker.domain.models import Message
 from tracker.repositories.base import ALL_COLUMNS, SupabaseRepository
 from tracker.shared.constants.collection import DATABASE_BATCH_SIZE
@@ -19,6 +21,18 @@ CONVERSATION_ID_COLUMN: Final[str] = "conversation_id"
 
 #: Who sent a message; read on its own when only the participants matter.
 SENDER_COLUMN: Final[str] = "sender_identifier"
+
+
+#: Who sent a message, relative to the owner.
+DIRECTION_COLUMN: Final[str] = "direction"
+
+#: When a message was stored, which the database fills in.
+CREATED_AT_COLUMN: Final[str] = "created_at"
+
+#: Everything about a message except its text.
+_STORED_MESSAGE_COLUMNS: Final[str] = (
+    f"id,{CONVERSATION_ID_COLUMN},source_message_id,{DIRECTION_COLUMN},sent_at,{CREATED_AT_COLUMN}"
+)
 
 
 class MessageRepository(SupabaseRepository[Message]):
@@ -129,6 +143,35 @@ class MessageRepository(SupabaseRepository[Message]):
             found.extend(
                 (UUID(str(row[CONVERSATION_ID_COLUMN])), str(row[SENDER_COLUMN])) for row in rows
             )
+        return found
+
+    def list_inbound_stored_since(
+        self, conversation_ids: Sequence[UUID], since: datetime
+    ) -> list[Message]:
+        """Find the messages from other people that were stored from a moment on.
+
+        This looks at when a message was stored, not when it was sent: a reply
+        sent while a source was down is stored mornings later. No body is read.
+
+        Args:
+            conversation_ids: The threads to look in. An empty sequence is a no-op.
+            since: The moment from which a message counts as newly stored.
+
+        Returns:
+            The inbound messages stored at or after ``since``, without their text.
+        """
+        found: list[Message] = []
+        for batch in batched(conversation_ids, DATABASE_BATCH_SIZE):
+            rows = self._select_every(
+                lambda query, values=[str(item) for item in batch]: (
+                    query.in_(CONVERSATION_ID_COLUMN, values)
+                    .eq(DIRECTION_COLUMN, Direction.INBOUND.value)
+                    .gte(CREATED_AT_COLUMN, since.isoformat())
+                ),
+                "list_inbound_stored_since",
+                columns=_STORED_MESSAGE_COLUMNS,
+            )
+            found.extend(self._to_models(rows))
         return found
 
     def list_for_conversations(self, conversation_ids: Sequence[UUID]) -> list[Message]:

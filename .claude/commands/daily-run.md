@@ -165,7 +165,8 @@ and `channel: calendar`. Under each you see one of four things:
   `source_auth_failed` (the key or sign-in was refused),
   `mailbox_password_refused` (a Gmail or other IMAP mailbox refused its app
   password), `source_unavailable` (the other service did not answer),
-  `database_unavailable`, `configuration_invalid` and `validation_failed`.
+  `database_unavailable`, `configuration_invalid`, `validation_failed` and
+  `source_failed` (that source stopped on something unexpected).
 
 It ends with `sources collected: N` — how many sources were read and stored,
 in full or in part — and `steps recorded`.
@@ -347,7 +348,7 @@ cd backend && uv run tracker run finish --clean --refresh
 ```
 
 It prints `run <identifier> finished · status <status>`, where the status is
-`success` (everything worked), `partial` (something failed, the rest worked) or
+`success` (everything worked), `partial` (something failed or never ran, the rest worked) or
 `failed` (nothing worked). You do not choose it: it is derived from the steps
 that were recorded.
 

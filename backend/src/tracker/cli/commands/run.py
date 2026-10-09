@@ -251,7 +251,11 @@ def build_summary(
     if earlier is not None:
         typer.echo(skipped_line(earlier))
         return
-    email = builder.build_for(target)
+    try:
+        email = builder.build_for(target)
+    except TrackerError as error:
+        once.record_build_failure(target, error.code)
+        raise
     _write(email, out)
     typer.echo(str(out))
     typer.echo(f"to: {email.recipient}")

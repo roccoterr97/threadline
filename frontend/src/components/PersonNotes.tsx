@@ -8,6 +8,7 @@ import { ErrorState } from './ErrorState';
 import { LoadingState } from './LoadingState';
 import { NoteForm } from './NoteForm';
 import { NoteRow } from './NoteRow';
+import { RefreshFailedNote } from './RefreshFailedNote';
 import { SaveFeedback } from './SaveFeedback';
 
 interface PersonNotesProps {
@@ -56,6 +57,8 @@ export function PersonNotes({ personId }: PersonNotesProps) {
       </div>
 
       {success !== null && <SaveFeedback outcome={{ tone: 'success', text: success.text }} />}
+
+      <RefreshFailedNote show={notes.refreshFailed} />
 
       {notes.isPending && <LoadingState label={copy.states.loading} />}
 

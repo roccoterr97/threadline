@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { upcomingMeetingsQueryKey } from '../api/meetings';
 import { fetchPeople, peopleQueryKey } from '../api/people';
@@ -6,9 +6,11 @@ import { answerReviewItem, fetchOpenReviewItems, reviewQueryKey } from '../api/r
 import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
+import { RefreshFailedNote } from '../components/RefreshFailedNote';
 import { ReviewCard, type ReviewPerson } from '../components/ReviewCard';
 import * as copy from '../copy/en';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { useReadQuery } from '../hooks/useReadQuery';
 import { useClock } from '../lib/ClockContext';
 import type { PeopleOverviewRow, ReviewAnswer, ReviewItemRow } from '../types/database';
 
@@ -70,9 +72,9 @@ export function ReviewPage() {
   const [focusAfterAnswer, setFocusAfterAnswer] = useState<FocusAfterAnswer | null>(null);
   const listDone = useRef<HTMLDivElement>(null);
 
-  const items = useQuery({ queryKey: reviewQueryKey, queryFn: fetchOpenReviewItems });
+  const items = useReadQuery({ queryKey: reviewQueryKey, queryFn: fetchOpenReviewItems });
   // Only for the links to each person; the questions show fine without it.
-  const people = useQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
+  const people = useReadQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
 
   const answer = useMutation<void, Error, AnswerInput, ReviewItemRow | undefined>({
     mutationKey: answerMutationKey,
@@ -139,6 +141,8 @@ export function ReviewPage() {
           )}
         </div>
       </div>
+
+      <RefreshFailedNote show={items.refreshFailed || people.refreshFailed} />
 
       {items.isPending && <LoadingState label={copy.states.loadingReview} />}
 

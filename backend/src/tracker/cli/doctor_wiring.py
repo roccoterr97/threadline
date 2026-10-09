@@ -74,13 +74,13 @@ from tracker.shared.constants.github import WORKFLOW_FILE
 from tracker.shared.constants.mailbox import IMAP_PRESETS, DeliveryRoute
 from tracker.shared.constants.retry import HEALTHCHECK_ATTEMPTS, HEALTHCHECK_DELAY_SECONDS
 from tracker.shared.constants.setup import (
-    CONFIGURATION_FIX,
     MIGRATIONS_DIRECTORY,
     SECRET_PROBE_NAME,
     SECRET_PROBE_VALUE,
     SUPABASE_SIGN_IN_PAGE,
 )
 from tracker.shared.errors import ConfigurationError, TrackerError
+from tracker.shared.runtime import configuration_fix
 
 CONFIGURATION: Final[str] = "Configuration"
 
@@ -166,7 +166,7 @@ def _configuration_failed(error: TrackerError) -> DoctorReport:
     detail = error.message.removeprefix("invalid configuration: ").replace(
         f" ({_PYDANTIC_MISSING})", " (missing)"
     )
-    first = problem(CONFIGURATION, f"missing or wrong: {detail}", CONFIGURATION_FIX)
+    first = problem(CONFIGURATION, f"missing or wrong: {detail}", configuration_fix())
     rest = (skipped(name, "needs the configuration first") for name in DEPENDENT_CHECKS)
     return DoctorReport((first, *rest))
 

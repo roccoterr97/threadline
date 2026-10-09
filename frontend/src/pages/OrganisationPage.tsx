@@ -1,22 +1,23 @@
-import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { fetchPeople, peopleQueryKey } from '../api/people';
 import { EmptyState } from '../components/EmptyState';
+import { TAP_LINK } from '../components/linkStyles';
 import { ErrorState } from '../components/ErrorState';
 import { HiddenPersonNotice } from '../components/HiddenPersonNotice';
 import { LoadingState } from '../components/LoadingState';
 import { OrganisationStateBadges } from '../components/OrganisationStateBadges';
+import { PeopleCutNotice } from '../components/PeopleCutNotice';
 import { PeopleTable } from '../components/PeopleTable';
+import { RefreshFailedNote } from '../components/RefreshFailedNote';
 import * as copy from '../copy/en';
 import { findOrganisation, type OrganisationSummary } from '../domain/organisations';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { useReadQuery } from '../hooks/useReadQuery';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
 import { formatRelative } from '../lib/format';
 import { organisationsListAddress } from '../lib/organisationAddress';
 import type { Clock } from '../lib/clock';
-
-const BACK_LINK = 'self-start text-accent underline underline-offset-2';
 
 /** The name, how many people are there, and the picture of where things stand. */
 function OrganisationHeader({
@@ -29,7 +30,7 @@ function OrganisationHeader({
   const lastContact = formatRelative(organisation.lastContactAt, clock);
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-ink">
+      <h1 className="text-2xl font-semibold break-words text-ink">
         {organisation.name ?? copy.organisations.noOrganisation}
       </h1>
       <p className="mt-1 text-ink-muted">
@@ -59,7 +60,7 @@ export function OrganisationPage() {
   const { organisationName = null } = useParams<{ organisationName: string }>();
   const listAddress = organisationsListAddress(useLocation().state);
 
-  const people = useQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
+  const people = useReadQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
   const vocabulary = useVocabulary();
   const organisation = people.isSuccess ? findOrganisation(people.data, organisationName) : null;
   usePageTitle(
@@ -69,7 +70,7 @@ export function OrganisationPage() {
   );
 
   const backLink = (
-    <Link to={listAddress} className={BACK_LINK}>
+    <Link to={listAddress} className={`self-start ${TAP_LINK}`}>
       {copy.organisations.backToOrganisations}
     </Link>
   );
@@ -111,6 +112,8 @@ export function OrganisationPage() {
       {backLink}
       <OrganisationHeader organisation={organisation} clock={clock} />
       <HiddenPersonNotice />
+      <RefreshFailedNote show={people.refreshFailed || vocabulary.refreshFailed} />
+      <PeopleCutNotice shown={people.data.length} />
       <PeopleTable people={organisation.people} clock={clock} vocabulary={vocabulary.vocabulary} />
     </div>
   );

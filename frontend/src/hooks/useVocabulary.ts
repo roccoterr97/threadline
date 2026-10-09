@@ -6,7 +6,7 @@ import { useStatusLabels } from './useStatusLabels';
 export type VocabularyState =
   | { status: 'pending' }
   | { status: 'error'; error: Error; retry: () => void }
-  | { status: 'ready'; vocabulary: Vocabulary };
+  | { status: 'ready'; vocabulary: Vocabulary; refreshFailed: boolean };
 
 /**
  * The categories and status names together, as one state.
@@ -32,5 +32,6 @@ export function useVocabulary(): VocabularyState {
   return {
     status: 'ready',
     vocabulary: { categories: categories.data, statusLabels: statusLabels.labels },
+    refreshFailed: categories.refreshFailed,
   };
 }

@@ -417,6 +417,29 @@ def test_a_whole_thread_and_its_bodies_can_be_read(gmail: bool) -> None:
     assert body == "Made-up body text."
 
 
+def test_a_non_ascii_message_identifier_is_never_sent_to_the_server() -> None:
+    hostile = StoredMessage(
+        1,
+        mail(
+            sender=ELODIE,
+            subject="Re: Hello",
+            sent=at(16),
+            message_id="<c2@startup.example>",
+        ).replace(b"Message-ID:", "References: <\u00e9@evil.example>\r\nMessage-ID:".encode()),
+        at(16),
+    )
+    server = FakeImapServer(folders={"INBOX": [hostile]}, gmail=False)
+
+    async def run() -> list[MailMessage]:
+        async with ImapMailbox(session_on(server)) as mailbox:
+            recent = await mailbox.list_messages_since(SINCE)
+            return await mailbox.list_thread(recent[0].conversation_id)
+
+    whole = asyncio.run(run())
+
+    assert [message.subject for message in whole] == ["Re: Hello"]
+
+
 #: Seconds a watched command takes, so two commands sent together would overlap.
 _COMMAND_SECONDS = 0.002
 
@@ -742,6 +765,15 @@ def test_a_refused_app_password_is_a_password_error_and_is_not_retried() -> None
 
     with pytest.raises(MailboxPasswordError, match="Google refused the app password"):
         session_on(server, password="wrong").open()
+
+    assert server.connections == 1
+
+
+def test_a_password_with_a_hidden_non_ascii_character_is_a_password_error() -> None:
+    server = gmail_server()
+
+    with pytest.raises(MailboxPasswordError, match="Google refused the app password"):
+        session_on(server, password="abcd\u00a0efgh").open()
 
     assert server.connections == 1
 

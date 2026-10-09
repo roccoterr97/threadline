@@ -16,7 +16,7 @@ export function DemoBanner() {
         href={SETUP_GUIDE_URL}
         target="_blank"
         rel="noreferrer"
-        className="whitespace-nowrap underline underline-offset-2"
+        className="relative whitespace-nowrap underline underline-offset-2 after:absolute after:-inset-x-2 after:-inset-y-3.5 after:content-['']"
       >
         {copy.demo.setupLink}
       </a>

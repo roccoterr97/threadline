@@ -5,7 +5,7 @@ import {
   REFRESH_RUN_MATCH_SLACK_MS,
 } from '../constants/dashboard';
 import type { RunLogRow, RunStatus } from '../types/database';
-import { nextCheckDelay, refreshIsBusy, refreshProgress, refusalStatus, watchStart } from './refresh';
+import { nextCheckDelay, refreshIsBusy, refreshProgress, refusalStatus, watchStart, watchTimeLeftMs } from './refresh';
 
 const REQUESTED = new Date('2026-09-29T10:00:00Z');
 
@@ -50,6 +50,15 @@ describe('refreshProgress', () => {
 
   it('still reports a finish that arrives after the watch limit', () => {
     expect(refreshProgress(run('success'), REQUESTED, minutesLater(20)).kind).toBe('finished');
+  });
+});
+
+describe('watchTimeLeftMs', () => {
+  it('counts down from fifteen minutes and stops at zero', () => {
+    expect(watchTimeLeftMs(REQUESTED, REQUESTED)).toBe(15 * 60_000);
+    expect(watchTimeLeftMs(REQUESTED, minutesLater(10))).toBe(5 * 60_000);
+    expect(watchTimeLeftMs(REQUESTED, minutesLater(15))).toBe(0);
+    expect(watchTimeLeftMs(REQUESTED, minutesLater(40))).toBe(0);
   });
 });
 

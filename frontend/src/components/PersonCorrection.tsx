@@ -1,7 +1,7 @@
 import * as copy from '../copy/en';
 import type { Vocabulary } from '../domain/vocabulary';
 import { usePersonOverride } from '../hooks/usePersonOverride';
-import { NotSignedInError } from '../lib/errors';
+import { NotAllowedError, NotSignedInError } from '../lib/errors';
 import { Icon } from './Icon';
 import { LoadingState } from './LoadingState';
 import { OverrideForm } from './OverrideForm';
@@ -18,7 +18,9 @@ interface MutationOutcome {
 
 /** A save refused for an expired sign-in needs a different next step from any other failure. */
 function saveFailureText(error: Error | null): string {
-  return error instanceof NotSignedInError ? copy.override.failedSignedOut : copy.override.failed;
+  if (error instanceof NotSignedInError) return copy.override.failedSignedOut;
+  if (error instanceof NotAllowedError) return copy.override.failedNotAllowed;
+  return copy.override.failed;
 }
 
 function saveFeedback(save: MutationOutcome): SaveOutcome | null {

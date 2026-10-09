@@ -1,4 +1,3 @@
-import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { fetchPeople, peopleQueryKey } from '../api/people';
 import { Button } from '../components/Button';
@@ -7,6 +6,8 @@ import { ErrorState } from '../components/ErrorState';
 import { LoadingState } from '../components/LoadingState';
 import { OrganisationFilters } from '../components/OrganisationFilters';
 import { OrganisationsTable } from '../components/OrganisationsTable';
+import { PeopleCutNotice } from '../components/PeopleCutNotice';
+import { RefreshFailedNote } from '../components/RefreshFailedNote';
 import { ViewSwitch } from '../components/ViewSwitch';
 import * as copy from '../copy/en';
 import { categoriesInUse } from '../domain/categories';
@@ -18,6 +19,7 @@ import {
   type OrganisationsView,
 } from '../domain/organisations';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { useReadQuery } from '../hooks/useReadQuery';
 import { useVocabulary } from '../hooks/useVocabulary';
 import { useClock } from '../lib/ClockContext';
 
@@ -32,7 +34,7 @@ export function OrganisationsPage() {
   const clock = useClock();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const people = useQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
+  const people = useReadQuery({ queryKey: peopleQueryKey, queryFn: fetchPeople });
   const vocabularyState = useVocabulary();
 
   const allPeople = people.data ?? [];
@@ -40,6 +42,9 @@ export function OrganisationsPage() {
   // Until the categories are known no `type` in the address can be trusted, so it reads as "all".
   const typeOptions = vocabulary === null ? [] : categoriesInUse(vocabulary.categories, allPeople);
   const view = readOrganisationsView(searchParams, typeOptions.map((category) => category.key));
+  const refreshFailed =
+    people.refreshFailed ||
+    (vocabularyState.status === 'ready' && vocabularyState.refreshFailed);
   const ready = people.isSuccess && vocabulary !== null;
   const failed = people.isError || vocabularyState.status === 'error';
   const organisations = applyOrganisationsView(allPeople, view);
@@ -56,6 +61,10 @@ export function OrganisationsPage() {
       </div>
 
       <ViewSwitch />
+
+      <RefreshFailedNote show={refreshFailed} />
+
+      <PeopleCutNotice shown={allPeople.length} />
 
       {vocabulary !== null && (
         <div className="flex flex-col gap-2">

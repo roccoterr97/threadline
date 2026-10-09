@@ -15,8 +15,18 @@ export const QUERY_STALE_TIME_MS = 60_000;
 /** Failed reads are retried this many times before the error state shows. */
 export const QUERY_RETRY_ATTEMPTS = 2;
 
-/** Upper bound on the people list, so one query can never grow unbounded. */
+/**
+ * How many people one request reads. Keep it at or below the data API's own
+ * row cap (1,000 by default on Supabase): a page cut short by that cap would
+ * look like the last page.
+ */
 export const PEOPLE_PAGE_SIZE = 500;
+
+/**
+ * Upper bound on the people list, so reading it can never grow unbounded. A
+ * list that reaches it is shown with a notice that older people are missing.
+ */
+export const PEOPLE_MAX_ROWS = 5_000;
 
 /** Upper bound on the messages shown in one person's timeline. */
 export const TIMELINE_MESSAGE_LIMIT = 500;

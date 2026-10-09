@@ -157,6 +157,8 @@ export const person = {
   detailsTitle: 'Where this stands',
   stateGroupLabel: 'Where this stands now',
   timelineTitle: 'Every message',
+  timelineCut: (limit: number) =>
+    `A very long conversation is shown from its newest ${limit.toLocaleString('en')} messages. Older ones may be left out.`,
   messageCountLabel: 'Messages saved',
   timelineEmpty: 'No messages have been saved for this person yet.',
   showMore: 'Show more',
@@ -208,6 +210,7 @@ export const override = {
   failed: 'We could not save your correction, so we put the old values back. Please try again.',
   failedSignedOut:
     'You have been signed out, so your correction was not saved. Sign in again and repeat it.',
+  failedNotAllowed: 'This account is not allowed to make changes here, so nothing was saved.',
   clearFailed: 'We could not clear your correction. Please try again.',
 } as const;
 
@@ -249,6 +252,7 @@ export const notes = {
     save: 'We could not save your changes. Please try again.',
     remove: 'We could not delete the note. Please try again.',
     signedOut: 'You have been signed out, so nothing was saved. Sign in again and repeat it.',
+    notAllowed: 'This account is not allowed to make changes here, so nothing was saved.',
   },
   notSetUp:
     "Notes are not switched on in your database yet. Run 'uv run tracker setup database' in your copy of Threadline, then reload this page.",
@@ -321,6 +325,7 @@ export const categorySettings = {
   failed: {
     generic: 'We could not save that change. Please try again.',
     signedOut: 'You have been signed out, so nothing was saved. Sign in again and repeat it.',
+    notAllowed: 'This account is not allowed to make changes here, so nothing was saved.',
     breaksRule:
       'That change was turned down: at most eight categories can be in use, and “Not known” cannot be changed. Nothing was saved.',
     duplicate: 'There is already a category like that. Reload the page to see it.',
@@ -486,7 +491,12 @@ export const states = {
   errorBody:
     'This usually means the connection dropped. Check that you are online and try again.',
   retry: 'Try again',
+  refreshFailed: "Couldn't update just now. Showing what was loaded earlier.",
+  peopleCut: (shown: number) =>
+    `Only the ${shown.toLocaleString('en')} people you were in touch with most recently are shown. Older ones are left out, so the numbers on this page may be too low.`,
   notSignedIn: 'Your session has ended. Please sign in again.',
+  notAllowed:
+    'You are signed in, but this account is not allowed to see this dashboard. Sign in with the address that owns it, or ask whoever set it up.',
   notConfigured:
     'This page has not been connected to its database yet. Whoever set it up needs to publish it again with its database settings (uv run tracker setup dashboard).',
 } as const;

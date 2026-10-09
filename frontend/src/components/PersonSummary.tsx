@@ -17,7 +17,7 @@ export function PersonSummary({ person, clock }: PersonSummaryProps) {
     <section className="flex flex-col gap-4 rounded-token-lg border border-line bg-surface p-4 shadow-card">
       <div>
         <h2 className="text-base font-semibold text-ink">{copy.person.summaryTitle}</h2>
-        <p className="mt-1 whitespace-pre-line text-ink">
+        <p className="mt-1 whitespace-pre-line break-words text-ink">
           {person.summary ?? <span className="italic text-ink-muted">{copy.person.noSummary}</span>}
         </p>
       </div>
@@ -27,7 +27,7 @@ export function PersonSummary({ person, clock }: PersonSummaryProps) {
         <dl className="mt-2 grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <dt className="text-sm text-ink-muted">{copy.home.columns.nextAction}</dt>
-            <dd className="text-ink">{person.next_action ?? copy.values.none}</dd>
+            <dd className="wrap-anywhere text-ink">{person.next_action ?? copy.values.none}</dd>
           </div>
           <div>
             <dt className="text-sm text-ink-muted">{copy.home.columns.due}</dt>

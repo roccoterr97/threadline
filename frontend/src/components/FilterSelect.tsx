@@ -29,7 +29,7 @@ export function FilterSelect<T extends string>({
           const next = options.find((option) => option === event.target.value);
           if (next !== undefined) onChange(next);
         }}
-        className="min-h-11 min-w-0 flex-1 rounded-token-md border border-line-strong bg-surface px-3 py-2 text-sm text-ink sm:flex-none"
+        className="min-h-11 min-w-0 flex-1 rounded-token-md border border-line-strong bg-surface px-3 py-2 text-base text-ink sm:flex-none"
       >
         {options.map((option) => (
           <option key={option} value={option}>

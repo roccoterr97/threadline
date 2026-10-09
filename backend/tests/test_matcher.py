@@ -74,6 +74,49 @@ def test_two_people_with_one_name_are_never_merged_silently(
     assert questions[0]["other_person_id"] is not None
 
 
+def test_a_name_already_stored_on_this_channel_is_not_merged_silently(
+    matcher: IdentityMatcher,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    # Two stored LinkedIn Marcos and one e-mail Marco, all separate people. A
+    # third LinkedIn Marco has one candidate on the other side, but the name is
+    # already taken twice on this side, so it cannot be told which is which.
+    matcher.resolve(
+        [
+            participant(Channel.LINKEDIN, MARCO_ONE, "Marco Rossi"),
+            participant(Channel.LINKEDIN, MARCO_TWO, "Marco Rossi"),
+        ]
+    )
+    matcher.resolve([participant(Channel.EMAIL, "marco.rossi@acme.example", "Marco Rossi")])
+    people_before = len(rows(fake_client, "people"))
+    questions_before = len(rows(fake_client, "review_items"))
+
+    result = matcher.resolve(
+        [participant(Channel.LINKEDIN, "linkedin.com/in/marco-rossi-3", "Marco Rossi")]
+    )
+
+    questions = rows(fake_client, "review_items")
+    assert result.people_created == 1
+    assert len(rows(fake_client, "people")) == people_before + 1
+    assert len(questions) == questions_before + 1
+    assert questions[-1]["kind"] == ReviewKind.SAME_PERSON.value
+
+
+def test_a_stored_name_on_the_other_side_only_still_merges(
+    matcher: IdentityMatcher,
+    fake_client: FakeSupabaseClient,
+) -> None:
+    matcher.resolve([participant(Channel.LINKEDIN, MARCO_ONE, "Marco Rossi")])
+    matcher.resolve([participant(Channel.LINKEDIN, ELODIE_PROFILE, "Elodie Martin")])
+
+    result = matcher.resolve(
+        [participant(Channel.EMAIL, "marco.rossi@acme.example", "Marco Rossi")]
+    )
+
+    assert result.people_created == 0
+    assert len(rows(fake_client, "people")) == 2
+
+
 def test_the_same_question_is_never_asked_twice(
     matcher: IdentityMatcher,
     fake_client: FakeSupabaseClient,
@@ -207,9 +250,7 @@ def test_when_somebody_is_new_everybody_is_read_once_and_compared_as_before(
 ) -> None:
     """A new address still meets the people stored on earlier runs."""
     known = participant(Channel.LINKEDIN, ELODIE_PROFILE, "Élodie Martin")
-    first = matcher.resolve(
-        [known, participant(Channel.LINKEDIN, MARCO_ONE, "Marco Rossi")]
-    )
+    first = matcher.resolve([known, participant(Channel.LINKEDIN, MARCO_ONE, "Marco Rossi")])
     fake_client.executed.clear()
 
     second = matcher.resolve(

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import copy
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from tests.assessment_world import make_override, make_person, make_state, make_thread
 from tests.conftest import FakeSupabaseClient
-from tracker.domain.enums import Channel, ReviewAnswer, ReviewKind
+from tracker.domain.enums import Channel, ContactStatus, Relevance, ReviewAnswer, ReviewKind
 from tracker.domain.models import PersonIdentity, PersonOverride, ReviewItem
 from tracker.repositories import Repositories
 from tracker.services.identity.merge import MergeReport, PersonMerger
@@ -69,6 +69,127 @@ def test_a_correction_is_carried_over_when_the_survivor_has_none(
 
     kept = repositories.person_overrides.list_for_people([named.id])
     assert [o.note for o in kept] == ["met at a conference"]
+
+
+def test_a_merged_person_is_judged_again_and_takes_the_stronger_relevance(
+    repositories: Repositories,
+) -> None:
+    """LinkedIn Erik was never assessed and unsure; the address was relevant."""
+    named = make_person("Erik Lindqvist", relevance=Relevance.UNSURE)
+    by_address = make_person("erik@railfreight.example", relevance=Relevance.RELEVANT)
+    repositories.people.bulk_upsert([named, by_address])
+    repositories.person_states.bulk_upsert(
+        [
+            make_state(
+                by_address,
+                assessed_through=datetime(2026, 9, 17, tzinfo=UTC),
+                status=ContactStatus.MEETING_PLANNED,
+            )
+        ]
+    )
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id)])
+
+    PersonMerger(repositories).apply_answers()
+
+    kept = repositories.people.get(named.id)
+    assert kept is not None
+    assert kept.relevance is Relevance.RELEVANT
+    assert repositories.person_states.list_for_people([named.id]) == []
+
+
+def test_an_assessment_made_before_the_merge_is_dropped_so_the_person_is_judged_again(
+    repositories: Repositories,
+) -> None:
+    named = make_person("Erik Lindqvist")
+    by_address = make_person("erik@railfreight.example")
+    repositories.people.bulk_upsert([named, by_address])
+    repositories.person_states.bulk_upsert(
+        [make_state(named, assessed_through=datetime(2026, 9, 17, tzinfo=UTC))]
+    )
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id)])
+
+    PersonMerger(repositories).apply_answers()
+
+    assert repositories.person_states.list_for_people([named.id]) == []
+
+
+def test_a_hidden_record_does_not_hide_the_person_it_is_merged_into(
+    repositories: Repositories,
+) -> None:
+    named = make_person("Erik Lindqvist", relevance=Relevance.NOISE)
+    by_address = make_person("erik@railfreight.example", relevance=Relevance.UNSURE)
+    repositories.people.bulk_upsert([named, by_address])
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id)])
+
+    PersonMerger(repositories).apply_answers()
+
+    kept = repositories.people.get(named.id)
+    assert kept is not None
+    assert kept.relevance is Relevance.UNSURE
+
+
+def test_the_survivor_keeps_its_own_category_unless_it_has_none(
+    repositories: Repositories,
+) -> None:
+    known = make_person("Erik Lindqvist", person_type="vc")
+    unknown = make_person("Nicolas Rey")
+    investor_address = make_person("erik@fund.example", person_type="startup")
+    startup_address = make_person("nicolas@startup.example", person_type="startup")
+    repositories.people.bulk_upsert([known, unknown, investor_address, startup_address])
+    repositories.review_items.bulk_upsert(
+        [_confirmed(investor_address.id, known.id), _confirmed(startup_address.id, unknown.id)]
+    )
+
+    PersonMerger(repositories).apply_answers()
+
+    assert getattr(repositories.people.get(known.id), "person_type", None) == "vc"
+    assert getattr(repositories.people.get(unknown.id), "person_type", None) == "startup"
+
+
+def test_both_corrections_are_kept_field_by_field_and_the_survivors_win(
+    repositories: Repositories,
+) -> None:
+    named = make_person("Erik Lindqvist")
+    by_address = make_person("erik@railfreight.example")
+    repositories.people.bulk_upsert([named, by_address])
+    mine = make_override(named, status=ContactStatus.IN_PROCESS)
+    theirs = make_override(
+        by_address,
+        status=ContactStatus.CLOSED,
+        due_date=date(2026, 10, 2),
+        next_action="Send the portfolio",
+    ).model_copy(update={"note": "Confirmed by phone"})
+    repositories.person_overrides.bulk_upsert([mine, theirs])
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id)])
+
+    PersonMerger(repositories).apply_answers()
+
+    (merged,) = repositories.person_overrides.list_for_people([named.id])
+    assert merged.id == mine.id
+    assert merged.status is ContactStatus.IN_PROCESS
+    assert merged.due_date == date(2026, 10, 2)
+    assert merged.next_action == "Send the portfolio"
+    assert merged.note == "Confirmed by phone"
+
+
+def test_a_note_the_survivor_already_has_is_not_overwritten(
+    repositories: Repositories,
+) -> None:
+    named = make_person("Erik Lindqvist")
+    by_address = make_person("erik@railfreight.example")
+    repositories.people.bulk_upsert([named, by_address])
+    repositories.person_overrides.bulk_upsert(
+        [
+            PersonOverride(person_id=named.id, note="Met at the Lyon fair"),
+            PersonOverride(person_id=by_address.id, note="Confirmed by phone"),
+        ]
+    )
+    repositories.review_items.bulk_upsert([_confirmed(by_address.id, named.id)])
+
+    PersonMerger(repositories).apply_answers()
+
+    (merged,) = repositories.person_overrides.list_for_people([named.id])
+    assert merged.note == "Met at the Lyon fair"
 
 
 def test_running_it_twice_changes_nothing_more(repositories: Repositories) -> None:
@@ -246,14 +367,15 @@ def test_a_question_opened_before_a_merge_is_closed_from_what_the_merge_left(
     assert repositories.review_items.get(still_open.id) is None
 
 
-def test_a_moved_assessment_and_correction_get_their_own_primary_key(
+def test_a_moved_correction_gets_its_own_primary_key(
     repositories: Repositories,
     fake_client: FakeSupabaseClient,
 ) -> None:
-    """The absorbed record's rows still exist when the copies are written.
+    """The absorbed record's row still exists when the copy is written.
 
-    Reusing their primary key collides with them in the real database, which
-    the in-memory one does not enforce, so the test checks the keys.
+    Reusing its primary key collides with it in the real database, which the
+    in-memory one does not enforce, so the test checks the keys. The absorbed
+    record's assessment is not copied at all: the merged person is judged again.
     """
     named = make_person("Nicolas Reese")
     by_address = make_person("nicolasreese75@gmail.com")
@@ -266,14 +388,12 @@ def test_a_moved_assessment_and_correction_get_their_own_primary_key(
 
     PersonMerger(repositories).apply_answers()
 
-    (moved_state,) = repositories.person_states.list_for_people([named.id])
     (moved_override,) = repositories.person_overrides.list_for_people([named.id])
-    assert moved_state.id != state.id
+    assert repositories.person_states.list_for_people([named.id]) == []
     assert moved_override.id != override.id
     assert moved_override.next_action == "Send the portfolio"
-    for table in ("person_states", "person_overrides"):
-        ids = [row["id"] for row in fake_client.tables[table]]
-        assert len(ids) == len(set(ids)), f"{table} holds two rows with one primary key"
+    ids = [row["id"] for row in fake_client.tables["person_overrides"]]
+    assert len(ids) == len(set(ids)), "person_overrides holds two rows with one primary key"
 
 
 def test_a_question_naming_the_absorbed_record_second_is_kept(

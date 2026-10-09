@@ -32,7 +32,7 @@ The three results, as the dashboard's **Daily runs** page shows them:
 | On the dashboard | Code | What it means |
 |------------------|------|---------------|
 | **Worked** | `success` | Everything worked. |
-| **Partly worked** | `partial` | Something failed, the rest worked. The summary opens with "Something needs your attention" and says what to do. |
+| **Partly worked** | `partial` | Something failed or never ran (no summary went out, nothing was collected), the rest worked. The summary opens with "Something needs your attention" and says what to do. |
 | **Did not work** | `failed` | Nothing worked. The summary says so. |
 
 **Who starts it on time.** GitHub's own timer often starts the workflow hours

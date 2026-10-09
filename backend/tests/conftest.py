@@ -139,9 +139,10 @@ class FakeQuery:
         self._returning = ReturnMethod.representation
         self._count: CountMethod | None = None
 
-    def select(self, *_columns: str, **options: Any) -> Self:
+    def select(self, *columns: str, **options: Any) -> Self:
         """Start a read, asking for the total of matching rows when ``count`` is given."""
         self._operation = "select"
+        self._client.columns_read.append((self._table, ",".join(columns)))
         self._count = options.get("count")
         return self
 
@@ -360,6 +361,8 @@ class FakeSupabaseClient:
         self.tables: dict[str, list[dict[str, Any]]] = tables or {}
         self.conflict_columns: dict[str, str] = {}
         self.executed: list[tuple[str, str]] = []
+        #: The table and the columns of every read, as asked for.
+        self.columns_read: list[tuple[str, str]] = []
         #: Rows one answer holds at most. A test lowers it to imitate a project
         #: whose owner turned the server's cap down.
         self.row_cap: int = SERVER_ROW_CAP

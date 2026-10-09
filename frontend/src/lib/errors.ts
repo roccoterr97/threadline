@@ -26,6 +26,12 @@ export class UnexpectedDataError extends DashboardError {}
 /** The session is gone or was never valid. */
 export class NotSignedInError extends DashboardError {}
 
+/**
+ * The session is fine but the database refuses this account (a 403): it is
+ * signed in as someone other than the owner. Signing in again will not help.
+ */
+export class NotAllowedError extends DashboardError {}
+
 /** Why the database turned a write down on purpose, as opposed to failing. */
 export enum RefusalReason {
   /** Something still points at the row (Postgres 23503, a foreign key). */

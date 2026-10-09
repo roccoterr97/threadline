@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import {
   addPersonNote,
@@ -8,7 +8,8 @@ import {
   updatePersonNote,
 } from '../api/personNotes';
 import * as copy from '../copy/en';
-import { NotSignedInError } from '../lib/errors';
+import { NotAllowedError, NotSignedInError } from '../lib/errors';
+import { useReadQuery } from './useReadQuery';
 
 /** One change the owner can make to a person's notes. */
 export type NoteAction =
@@ -57,6 +58,7 @@ async function perform(personId: string, action: NoteAction): Promise<string> {
 /** Turns a failure into one sentence the owner can act on; never the database's words. */
 export function noteFailureText(action: NoteAction, error: Error): string {
   if (error instanceof NotSignedInError) return copy.notes.failed.signedOut;
+  if (error instanceof NotAllowedError) return copy.notes.failed.notAllowed;
   if (action.kind === 'add') return copy.notes.failed.add;
   return action.kind === 'update' ? copy.notes.failed.save : copy.notes.failed.remove;
 }
@@ -73,7 +75,7 @@ export function usePersonNotes(personId: string) {
   const queryClient = useQueryClient();
   const [outcome, setOutcome] = useState<NoteOutcome | null>(null);
 
-  const notes = useQuery({
+  const notes = useReadQuery({
     queryKey: personNotesQueryKey(personId),
     queryFn: () => fetchPersonNotes(personId),
   });

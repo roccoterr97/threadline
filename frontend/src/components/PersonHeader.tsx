@@ -20,8 +20,8 @@ export function PersonHeader({ person, vocabulary }: PersonHeaderProps) {
   const roleLine = formatRoleLine(person.role_title, person.organisation_name);
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-ink">{person.full_name}</h1>
-      {roleLine !== null && <p className="mt-1 text-ink-muted">{roleLine}</p>}
+      <h1 className="text-2xl font-semibold break-words text-ink">{person.full_name}</h1>
+      {roleLine !== null && <p className="mt-1 break-words text-ink-muted">{roleLine}</p>}
       <div
         role="group"
         aria-label={copy.person.stateGroupLabel}

@@ -23,8 +23,8 @@ function iconClass(isActive: boolean): string {
 }
 
 /**
- * The main menu as a bar fixed to the bottom of a phone screen, within thumb
- * reach. Each link is an icon above a short label; the current page is marked
+ * The main menu as a bar fixed to the bottom of a phone or tablet screen,
+ * within thumb reach. Each link is an icon above a short label; the current page is marked
  * by colour, weight and a pill behind its icon, and announced as the current
  * page (see `currentNavPath`). The bar keeps clear of the phone's home indicator.
  */
@@ -33,7 +33,7 @@ export function BottomNav({ reviewCount }: BottomNavProps) {
   return (
     <nav
       aria-label={copy.nav.bottomBarLabel}
-      className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] lg:hidden"
     >
       <ul className="m-0 grid list-none grid-cols-4 p-0">
         {BOTTOM_NAV_ITEMS.map((item) => {

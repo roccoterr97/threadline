@@ -1,5 +1,5 @@
 import * as copy from '../copy/en';
-import { NotConfiguredError, NotSignedInError } from '../lib/errors';
+import { NotAllowedError, NotConfiguredError, NotSignedInError } from '../lib/errors';
 import { Button } from './Button';
 
 interface ErrorStateProps {
@@ -12,6 +12,7 @@ interface ErrorStateProps {
 function explain(error: unknown): string {
   if (error instanceof NotConfiguredError) return copy.states.notConfigured;
   if (error instanceof NotSignedInError) return copy.states.notSignedIn;
+  if (error instanceof NotAllowedError) return copy.states.notAllowed;
   return copy.states.errorBody;
 }
 

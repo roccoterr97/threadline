@@ -43,44 +43,6 @@ All notable changes to this project are recorded here. The format follows
 - `.github/workflows/dashboard-release.yml`: every push to `main` of the
   public template builds the dashboard once and publishes
   `dashboard.zip` and `dashboard.zip.sha256` on the rolling `latest` release.
-- Notes you type on a person: on a person's page, "Your notes" keeps what no
-  message says ("met at the Lyon fair, prefers calls after 4pm"), newest
-  first with the day each was written and the day it was last changed.
-  Notes are for you alone — the assistant does not read them and they are not
-  in the morning e-mail — and they stay with the person when two records are
-  joined into one. Deleting a note asks first. Migration
-  `0016_person_notes.sql`, applied by `tracker setup database`; the demo has
-  two notes on Maya Lindqvist. A dashboard whose database does not have the
-  table yet says which command to run instead of breaking.
-- An Organisations page on the dashboard: the same people grouped by the
-  organisation they are listed under, with how many people are there, where
-  things stand with them as a whole (overdue, your turn, time to chase,
-  waiting on them) and the most recent contact, those needing you first.
-  Opening an organisation lists its people; people with no organisation on
-  record are gathered under "No organisation". The page sits next to People
-  in the menu; on a phone a People / Organisations switch at the top of both
-  pages leads between them. Every way back from a person returns to the
-  list it was opened from.
-- The on-time morning start. GitHub often started the scheduled daily run five
-  or six hours late; now the owner's Supabase project starts it at its time. A
-  pg_cron job (migration `0017_daily_start`) calls the `refresh-now` function's
-  new scheduled path, `…/refresh-now/daily-start`, every 15 minutes with a
-  shared key kept in Vault; once the owner's daily time has passed in the
-  owner's time zone, the function asks GitHub to start the workflow in daily
-  mode. It starts at most one run per owner-local day: the day is claimed in
-  the new `daily_starts` table (one row per date, so two overlapping calls
-  cannot both start one), a daily run already in `run_logs` or already on
-  GitHub that day counts as done, and a refused or failed request gives the
-  day back so the next call retries. It does nothing for owners on the Claude
-  cloud routine. GitHub's own schedule stays as a backup: a run it starts
-  stops early when a daily run of the owner's day already started (or
-  finished well), and the once-a-day e-mail rule remains the last net.
-  `tracker setup refresh`, one of the extras, switches it on (a fresh key in
-  the function's settings and in Vault, the timer made sure of),
-  `tracker setup schedule` and `tracker setup timezone` keep the daily time in
-  the database in step with the workflow, and `tracker doctor` gains an
-  **On-time morning start** line.
-  Free on Supabase's free plan: pg_cron, pg_net and Vault are built in.
 
 ### Changed
 
@@ -131,6 +93,184 @@ All notable changes to this project are recorded here. The format follows
   there. A stopped run's last line names the command to run again:
   `uv run tracker setup` for the core steps, `uv run tracker setup extras`
   for the extras.
+
+### Fixed
+
+- Sending the summary no longer stops with an unexplained crash. An app
+  password with a hidden character in it (such as a space pasted from a web
+  page) is now reported as a refused app password, for sending and for
+  reading the mailbox alike, so the summary points to the right fix. A
+  summary file whose subject holds a line break or another control character
+  is refused with a clear message instead of crashing, and that failure is
+  recorded.
+- "Replied since yesterday" now catches a reply that was only collected later.
+  It used to compare when a reply was sent with when the previous run started,
+  so a reply written before that run but collected after it (a mailbox that
+  was down that morning) never appeared in any summary. It now also counts
+  messages stored since the previous summary, as long as they were sent in the
+  three days before it, so a first import of old mail still does not list
+  everyone.
+- A morning is no longer called "worked" when no summary went out or nothing
+  was collected. A daily run that never recorded its summary e-mail (it could
+  not be built, or sending it stopped on something unexpected), and any run
+  that never recorded a collect step (for example when the health check
+  failed), now closes as "Partly worked". A summary that cannot be built is
+  recorded as a failed summary step, so the run page and the next summary
+  say so.
+- One odd e-mail can no longer stop the whole collection. A message whose
+  `References` header named an identifier with a letter like "é" in it made
+  the reader of a mailbox that is not Gmail (plain IMAP) crash while it looked
+  up the rest of the thread, and nothing from any source was stored or
+  recorded that day. Such an identifier is now left out of the thread lookup (the thread
+  keeps the messages already seen), and if a source does stop on something
+  unexpected, it is logged by its type, recorded as that source's failed step
+  with the code `source_failed`, and the other sources carry on.
+- Signing in with an address the dashboard does not belong to no longer says
+  "Your session has ended". The database turns that account away (a 403), and
+  the dashboard now says the account is not allowed and to sign in with the
+  owner's address, instead of sending people round in circles to sign in again.
+  Only a missing or expired session still reads as signed out.
+- A failed update no longer wipes a page that was already showing. If the
+  connection drops while you are away (a phone waking up on a poor signal, say),
+  the people, run history, notes and the rest stay on screen and a short note
+  says "Couldn't update just now. Showing what was loaded earlier." The full
+  error box now appears only when there is nothing to show yet.
+- A person's page now keeps the newest messages of a very long conversation
+  (over 500), not the oldest. Before, the latest replies were the ones left
+  out. When older messages are left out, a short note says so.
+- Signing out now wipes the data the dashboard was holding in the browser's
+  memory, so the next person to sign in on the same phone or computer cannot
+  glimpse the previous person's list before their own loads. The same happens
+  when a session simply expires.
+- A dashboard tab or home-screen app left open now catches up when you come
+  back to it. Before, a page left open from Monday still showed Monday's
+  overdue badges, an old "last run" warning and meetings that had already
+  happened under "Coming up" on Tuesday, until you reloaded by hand.
+- The dashboard no longer stops at 500 people. Someone with more than that saw
+  only the 500 most recent, so the counters, the status grid and the
+  organisation pages were quietly too low. It now reads everyone, and if a list
+  ever passes 5,000 people it says that older ones are left out.
+- "Refresh now" no longer stays on "Refreshing..." with the button greyed out
+  when the update never starts. After fifteen minutes it stops waiting, says so
+  and points to the run history, and the button works again.
+- The assistant that reads your conversations can now write files in one place
+  only, the `work` folder where it leaves its answers. It could write
+  anywhere, so a hostile message could in theory have talked it into changing
+  Threadline's own code, which the next morning's run would then have run. On
+  GitHub the run now also refuses writes to the code, the settings, the
+  recipes and the workflow. The project no longer approves edits by default
+  when you work in this folder with Claude Code; you will be asked, as usual.
+- Joining two people ("yes, same person") no longer loses anything. The joined
+  person is judged again with all their conversations, takes the stronger of
+  the two relevance settings (so a never-judged LinkedIn "Erik" cannot hide the
+  address that was already a meeting), and keeps both people's corrections:
+  what you set on the person that stays wins, and the empty fields (note, due
+  date) are filled from the other.
+- A person you hide with "Not relevant" while the assistant is still reading
+  stays hidden. The assistant's answer used to arrive afterwards and put them
+  back on the list.
+- A message that arrives while the assistant is still reading is no longer
+  marked as read. A person is now recorded as assessed up to the newest
+  message the assistant was actually given, so anything stored since is looked
+  at on the next run. A leftover answer file that is older than the person's
+  latest assessment is dropped instead of overwriting it.
+- A LinkedIn profile and an e-mail address are no longer joined without asking
+  when the same name is already on your list twice on one side. Threadline
+  used to check the name only against the people it was collecting that
+  morning, not against the ones it had stored, so a second "Marco Rossi" on
+  LinkedIn could be joined to the wrong "Marco Rossi" by e-mail. It now asks
+  "same person?" instead.
+- When you correct who owes the next move to "me", the follow-up date is
+  today, not five working days after the last message. The date used to be
+  worked out from what the assistant had said, before your correction counted.
+- The dashboard is easier to use on an iPhone. The header no longer runs off
+  the screen on a tablet held upright: the menu moves to the bottom bar up to
+  1024px wide, and the header menu starts from there. The filter and sort
+  lists are set in 16px text, so Safari no longer zooms in when you tap them.
+  A tap lands from anywhere on a person's or an organisation's card, and the
+  "back" links, the "Open" links on the review page, the counts in the status
+  grid and the logo are all at least 44px high. A long name, e-mail address
+  or organisation without spaces wraps inside its card instead of widening
+  the page. Taps act at once (no double-tap delay), a field focused near the
+  bottom scrolls clear of the bottom bar, and turned sideways, the page and
+  the bottom bar keep clear of the notch.
+- The version in `backend/pyproject.toml` and `frontend/package.json` now
+  matches the release (0.5.1 is the next), and the changelog has a heading for
+  0.5.0 again instead of listing everything since 0.2.0 as unreleased.
+- `tracker doctor` and a failed command say only "run 'uv run tracker setup'"
+  on a computer; the "add the missing secrets" half is said on GitHub alone,
+  where it applies.
+- The demo's first line says the ZIP download is enough, so nobody makes a
+  GitHub account just to look at it.
+
+## [0.5.0] - 2026-10-08
+
+This section also holds 0.3.0 (2026-10-03) and 0.4.0 (2026-10-04), which were
+released without a heading of their own.
+
+### Added
+
+- Notes you type on a person: on a person's page, "Your notes" keeps what no
+  message says ("met at the Lyon fair, prefers calls after 4pm"), newest
+  first with the day each was written and the day it was last changed.
+  Notes are for you alone — the assistant does not read them and they are not
+  in the morning e-mail — and they stay with the person when two records are
+  joined into one. Deleting a note asks first. Migration
+  `0016_person_notes.sql`, applied by `tracker setup database`; the demo has
+  two notes on Maya Lindqvist. A dashboard whose database does not have the
+  table yet says which command to run instead of breaking.
+- An Organisations page on the dashboard: the same people grouped by the
+  organisation they are listed under, with how many people are there, where
+  things stand with them as a whole (overdue, your turn, time to chase,
+  waiting on them) and the most recent contact, those needing you first.
+  Opening an organisation lists its people; people with no organisation on
+  record are gathered under "No organisation". The page sits next to People
+  in the menu; on a phone a People / Organisations switch at the top of both
+  pages leads between them. Every way back from a person returns to the
+  list it was opened from.
+- The on-time morning start. GitHub often started the scheduled daily run five
+  or six hours late; now the owner's Supabase project starts it at its time. A
+  pg_cron job (migration `0017_daily_start`) calls the `refresh-now` function's
+  new scheduled path, `…/refresh-now/daily-start`, every 15 minutes with a
+  shared key kept in Vault; once the owner's daily time has passed in the
+  owner's time zone, the function asks GitHub to start the workflow in daily
+  mode. It starts at most one run per owner-local day: the day is claimed in
+  the new `daily_starts` table (one row per date, so two overlapping calls
+  cannot both start one), a daily run already in `run_logs` or already on
+  GitHub that day counts as done, and a refused or failed request gives the
+  day back so the next call retries. It does nothing for owners on the Claude
+  cloud routine. GitHub's own schedule stays as a backup: a run it starts
+  stops early when a daily run of the owner's day already started (or
+  finished well), and the once-a-day e-mail rule remains the last net.
+  `tracker setup refresh` switches it on (a fresh key in the function's
+  settings and in Vault, the timer made sure of), `tracker setup schedule` and
+  `tracker setup timezone` keep the daily time in the database in step with
+  the workflow, and `tracker doctor` gains an **On-time morning start** line.
+  Free on Supabase's free plan: pg_cron, pg_net and Vault are built in.
+- A set-up that Claude runs for you: the recipe `/setup`
+  (`.claude/commands/setup.md`) walks a non-technical person through the
+  tools, their private copy, the three accounts, the guided set-up and the
+  first run, with Claude doing every command and the person pasting keys only
+  into the set-up page. [`docs/setup-with-claude.md`](docs/setup-with-claude.md)
+  is the one sentence to paste into the Claude app; the README and the demo's
+  "Set up your own" link now lead there first.
+- `uv run tracker setup --browser` (also for a single step): the same
+  questions asked on a page in your web browser instead of terminal prompts,
+  with keys in hidden fields, a Continue button for every "press Return", a
+  Stop-for-now link, and the final check shown on the page. The page is served
+  to your computer only, on a random port, and every request must carry a key
+  that only the opened page knows. The terminal still shows what is said and
+  asked, never an answer, so whoever started the command can follow along. A
+  page closed or left alone for fifteen minutes ends the set-up cleanly.
+- The set-up's "press Enter" and "press Return" phrases now come from the
+  terminal itself, so each step's wording reads right on the page too.
+
+### Changed
+
+- `tracker setup` stops at "Is the dashboard published already?" when the
+  answer is no, instead of carrying on to steps that need the dashboard;
+  running `uv run tracker setup` again carries on from there. A full run's
+  stop line now names `uv run tracker setup` as the command to run again.
 - `tracker setup github` says plainly when the run on GitHub cannot e-mail
   the morning summary (Outlook alone, or `SUMMARY_DELIVERY=gmail_connector`)
   and names the two ways out.
@@ -155,6 +295,8 @@ All notable changes to this project are recorded here. The format follows
   requests to 197. A page the server cut short is still read past, and an
   answer that carries no total is still read until an empty page. The same
   rows are read, in the same order.
+- The daily run starts at 07:00 Paris time instead of 07:00 UTC.
+  `uv run tracker setup schedule` sets your own time and zone.
 
 ### Fixed
 
@@ -221,6 +363,47 @@ All notable changes to this project are recorded here. The format follows
 - A failed save is always unmissable: a failed category move, a failed hide
   and a failed undo each take the keyboard and scroll into view. A saved
   answer on the review page no longer takes the keyboard away from the list.
+- Morning e-mail: a reply is no longer left out of every summary when the
+  previous morning's e-mail did not go out, and a busy day of Refresh now
+  presses no longer shortens the "replied" window. Running the morning a second
+  time the same day (GitHub's "Re-run job", or starting it by hand) no longer
+  sends a second e-mail: the run says "summary skipped" and the Runs page
+  "not sent", unless `--send-again` asks for another copy on purpose.
+- Set-up: one Ctrl-C now stops it at once, before anything else is saved.
+  `.env` is made readable by you alone on every write, not only when it is
+  created. A name written twice in `.env` gets the new value on every line,
+  quotes are read the way the app reads them, and a value holding ` #` or edge
+  spaces is quoted so it is not cut short. Changing your time zone also moves
+  the daily run's `timezone` line, so the run keeps its hour. The `/setup`
+  recipe now names the right `.env` file and says plainly that Claude sees the
+  set-up page's address.
+- `tracker sample load` moves the sample dates to today, so the sample
+  dashboard no longer looks weeks old and overdue.
+- Demo: answering a "part of your outreach?" question now adds or removes the
+  person, as in the real app; "Refresh now" no longer claims new messages it
+  never adds; the "same person?" question names two records.
+- CI: the secret scan no longer fails on the first push of a new copy, whose
+  first commit has no parent.
+- Collecting: a conversation the assistant or you kept no longer loses its
+  stored text when a later message makes the rules call it noise, and a
+  message that could not be read again never blanks out stored text. A noise
+  conversation keeps its earliest and latest dates. In LinkedIn group threads a
+  name with a comma ("Jane Doe, CFA") no longer moves every name onto the wrong
+  person; a name that cannot be paired is filled in from that person's own
+  reply. The Microsoft key is fetched again for every retry, so a long retry no
+  longer ends with a false "sign in again".
+- People and verdicts: merging two records no longer fails in the database or
+  loses "same person?" answers, answers chained through one record join all
+  three, and a merge never leaves the same question twice. A company record is
+  never joined to someone you said is a different person. A "noise" verdict no
+  longer overrules your own corrections: the person stays on your list and you
+  are asked. A verdict never undoes a "not relevant" you gave after the export.
+  Paged reads no longer skip or repeat rows that share a timestamp.
+- Dashboard: "yesterday" means the previous calendar day; due dates no longer
+  show a day early west of Greenwich; a failed review answer brings back only
+  its own card; "Coming up" never links to a person who is not on your list;
+  saving a blank correction removes it; the headline counters wait for the
+  data instead of showing 0.
 
 ### Documentation
 
@@ -255,24 +438,6 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
-- A set-up that Claude runs for you: the recipe `/setup`
-  (`.claude/commands/setup.md`) walks a non-technical person through the
-  tools, their private copy, the three accounts, the guided set-up and the
-  first run, with Claude doing every command and the person pasting keys only
-  into the set-up page. [`docs/setup-with-claude.md`](docs/setup-with-claude.md)
-  is the one sentence to paste into the Claude app; the README and the demo's
-  "Set up your own" link now lead there first.
-- `uv run tracker setup --browser` (also for a single step): the same
-  questions asked on a page in your web browser instead of terminal prompts,
-  with keys in hidden fields, a Continue button for every "press Return", a
-  Stop-for-now link, and the final check shown on the page. The page is served
-  to your computer only, on a random port, and every request must carry a key
-  that only the opened page knows. The terminal still shows what is said and
-  asked, never an answer, so whoever started the command can follow along. A
-  page closed or left alone for fifteen minutes ends the set-up cleanly.
-
-- The set-up's "press Enter" and "press Return" phrases now come from the
-  terminal itself, so each step's wording reads right on the page too.
 - `tracker setup refresh`, a set-up step right after `tracker setup github`
   that switches on the dashboard's Refresh now button with nothing to install:
   it opens GitHub's new-token page already filled in (Actions: Read and write),
@@ -320,17 +485,6 @@ All notable changes to this project are recorded here. The format follows
   free minutes in `docs/operations.md`.
 
 ### Changed
-
-- The daily run starts at 07:00 Paris time instead of 07:00 UTC.
-  `uv run tracker setup schedule` sets your own time and zone.
-
-- The daily run asks the database less often. Tidying people no longer looks
-  up every pair an earlier merge already joined; saving the assessment looks a
-  file's organisations up together and reads the categories once; a collector
-  reads the whole people list only when somebody new turns up; and the calendar
-  reads a shared calendar's invitation threads, and who is on record for your
-  own interview entries, once instead of once per entry. The same rows are
-  stored and the same lines printed.
 
 - The daily run collects every source in one step. `tracker collect all
   --record` reads LinkedIn, the mailboxes and the calendar at the same time,
@@ -397,55 +551,6 @@ All notable changes to this project are recorded here. The format follows
   `profile/assessment-guide.template.md`, the preset and your categories.
 
 ### Fixed
-
-- Morning e-mail: a reply is no longer left out of every summary when the
-  previous morning's e-mail did not go out, and a busy day of Refresh now
-  presses no longer shortens the "replied" window. Running the morning a second
-  time the same day (GitHub's "Re-run job", or starting it by hand) no longer
-  sends a second e-mail: the run says "summary skipped" and the Runs page
-  "not sent", unless `--send-again` asks for another copy on purpose.
-
-- Set-up: one Ctrl-C now stops it at once, before anything else is saved.
-  `.env` is made readable by you alone on every write, not only when it is
-  created. A name written twice in `.env` gets the new value on every line,
-  quotes are read the way the app reads them, and a value holding ` #` or edge
-  spaces is quoted so it is not cut short. Changing your time zone also moves
-  the daily run's `timezone` line, so the run keeps its hour. The `/setup`
-  recipe now names the right `.env` file and says plainly that Claude sees the
-  set-up page's address.
-
-- `tracker sample load` moves the sample dates to today, so the sample
-  dashboard no longer looks weeks old and overdue.
-
-- Demo: answering a "part of your outreach?" question now adds or removes the
-  person, as in the real app; "Refresh now" no longer claims new messages it
-  never adds; the "same person?" question names two records.
-
-- CI: the secret scan no longer fails on the first push of a new copy, whose
-  first commit has no parent.
-
-- Collecting: a conversation the assistant or you kept no longer loses its
-  stored text when a later message makes the rules call it noise, and a
-  message that could not be read again never blanks out stored text. A noise
-  conversation keeps its earliest and latest dates. In LinkedIn group threads a
-  name with a comma ("Jane Doe, CFA") no longer moves every name onto the wrong
-  person; a name that cannot be paired is filled in from that person's own
-  reply. The Microsoft key is fetched again for every retry, so a long retry no
-  longer ends with a false "sign in again".
-
-- People and verdicts: merging two records no longer fails in the database or
-  loses "same person?" answers, answers chained through one record join all
-  three, and a merge never leaves the same question twice. A company record is
-  never joined to someone you said is a different person. A "noise" verdict no
-  longer overrules your own corrections: the person stays on your list and you
-  are asked. A verdict never undoes a "not relevant" you gave after the export.
-  Paged reads no longer skip or repeat rows that share a timestamp.
-
-- Dashboard: "yesterday" means the previous calendar day; due dates no longer
-  show a day early west of Greenwich; a failed review answer brings back only
-  its own card; "Coming up" never links to a person who is not on your list;
-  saving a blank correction removes it; the headline counters wait for the
-  data instead of showing 0.
 
 - The Microsoft sign-in key is renewed once when several requests find it
   expired at the same moment. Each renewal replaces the stored key, so two

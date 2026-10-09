@@ -56,6 +56,19 @@
 @layer base {
   html {
     -webkit-text-size-adjust: 100%;
+    /* A field focused near the bottom scrolls clear of the phone's bottom bar. */
+    scroll-padding-bottom: 6rem;
+  }
+
+  /* No double-tap-to-zoom delay on controls: a tap acts at once. */
+  a,
+  button,
+  select,
+  input,
+  textarea,
+  label,
+  summary {
+    touch-action: manipulation;
   }
 
   body {
@@ -67,6 +80,9 @@
     line-height: 1.5;
     /* Nothing may scroll sideways at 375px. */
     overflow-x: hidden;
+    /* Held back from a phone's notch and rounded corners when turned sideways. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
 
   /* A visible focus ring on every keyboard-focused control. */

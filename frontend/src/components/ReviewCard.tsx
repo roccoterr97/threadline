@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import * as copy from '../copy/en';
 import type { ReviewAnswer, ReviewItemRow } from '../types/database';
 import { Button } from './Button';
+import { TAP_LINK } from './linkStyles';
 import { SaveFeedback } from './SaveFeedback';
 
 /** Someone a question is about who is on the people list, so their page can be opened. */
@@ -67,17 +68,13 @@ export function ReviewCard({
   return (
     <li className="rounded-token-lg border border-line bg-surface p-4 shadow-card">
       <p className="text-sm font-medium text-ink-muted">{copy.review.kind[item.kind]}</p>
-      <p ref={question} id={questionId} tabIndex={-1} className="mt-1 text-lg text-ink">
+      <p ref={question} id={questionId} tabIndex={-1} className="mt-1 text-lg break-words text-ink">
         {item.question}
       </p>
       {people.length > 0 && (
         <p className="mt-1 flex flex-wrap gap-x-4 text-sm">
           {people.map((person) => (
-            <Link
-              key={person.id}
-              to={`/people/${person.id}`}
-              className="font-medium text-accent underline underline-offset-2"
-            >
+            <Link key={person.id} to={`/people/${person.id}`} className={`font-medium ${TAP_LINK}`}>
               {copy.home.openPerson(person.name)}
             </Link>
           ))}
