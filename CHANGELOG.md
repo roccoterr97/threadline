@@ -264,9 +264,6 @@ All notable changes to this project are recorded here. The format follows
 - The version in `backend/pyproject.toml` and `frontend/package.json` now
   matches the release (0.5.1 is the next), and the changelog has a heading for
   0.5.0 again instead of listing everything since 0.2.0 as unreleased.
-- `tracker doctor` and a failed command say only "run 'uv run tracker setup'"
-  on a computer; the "add the missing secrets" half is said on GitHub alone,
-  where it applies.
 - The demo's first line says the ZIP download is enough, so nobody makes a
   GitHub account just to look at it.
 - Running `tracker setup supabase` again after it stopped no longer makes a
