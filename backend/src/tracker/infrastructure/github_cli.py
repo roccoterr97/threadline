@@ -3,7 +3,8 @@
 A value is only ever handed to ``gh`` on its standard input — never as a
 command-line argument, which other programs on the machine can read, and never
 in a log line. What ``gh`` and ``git`` print is not logged either: only the
-exit status is.
+exit status is. Both speak UTF-8 on every system, Windows included, so their
+text is read and written as UTF-8 rather than in the system's own encoding.
 """
 
 from __future__ import annotations
@@ -18,8 +19,20 @@ from typing import Final, cast
 
 from pydantic import SecretStr
 
-from tracker.shared.constants.github import COPY_REMOTE
-from tracker.shared.errors import SourceUnavailableError
+from tracker.shared.constants.github import (
+    ACTIONS_PERMISSIONS_API_PATH,
+    ALLOWED_ACTIONS_ALL,
+    COPY_REMOTE,
+    WORKFLOW_FILE_NAME,
+    WORKFLOW_MODE_INPUT,
+    WORKFLOW_PAGE,
+    WorkflowMode,
+)
+from tracker.shared.errors import (
+    SourceUnavailableError,
+    WorkflowNotEnabledError,
+    WorkflowNotStartedError,
+)
 from tracker.shared.logging import get_logger
 
 #: Seconds one ``gh`` or ``git`` command may take.
@@ -28,10 +41,23 @@ COMMAND_TIMEOUT_SECONDS: Final[float] = 60.0
 _GH: Final[str] = "gh"
 _GIT: Final[str] = "git"
 
+#: How ``gh`` and ``git`` text is read and written, on every system; a byte
+#: that is not UTF-8 is shown as a placeholder rather than stopping the set-up.
+_COMMAND_ENCODING: Final[str] = "utf-8"
+_UNREADABLE_BYTES: Final[str] = "replace"
+
+#: Line ending of a file the set-up writes, so git sees only the lines it changed.
+_NEWLINE: Final[str] = "\n"
+
 #: What ``gh repo view`` is asked for, and the answers that make a private copy.
 _REPOSITORY_FIELDS: Final[str] = "nameWithOwner,visibility,viewerPermission"
 _PRIVATE: Final[str] = "PRIVATE"
 _ADMIN: Final[str] = "ADMIN"
+
+#: The field of GitHub's Actions permissions that says whether Actions may run.
+_ACTIONS_ENABLED_FIELD: Final[str] = "enabled"
+#: What ``gh api --jq .enabled`` prints when they may.
+_TRUE: Final[str] = "true"
 
 _log = get_logger(__name__)
 
@@ -39,24 +65,30 @@ _log = get_logger(__name__)
 Runner = Callable[[Sequence[str], str | None], tuple[int, str]]
 
 
-def run_command(cwd: Path) -> Runner:
+def run_command(cwd: Path, which: Callable[[str], str | None] = shutil.which) -> Runner:
     """Build a runner that starts commands in one folder, with no shell.
+
+    The program is looked up first, so ``gh`` also finds ``gh.exe`` on Windows.
 
     Args:
         cwd: The folder commands run in: the repository.
+        which: Finds a program on the machine; replaced in tests.
 
     Returns:
         The runner.
     """
 
     def run(arguments: Sequence[str], stdin: str | None) -> tuple[int, str]:
+        program = which(arguments[0]) or arguments[0]
         try:
             done = subprocess.run(
-                list(arguments),
+                [program, *arguments[1:]],
                 cwd=cwd,
                 input=stdin,
                 capture_output=True,
                 text=True,
+                encoding=_COMMAND_ENCODING,
+                errors=_UNREADABLE_BYTES,
                 check=False,
                 timeout=COMMAND_TIMEOUT_SECONDS,
             )
@@ -212,6 +244,87 @@ class GitHubCli:
             raise SourceUnavailableError(message)
         _log.info("github_copy_created")
 
+    def enable_workflow(self, repository: str) -> None:
+        """Switch Actions on in the repository if they are off, then enable the workflow.
+
+        A copy made from the template, or by ``create_private_copy``, is not a
+        fork, so GitHub leaves its workflows on; this puts right the rare copy
+        where Actions were switched off, and is harmless otherwise.
+
+        Args:
+            repository: The copy, as ``owner/name``.
+
+        Raises:
+            WorkflowNotEnabledError: If GitHub refused either change.
+        """
+        if not self._actions_enabled(repository):
+            self._enable_actions(repository)
+        status, _ = self._run(
+            [_GH, "workflow", "enable", WORKFLOW_FILE_NAME, "--repo", repository], None
+        )
+        if status != 0:
+            _log.warning("github_workflow_not_enabled", status=status)
+            message = (
+                f"GitHub would not switch on the workflow in {repository} - open "
+                f"{WORKFLOW_PAGE.format(repository=repository)}, click 'Enable workflow' "
+                "if it shows, then 'Run workflow'"
+            )
+            raise WorkflowNotEnabledError(message)
+
+    def start_workflow(self, repository: str, mode: WorkflowMode) -> None:
+        """Start one run of the Threadline workflow on the repository's default branch.
+
+        Args:
+            repository: The copy, as ``owner/name``.
+            mode: ``daily`` for the whole run with the e-mail, ``refresh`` for new mail only.
+
+        Raises:
+            WorkflowNotStartedError: If GitHub did not start it.
+        """
+        status, _ = self._run(
+            [
+                _GH, "workflow", "run", WORKFLOW_FILE_NAME, "--repo", repository,
+                "--raw-field", f"{WORKFLOW_MODE_INPUT}={mode}",
+            ],
+            None,
+        )  # fmt: skip
+        if status != 0:
+            _log.warning("github_workflow_not_started", mode=mode.value, status=status)
+            message = (
+                f"GitHub did not start the run - open "
+                f"{WORKFLOW_PAGE.format(repository=repository)} and click 'Run workflow' "
+                f"yourself, keeping mode {WorkflowMode.DAILY}"
+            )
+            raise WorkflowNotStartedError(message)
+        _log.info("github_workflow_started", mode=mode.value)
+
+    def _actions_enabled(self, repository: str) -> bool:
+        """Read whether Actions may run in the repository; a failed read counts as no."""
+        path = ACTIONS_PERMISSIONS_API_PATH.format(repository=repository)
+        status, output = self._run([_GH, "api", path, "--jq", f".{_ACTIONS_ENABLED_FIELD}"], None)
+        return status == 0 and output.strip() == _TRUE
+
+    def _enable_actions(self, repository: str) -> None:
+        """Switch Actions on for the repository, allowing every action, as the guide does."""
+        path = ACTIONS_PERMISSIONS_API_PATH.format(repository=repository)
+        status, _ = self._run(
+            [
+                _GH, "api", "--method", "PUT", path,
+                "--field", f"{_ACTIONS_ENABLED_FIELD}={_TRUE}",
+                "--raw-field", f"allowed_actions={ALLOWED_ACTIONS_ALL}",
+            ],
+            None,
+        )  # fmt: skip
+        if status != 0:
+            _log.warning("github_actions_not_enabled", status=status)
+            message = (
+                f"GitHub would not switch on Actions for {repository} - on github.com open "
+                "your copy's Settings > Actions > General, choose 'Allow all actions and "
+                f"reusable workflows', then start the run at "
+                f"{WORKFLOW_PAGE.format(repository=repository)}"
+            )
+            raise WorkflowNotEnabledError(message)
+
     def _names(self, arguments: list[str], kind: str) -> frozenset[str]:
         """Run one ``gh … list`` command and read the names it printed."""
         status, output = self._run([_GH, *arguments, "--json", "name", "--jq", ".[].name"], None)
@@ -314,5 +427,5 @@ class TextFile:
         return self._path.read_text(encoding="utf-8")
 
     def write(self, text: str) -> None:
-        """Replace the file's content."""
-        self._path.write_text(text, encoding="utf-8")
+        """Replace the file's content, keeping its lines ending as git stores them."""
+        self._path.write_text(text, encoding="utf-8", newline=_NEWLINE)

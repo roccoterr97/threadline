@@ -21,11 +21,12 @@ from tests.setup_world import (
 )
 from tracker.infrastructure.github_cli import GitHubCli, GitHubRepository, GitRepository, TextFile
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.first_run import FirstRun
 from tracker.services.setup.models import StepName
 from tracker.services.setup.step_github import GitHubStep
 from tracker.services.setup.step_schedule import ScheduleStep
 from tracker.services.setup.step_time_zone import TimeZoneStep
-from tracker.services.setup.wizard import default_steps
+from tracker.services.setup.wizard import SetupWizard, core_steps
 from tracker.services.setup.workflow_schedule import (
     WORKFLOW_PATH,
     Schedule,
@@ -36,11 +37,18 @@ from tracker.shared.constants.github import (
     CLAUDE_TOKEN_SECRET,
     SCHEDULE_COMMIT_MESSAGE,
     WORKFLOW_FILE,
+    WorkflowMode,
 )
-from tracker.shared.errors import SourceUnavailableError, ValidationFailedError
+from tracker.shared.errors import (
+    SourceUnavailableError,
+    ValidationFailedError,
+    WorkflowNotEnabledError,
+    WorkflowNotStartedError,
+)
 
 CLAUDE_KEY = "sk-ant-oat01-made-up-subscription-key"
 APP_PASSWORD_LIKE = "zzzz-not-a-real-value"
+WORKFLOW_PAGE = "https://github.com/you/threadline/actions/workflows/threadline-run.yml"
 
 
 def github_env() -> dict[str, str]:
@@ -193,7 +201,7 @@ def test_a_workflow_without_its_schedule_lines_is_not_guessed_at() -> None:
 
 @pytest.mark.asyncio
 async def test_with_gh_every_value_goes_to_github_and_none_is_shown() -> None:
-    world = make_world([CLAUDE_KEY, True], github_env())
+    world = make_world([CLAUDE_KEY, True, False], github_env())
 
     await GitHubStep().run(world.context())
 
@@ -215,7 +223,7 @@ async def test_with_gh_every_value_goes_to_github_and_none_is_shown() -> None:
 
 @pytest.mark.asyncio
 async def test_the_claude_key_is_never_written_to_env() -> None:
-    world = make_world([CLAUDE_KEY, True], github_env())
+    world = make_world([CLAUDE_KEY, True, False], github_env())
 
     await GitHubStep().run(world.context())
 
@@ -235,7 +243,7 @@ def _with_emptied_settings(answers: list[str | bool]) -> World:
 
 @pytest.mark.asyncio
 async def test_settings_emptied_in_env_are_deleted_on_github_after_one_yes() -> None:
-    world = _with_emptied_settings([CLAUDE_KEY, True, True])
+    world = _with_emptied_settings([CLAUDE_KEY, True, True, False])
 
     await GitHubStep().run(world.context())
 
@@ -250,7 +258,7 @@ async def test_settings_emptied_in_env_are_deleted_on_github_after_one_yes() -> 
 
 @pytest.mark.asyncio
 async def test_settings_emptied_in_env_are_kept_on_github_after_a_no() -> None:
-    world = _with_emptied_settings([CLAUDE_KEY, True, False])
+    world = _with_emptied_settings([CLAUDE_KEY, True, False, False])
 
     await GitHubStep().run(world.context())
 
@@ -260,7 +268,7 @@ async def test_settings_emptied_in_env_are_kept_on_github_after_a_no() -> None:
 
 @pytest.mark.asyncio
 async def test_a_repository_that_cannot_be_listed_keeps_everything_and_says_so() -> None:
-    world = _with_emptied_settings([CLAUDE_KEY, True])
+    world = _with_emptied_settings([CLAUDE_KEY, True, False])
     world.github.listable = False
 
     await GitHubStep().run(world.context())
@@ -307,6 +315,84 @@ async def test_without_gh_the_names_and_page_are_shown_and_values_copied() -> No
     assert CLAUDE_KEY not in world.io.text()
 
 
+# --- The first run ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_after_saving_the_first_run_is_started_after_one_yes() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.enabled == ["you/threadline"]
+    assert world.github.started == [("you/threadline", "daily")]
+    assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
+    assert (
+        f"The first run has started. You can watch it here, or close this window: {WORKFLOW_PAGE}"
+        in world.io.said
+    )
+    assert "The summary e-mail arrives in about 10 minutes." in world.io.said
+
+
+@pytest.mark.asyncio
+async def test_declining_the_first_run_leaves_the_button_and_names_the_page() -> None:
+    world = make_world([CLAUDE_KEY, True, False], github_env())
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.enabled == []
+    assert world.github.started == []
+    assert step.first_run == FirstRun(started=False, page=WORKFLOW_PAGE)
+    assert f"To start the first run yourself: open {WORKFLOW_PAGE}," in world.io.said
+    assert "click 'Run workflow', keep mode daily" in world.io.text()
+
+
+@pytest.mark.asyncio
+async def test_a_workflow_github_would_not_switch_on_is_left_to_the_button() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.enable_refused = True
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.started == []
+    assert world.github.secrets[CLAUDE_TOKEN_SECRET] == CLAUDE_KEY
+    assert step.first_run == FirstRun(started=False, page=WORKFLOW_PAGE)
+    text = world.io.text()
+    assert "GitHub would not switch on the workflow in you/threadline" in text
+    assert f"open {WORKFLOW_PAGE}, click 'Enable workflow' if it shows" in text
+
+
+@pytest.mark.asyncio
+async def test_a_run_github_would_not_start_is_left_to_the_button() -> None:
+    world = make_world([CLAUDE_KEY, True, ""], github_env())
+    world.github.start_refused = True
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.enabled == ["you/threadline"]
+    assert step.first_run == FirstRun(started=False, page=WORKFLOW_PAGE)
+    assert f"open {WORKFLOW_PAGE} and click 'Run workflow' yourself" in world.io.text()
+
+
+@pytest.mark.asyncio
+async def test_without_gh_the_first_run_is_explained_by_hand() -> None:
+    world = make_world([CLAUDE_KEY, True], github_env())
+    world.github.signed_in = False
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.started == []
+    page = "your copy on github.com > Actions > Threadline run"
+    assert step.first_run == FirstRun(started=False, page=page)
+    assert f"To start the first run yourself: open {page}," in world.io.said
+    assert "click the green 'Run workflow' button" in world.io.text()
+
+
 @pytest.mark.asyncio
 async def test_declining_gh_opens_the_repositorys_own_page() -> None:
     world = make_world(["", False, False], github_env())
@@ -319,7 +405,7 @@ async def test_declining_gh_opens_the_repositorys_own_page() -> None:
 
 @pytest.mark.asyncio
 async def test_a_skipped_key_is_left_for_the_page() -> None:
-    world = make_world(["", True], github_env())
+    world = make_world(["", True, False], github_env())
 
     await GitHubStep().run(world.context())
 
@@ -337,19 +423,20 @@ async def test_a_local_set_up_that_is_not_finished_is_refused() -> None:
 
 @pytest.mark.asyncio
 async def test_the_claude_key_instruction_says_where_and_what_it_looks_like() -> None:
-    world = make_world(["", True], github_env())
+    world = make_world(["", True, False], github_env())
 
     await GitHubStep().run(world.context())
 
     shown = world.io.text()
-    assert "Open the Terminal app (a new window; on a Mac: ⌘ + N), run claude setup-token" in shown
+    assert "new terminal window, run claude setup-token" in shown
+    assert "⌘" not in shown
     assert "sk-ant-" in shown
 
 
 @pytest.mark.asyncio
 async def test_with_outlook_alone_the_step_says_github_cannot_send_the_summary() -> None:
     env = github_env() | {"MAIL_SOURCES": "outlook", "IMAP_PROVIDER": "", "IMAP_USERNAME": ""}
-    world = make_world(["", True], env)
+    world = make_world(["", True, False], env)
 
     await GitHubStep().run(world.context())
 
@@ -362,7 +449,7 @@ async def test_with_outlook_alone_the_step_says_github_cannot_send_the_summary()
 
 @pytest.mark.asyncio
 async def test_with_the_gmail_connector_chosen_the_step_says_github_cannot_send() -> None:
-    world = make_world(["", True], github_env() | {"SUMMARY_DELIVERY": "gmail_connector"})
+    world = make_world(["", True, False], github_env() | {"SUMMARY_DELIVERY": "gmail_connector"})
 
     await GitHubStep().run(world.context())
 
@@ -374,7 +461,7 @@ async def test_with_the_gmail_connector_chosen_the_step_says_github_cannot_send(
 
 @pytest.mark.asyncio
 async def test_with_a_gmail_mailbox_nothing_is_said_about_sending() -> None:
-    world = make_world(["", True], github_env())
+    world = make_world(["", True, False], github_env())
 
     await GitHubStep().run(world.context())
 
@@ -383,7 +470,7 @@ async def test_with_a_gmail_mailbox_nothing_is_said_about_sending() -> None:
 
 @pytest.mark.asyncio
 async def test_without_a_copy_gh_creates_it_after_a_yes_and_then_saves_the_settings() -> None:
-    world = make_world([True, "my copy", "tracker", CLAUDE_KEY, True], github_env())
+    world = make_world([True, "my copy", "tracker", CLAUDE_KEY, True, False], github_env())
     world.git.origin = None
     world.github.name = None
 
@@ -399,7 +486,7 @@ async def test_without_a_copy_gh_creates_it_after_a_yes_and_then_saves_the_setti
 
 @pytest.mark.asyncio
 async def test_a_link_to_someone_elses_copy_is_kept_under_another_name() -> None:
-    world = make_world([True, "", CLAUDE_KEY, True], github_env())
+    world = make_world([True, "", CLAUDE_KEY, True, False], github_env())
     world.github.name = None
 
     await GitHubStep().run(world.context())
@@ -410,7 +497,7 @@ async def test_a_link_to_someone_elses_copy_is_kept_under_another_name() -> None
 
 @pytest.mark.asyncio
 async def test_a_link_to_the_public_template_is_never_taken_for_your_copy() -> None:
-    world = make_world([True, "", CLAUDE_KEY, True], github_env())
+    world = make_world([True, "", CLAUDE_KEY, True, False], github_env())
     world.git.origin = "https://github.com/maker/threadline.git"
     world.github.name = "maker/threadline"
     world.github.private = False
@@ -456,9 +543,10 @@ async def test_without_a_copy_or_gh_the_template_steps_are_given_and_nothing_is_
         await GitHubStep().run(world.context())
 
     shown = world.io.text()
-    assert "install the GitHub CLI (from https://cli.github.com)" in shown
-    assert "move the hidden" in shown
-    assert "file .env from the top folder of this project into the top folder of the new" in shown
+    assert "install the GitHub CLI from https://cli.github.com" in shown
+    assert "brew" not in shown
+    assert "move the hidden file .env" in shown
+    assert "from the top folder of this project into the top folder of the new copy" in shown
     assert "backend/.env" not in shown
     assert world.github.secrets == {}
 
@@ -555,10 +643,62 @@ async def test_a_missing_workflow_file_does_not_stop_the_time_zone_step(tmp_path
     assert not (tmp_path / "missing.yml").exists()
 
 
-def test_the_github_steps_come_before_the_cloud_alternative() -> None:
-    names = [step.name for step in default_steps()]
+def test_the_core_steps_end_with_the_dashboard_the_schedule_and_github() -> None:
+    names = [step.name for step in core_steps()]
 
-    assert names[-4:] == [StepName.SCHEDULE, StepName.GITHUB, StepName.REFRESH, StepName.CLOUD]
+    assert names[-3:] == [StepName.DASHBOARD, StepName.SCHEDULE, StepName.GITHUB]
+
+
+# --- The end of the core set-up ---------------------------------------------------
+
+
+def _finishing_world(answers: list[str | bool]) -> World:
+    """A world whose workflow already holds 07:30 in Rome, for the closing words."""
+    world = make_world(answers, github_env())
+    world.workflow.text = write_schedule(world.workflow.text, Schedule(time(7, 30), "Europe/Rome"))
+    return world
+
+
+@pytest.mark.asyncio
+async def test_the_core_set_up_ends_saying_the_e_mail_is_on_its_way() -> None:
+    world = _finishing_world([CLAUDE_KEY, True, ""])
+
+    finished = await SetupWizard(world.context(), [GitHubStep()]).run_core()
+
+    assert finished
+    said = world.io.said
+    ending = said[said.index("Set-up done.") :]
+    assert ending[1:3] == [
+        "The first run is going on GitHub, so the first summary e-mail reaches you in",
+        "about 10 minutes.",
+    ]
+    assert "After that it comes every day at 07:30 (Europe/Rome)." in ending
+    extras = " ".join(ending[-3:])
+    assert "Refresh now button, which also makes the daily run start on time" in extras
+    assert extras.endswith("Claude cloud route: uv run tracker setup extras")
+
+
+@pytest.mark.asyncio
+async def test_a_first_run_not_started_is_named_with_its_page_at_the_end() -> None:
+    world = _finishing_world([CLAUDE_KEY, True, False])
+
+    assert await SetupWizard(world.context(), [GitHubStep()]).run_core()
+
+    said = world.io.said
+    ending = said[said.index("Set-up done.") :]
+    assert ending[1] == f"Start the first run at {WORKFLOW_PAGE}:"
+    assert "After that it comes every day at 07:30 (Europe/Rome)." in ending
+
+
+@pytest.mark.asyncio
+async def test_a_core_set_up_that_stopped_has_no_closing_words() -> None:
+    world = make_world([False], github_env())
+    world.git.origin = None
+
+    assert not await SetupWizard(world.context(), [GitHubStep()]).run_core()
+
+    assert "Set-up done." not in world.io.said
+    assert world.github.started == []
 
 
 # --- The gh and git helpers ----------------------------------------------------------
@@ -575,6 +715,94 @@ class Recorder:
     def __call__(self, arguments: Sequence[str], stdin: str | None) -> tuple[int, str]:
         self.calls.append((list(arguments), stdin))
         return self.status, self.output
+
+
+class Answering(Recorder):
+    """A command runner with an answer per gh command, keyed by its first two words."""
+
+    def __init__(self, answers: dict[str, tuple[int, str]]) -> None:
+        super().__init__()
+        self.answers = answers
+
+    def __call__(self, arguments: Sequence[str], stdin: str | None) -> tuple[int, str]:
+        super().__call__(arguments, stdin)
+        return self.answers.get(" ".join(arguments[1:3]), (0, ""))
+
+
+PERMISSIONS_PATH = "repos/you/threadline/actions/permissions"
+ACTIONS_ON = f"api {PERMISSIONS_PATH}"
+ACTIONS_SWITCH = "api --method"
+WORKFLOW_ENABLE = "workflow enable"
+WORKFLOW_RUN = "workflow run"
+
+
+def _gh(answers: dict[str, tuple[int, str]] | None = None) -> tuple[GitHubCli, Answering]:
+    run = Answering(answers or {})
+    return GitHubCli(run, which=lambda _: "/usr/bin/gh"), run
+
+
+def test_gh_enables_the_workflow_and_leaves_actions_alone_when_they_are_on() -> None:
+    cli, run = _gh({ACTIONS_ON: (0, "true\n")})
+
+    cli.enable_workflow("you/threadline")
+
+    assert [call[0] for call in run.calls] == [
+        ["gh", "api", PERMISSIONS_PATH, "--jq", ".enabled"],
+        ["gh", "workflow", "enable", "threadline-run.yml", "--repo", "you/threadline"],
+    ]
+
+
+def test_gh_switches_actions_on_first_when_they_are_off() -> None:
+    cli, run = _gh({ACTIONS_ON: (0, "false\n")})
+
+    cli.enable_workflow("you/threadline")
+
+    assert run.calls[1][0] == [
+        "gh", "api", "--method", "PUT", PERMISSIONS_PATH,
+        "--field", "enabled=true", "--raw-field", "allowed_actions=all",
+    ]  # fmt: skip
+    assert run.calls[2][0][:3] == ["gh", "workflow", "enable"]
+
+
+def test_actions_github_would_not_switch_on_are_a_plain_error_naming_the_settings() -> None:
+    cli, run = _gh({ACTIONS_ON: (1, ""), ACTIONS_SWITCH: (1, "")})
+
+    with pytest.raises(WorkflowNotEnabledError) as raised:
+        cli.enable_workflow("you/threadline")
+
+    assert raised.value.code == "workflow_not_enabled"
+    assert "Settings > Actions > General" in raised.value.message
+    assert WORKFLOW_PAGE in raised.value.message
+    assert len(run.calls) == 2
+
+
+def test_a_workflow_gh_would_not_enable_is_a_plain_error_naming_the_page() -> None:
+    cli, _ = _gh({ACTIONS_ON: (0, "true"), WORKFLOW_ENABLE: (1, "")})
+
+    with pytest.raises(WorkflowNotEnabledError, match="click 'Enable workflow' if it shows"):
+        cli.enable_workflow("you/threadline")
+
+
+def test_gh_starts_the_workflow_with_the_mode_as_its_input() -> None:
+    cli, run = _gh()
+
+    cli.start_workflow("you/threadline", WorkflowMode.DAILY)
+
+    started = [
+        "gh", "workflow", "run", "threadline-run.yml", "--repo", "you/threadline",
+        "--raw-field", "mode=daily",
+    ]  # fmt: skip
+    assert run.calls == [(started, None)]
+
+
+def test_a_run_gh_would_not_start_is_a_plain_error_naming_the_page() -> None:
+    cli, _ = _gh({WORKFLOW_RUN: (1, "")})
+
+    with pytest.raises(WorkflowNotStartedError) as raised:
+        cli.start_workflow("you/threadline", WorkflowMode.DAILY)
+
+    assert raised.value.code == "workflow_not_started"
+    assert f"open {WORKFLOW_PAGE} and click 'Run workflow' yourself" in raised.value.message
 
 
 def test_a_secret_goes_to_gh_on_standard_input_and_never_as_an_argument() -> None:

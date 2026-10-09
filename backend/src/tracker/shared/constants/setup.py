@@ -82,6 +82,77 @@ SUPABASE_URL_CONFIGURATION_PAGE: Final[str] = (
     f"{SUPABASE_DASHBOARD_URL}/project/{{ref}}/auth/url-configuration"
 )
 
+#: Name the set-up suggests for the personal access token, so it is easy to
+#: recognise and delete afterwards.
+SUPABASE_TOKEN_NAME: Final[str] = "Threadline set-up"
+
+#: Name offered for a new Supabase project.
+SUPABASE_DEFAULT_PROJECT_NAME: Final[str] = "threadline"
+
+#: Bytes of randomness in the generated database password. Threadline never
+#: needs the password again, so it is not kept or shown.
+DATABASE_PASSWORD_BYTES: Final[int] = 24
+
+#: How often a freshly created project is looked at, and how long between
+#: looks. A new project takes one to three minutes to come up; the Management
+#: API allows 120 requests a minute per endpoint, so a look every five seconds
+#: for five minutes stays far below that.
+PROJECT_READY_ATTEMPTS: Final[int] = 60
+PROJECT_READY_WAIT_SECONDS: Final[float] = 5.0
+
+#: Status Supabase reports once a project can be used.
+PROJECT_HEALTHY_STATUS: Final[str] = "ACTIVE_HEALTHY"
+
+#: Statuses meaning a project will never come up on its own.
+PROJECT_FAILED_STATUSES: Final[frozenset[str]] = frozenset(
+    {"INIT_FAILED", "REMOVED", "RESTORE_FAILED", "PAUSE_FAILED", "INACTIVE"}
+)
+
+#: Names of the API keys the set-up creates when a project has none.
+PUBLISHABLE_KEY_NAME: Final[str] = "threadline_dashboard"
+SECRET_KEY_NAME: Final[str] = "threadline_backend"
+
+#: How a Supabase API key of each kind begins.
+PUBLISHABLE_KEY_PREFIX: Final[str] = "sb_publishable_"
+SECRET_KEY_PREFIX: Final[str] = "sb_secret_"
+
+
+class RegionGroup(StrEnum):
+    """Supabase's smart region groups: it picks the best data centre in the group."""
+
+    AMERICAS = "americas"
+    EMEA = "emea"
+    APAC = "apac"
+
+
+#: What each region group is called when offered.
+REGION_GROUP_LABELS: Final[dict[RegionGroup, str]] = {
+    RegionGroup.AMERICAS: "The Americas",
+    RegionGroup.EMEA: "Europe, the Middle East and Africa",
+    RegionGroup.APAC: "Asia and the Pacific",
+}
+
+#: The region group offered first for each beginning of a time-zone name.
+#: ``UTC`` and anything unrecognised fall back to the Americas, Supabase's
+#: largest group.
+REGION_GROUP_BY_ZONE_PREFIX: Final[dict[str, RegionGroup]] = {
+    "Europe/": RegionGroup.EMEA,
+    "Africa/": RegionGroup.EMEA,
+    "Atlantic/": RegionGroup.EMEA,
+    "Arctic/": RegionGroup.EMEA,
+    "Asia/": RegionGroup.APAC,
+    "Australia/": RegionGroup.APAC,
+    "Pacific/": RegionGroup.APAC,
+    "Indian/": RegionGroup.APAC,
+    "Antarctica/": RegionGroup.APAC,
+}
+DEFAULT_REGION_GROUP: Final[RegionGroup] = RegionGroup.AMERICAS
+
+#: How often the auth server's public settings are read after sign-ups were
+#: switched off, and how long between reads: the change takes a moment to show.
+SIGNUP_CHECK_ATTEMPTS: Final[int] = 5
+SIGNUP_CHECK_WAIT_SECONDS: Final[float] = 3.0
+
 #: Seconds between two structure files sent to the Management API. Supabase
 #: names each applied file after the current second, so two files sent within
 #: the same second collide and the second one is refused.
@@ -123,7 +194,7 @@ LINKEDIN_PERMISSION_PREFIX: Final[str] = "r_dma_portability"
 LINKEDIN_PROFILE_PREFIX: Final[str] = "https://www.linkedin.com/in/"
 
 #: The part of the guide that walks through LinkedIn by hand.
-LINKEDIN_GUIDE_SECTION: Final[str] = "docs/setup-your-accounts.md, part 6 (LinkedIn)"
+LINKEDIN_GUIDE_SECTION: Final[str] = "docs/setup-your-accounts.md, part 8a (LinkedIn)"
 
 # --- Claude cloud ------------------------------------------------------------
 
@@ -138,7 +209,7 @@ CLOUD_OUTLOOK_HOST: Final[str] = "graph.microsoft.com"
 #: Host the cloud needs only when LinkedIn is connected.
 CLOUD_LINKEDIN_HOST: Final[str] = "api.linkedin.com"
 
-#: Settings that exist on your Mac only and are never copied to the cloud.
+#: Settings that exist on your own computer only and are never copied to the cloud.
 LOCAL_ONLY_SETTINGS: Final[frozenset[str]] = frozenset({"APP_ENV", "LOG_LEVEL"})
 
 # --- Refresh now -------------------------------------------------------------
@@ -167,8 +238,6 @@ FUNCTION_MISSING_STATUS: Final[int] = 404
 #: The branch the dashboard's refresh runs the workflow on.
 REFRESH_BRANCH: Final[str] = "main"
 
-#: Where the set-up and the doctor point the owner for "Refresh now".
-REFRESH_GUIDE_SECTION: Final[str] = "docs/setup-your-accounts.md, part 8f"
 
 #: Supabase's own JWT check stays off: the function refuses a caller without a
 #: sign-in itself (401) and asks the database whether the signed-in caller is

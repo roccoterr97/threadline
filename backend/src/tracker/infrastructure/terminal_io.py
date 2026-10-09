@@ -5,12 +5,12 @@ from __future__ import annotations
 import shutil
 import subprocess
 import webbrowser
+from collections.abc import Sequence
 from typing import Final
 
 import typer
 
-#: Clipboard command on a Mac.
-CLIPBOARD_COMMAND: Final[str] = "pbcopy"
+from tracker.shared.constants.terminal import CLIPBOARD_COMMANDS, CLIPBOARD_TIMEOUT_SECONDS
 
 #: What a pause asks for here; the page asks for a click instead.
 PAUSE_SUFFIX: Final[str] = ", press Enter"
@@ -55,19 +55,37 @@ class TerminalIO:
 
 
 def copy_to_clipboard(value: str) -> bool:
-    """Put a value on the clipboard with pbcopy, when this machine has it.
+    """Put a value on the clipboard with the first clipboard command that works.
+
+    The value goes on the command's standard input, never on its command
+    line, and nothing it prints is shown.
 
     Args:
         value: What to copy. Never shown.
 
     Returns:
-        ``False`` when there is no clipboard command, or it failed.
+        ``False`` when this computer has no clipboard command that worked.
     """
-    command = shutil.which(CLIPBOARD_COMMAND)
-    if command is None:
+    return any(_copy_with(command, value) for command in CLIPBOARD_COMMANDS)
+
+
+def _copy_with(command: Sequence[str], value: str) -> bool:
+    """Try one clipboard command; ``False`` when it is missing or failed."""
+    program = shutil.which(command[0])
+    if program is None:
         return False
+    # Output goes nowhere rather than to a pipe: xclip stays behind to hold the
+    # clipboard, and waiting for its pipe to close would wait for ever.
     try:
-        subprocess.run([command], input=value, text=True, check=True)
-    except (OSError, subprocess.CalledProcessError):
+        subprocess.run(
+            [program, *command[1:]],
+            input=value,
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+            timeout=CLIPBOARD_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return False
     return True

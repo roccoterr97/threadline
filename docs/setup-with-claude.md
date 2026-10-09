@@ -1,13 +1,14 @@
 # The easy way: let Claude set it up for you
 
 Threadline runs on your own Claude subscription, and Claude can also do the
-set-up for you. You create three free accounts and click where it tells you;
+set-up for you. You create a few free accounts and click where it tells you;
 Claude does everything that happens in the terminal. Keys are typed by you
 into a page in your browser, never into the chat.
 
-It takes about an hour, most of it creating the accounts. You need a Mac or a
-Linux computer (Windows is not supported yet) and a paid Claude plan (Pro, Max
-or Team).
+It takes well under an hour, most of it creating the accounts. You need a Mac
+or a Linux computer and a paid Claude plan (Pro, Max or Team). On Windows, use
+the one-line install in [part 1 of the guide](setup-your-accounts.md#1-install-threadline-one-line)
+instead: Claude can still answer your questions along the way.
 
 ## 1. Install the Claude app
 
@@ -40,16 +41,18 @@ time:
 2. **Your private copy** — it makes your own copy of Threadline on GitHub
    (you may need to sign in to GitHub once, in the browser, with a code it
    gives you).
-3. **Three accounts** — Supabase (the database), Vercel (the dashboard) and
+3. **The accounts** — Supabase (the database), Netlify (the dashboard) and
    your mailbox's app password. These must be yours, so you create them, with
-   Claude saying exactly what to click.
+   Claude saying exactly what to click. The set-up then creates the database
+   project and publishes the dashboard for you.
 4. **The set-up page** — Claude starts the set-up and a page opens in your
    browser called *Threadline set-up*. It asks one question at a time: paste
    each key there. Claude sees the questions, not your answers, and is told
    never to open that page itself (it could: the page's address appears in
    its window). Ask it anything that is unclear.
-5. **The first run** — Claude starts it and checks that it worked; you look
-   for the first summary e-mail.
+5. **The first run** — the set-up starts it, Claude checks that it worked, and
+   you look for the first summary e-mail. Claude then offers the Refresh now
+   button, which also makes the daily run start on time.
 
 **✅ Check:** at the end Claude shows `Everything Threadline needs is working.`
 and tells you your dashboard address.

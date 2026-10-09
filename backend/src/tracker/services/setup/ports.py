@@ -14,15 +14,47 @@ from typing import Protocol
 from pydantic import SecretStr
 
 from tracker.domain.daily_start import DailyStartStatus
+from tracker.domain.supabase import (
+    ApiKey,
+    ApiKeyKind,
+    AuthSettings,
+    NewProject,
+    Organization,
+    SupabaseProject,
+)
 from tracker.infrastructure.github_cli import GitHubRepository
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.microsoft.connection import MicrosoftAccess, ShowCode
+from tracker.infrastructure.netlify_api import NetlifyDeploy, NetlifySite
 from tracker.infrastructure.smtp import SmtpAccount
+from tracker.infrastructure.web_probe import WebPage
 from tracker.services.database_structure import MigrationFile, StructureProbe
 from tracker.services.profile.choice import Choice, SavedChoice
 from tracker.shared.clock import Clock
+from tracker.shared.constants.github import WorkflowMode
+
+__all__ = [
+    "ApiKey",
+    "ApiKeyKind",
+    "AuthSettings",
+    "ChoiceStore",
+    "EnvStore",
+    "GitHubApiPort",
+    "GitHubPort",
+    "GitPort",
+    "MailboxPort",
+    "MicrosoftPort",
+    "NewProject",
+    "Organization",
+    "PlatformPort",
+    "SetupGateways",
+    "SetupIO",
+    "SupabaseAdminPort",
+    "SupabaseProject",
+    "TextFilePort",
+]
 
 
 class SetupIO(Protocol):
@@ -114,6 +146,38 @@ class PlatformPort(Protocol):
 
     async def signups_disabled(self, project_url: str, publishable_key: SecretStr) -> bool:
         """Read whether strangers are prevented from creating a login."""
+        ...
+
+    async def organizations(self, token: SecretStr) -> tuple[Organization, ...]:
+        """List the organizations the token's owner belongs to; proves the token."""
+        ...
+
+    async def projects(self, token: SecretStr) -> tuple[SupabaseProject, ...]:
+        """List every project the token can see."""
+        ...
+
+    async def create_project(self, token: SecretStr, request: NewProject) -> SupabaseProject:
+        """Create a project; it comes back still being set up."""
+        ...
+
+    async def project(self, token: SecretStr, project_ref: str) -> SupabaseProject:
+        """Read one project, with its current status."""
+        ...
+
+    async def api_keys(self, project_ref: str, token: SecretStr) -> tuple[ApiKey, ...]:
+        """List a project's API keys, revealed."""
+        ...
+
+    async def create_api_key(
+        self, project_ref: str, token: SecretStr, kind: ApiKeyKind, name: str
+    ) -> SecretStr:
+        """Create one API key and return it."""
+        ...
+
+    async def configure_auth(
+        self, project_ref: str, token: SecretStr, settings: AuthSettings
+    ) -> None:
+        """Change a project's auth settings; only the fields that are set are sent."""
         ...
 
     async def applied_migrations(self, project_ref: str, token: SecretStr) -> frozenset[str]:
@@ -230,6 +294,14 @@ class GitHubPort(Protocol):
         """Create a private repository from this folder, link it as ``origin`` and push."""
         ...
 
+    def enable_workflow(self, repository: str) -> None:
+        """Make sure Actions may run in the repository and the Threadline workflow is active."""
+        ...
+
+    def start_workflow(self, repository: str, mode: WorkflowMode) -> None:
+        """Start one run of the Threadline workflow in a mode."""
+        ...
+
 
 class GitHubApiPort(Protocol):
     """GitHub's REST API, with a token the owner pastes."""
@@ -271,6 +343,42 @@ class TextFilePort(Protocol):
         ...
 
 
+class NetlifyPort(Protocol):
+    """Netlify's API, with a personal access token the owner pastes."""
+
+    async def check_token(self, token: SecretStr) -> None:
+        """Read the token's own account; proves the token works and changes nothing."""
+        ...
+
+    async def create_site(self, token: SecretStr, name: str) -> NetlifySite:
+        """Create an empty site; raises ``SiteNameTakenError`` when the name is used."""
+        ...
+
+    async def find_site(self, token: SecretStr, site_id: str) -> NetlifySite | None:
+        """Look a site up by its identifier; ``None`` when it is gone."""
+        ...
+
+    async def deploy_zip(self, token: SecretStr, site_id: str, archive: bytes) -> NetlifyDeploy:
+        """Publish a zip of the whole site as its new version."""
+        ...
+
+    async def deploy_state(self, token: SecretStr, deploy_id: str) -> NetlifyDeploy:
+        """Read where a deploy is."""
+        ...
+
+
+class LocalBuildPort(Protocol):
+    """Building the dashboard on this computer, for contributors with Node.js."""
+
+    def available(self) -> bool:
+        """Tell whether the dashboard's source and Node.js 22 or newer are here."""
+        ...
+
+    def build(self) -> dict[str, bytes]:
+        """Build it and return every built file by its path inside the site."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class SetupGateways:
     """Every outside capability the steps use, injected by the command line.
@@ -294,6 +402,11 @@ class SetupGateways:
         local_time_zone: Names the time zone this computer is set to.
         github_api: Reads the workflow with a token, without starting it.
         refresh_function: Reads the "Refresh now" function's files, entry point first.
+        netlify: Netlify's API, which hosts the dashboard.
+        download: Downloads a file into memory, refusing one past a size in bytes.
+        local_build: Builds the dashboard with Node.js, when it is installed.
+        page_of: Opens a web address and tells its status and whether it is a page.
+        site_name_suffix: Makes the random end of a new Netlify site's name.
         make_daily_start_key: Generates a new key for the on-time morning start's timer.
     """
 
@@ -315,4 +428,9 @@ class SetupGateways:
     local_time_zone: Callable[[], str]
     github_api: GitHubApiPort
     refresh_function: Callable[[], dict[str, bytes]]
+    netlify: NetlifyPort
+    download: Callable[[str, int], Awaitable[bytes]]
+    local_build: LocalBuildPort
+    page_of: Callable[[str], Awaitable[WebPage]]
+    site_name_suffix: Callable[[], str]
     make_daily_start_key: Callable[[], str]

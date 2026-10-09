@@ -1,8 +1,8 @@
 """Step: your time zone, and the name you go by. Both decide how dates read.
 
 The time zone decides what "today" is for due dates and the summary, and the
-daily run's time is read in it. The computer's own zone is offered, so pressing
-Return is usually enough. The name is optional: it helps only when your
+daily run's time is read in it. The computer's own zone is offered, so keeping
+it is usually enough. The name is optional: it helps only when your
 addresses do not spell it (``jd123@`` rather than ``sam.rivera@``).
 
 A new zone is also written into the GitHub Actions workflow's ``timezone``

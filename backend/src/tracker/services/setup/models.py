@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Protocol
+from typing import Final, Protocol
 
 from tracker.services.setup.context import SetupContext
 
 
+class StepGroup(StrEnum):
+    """The two halves of the set-up: what the first morning e-mail needs, and the extras."""
+
+    CORE = "core"
+    EXTRAS = "extras"
+
+
 class StepName(StrEnum):
-    """Every step, in the order the full set-up runs them."""
+    """Every step; ``core_steps`` and ``extra_steps`` in ``wizard`` give each half's order."""
 
     SUPABASE = "supabase"
     ENCRYPTION = "encryption"
@@ -25,6 +32,17 @@ class StepName(StrEnum):
     GITHUB = "github"
     REFRESH = "refresh"
     CLOUD = "cloud"
+
+    @property
+    def group(self) -> StepGroup:
+        """The half of the set-up this step belongs to."""
+        return StepGroup.EXTRAS if self in EXTRA_STEPS else StepGroup.CORE
+
+
+#: The optional steps, run together by ``tracker setup extras``. Every other step is core.
+EXTRA_STEPS: Final[frozenset[StepName]] = frozenset(
+    {StepName.LINKEDIN, StepName.REFRESH, StepName.CLOUD}
+)
 
 
 class Step(Protocol):

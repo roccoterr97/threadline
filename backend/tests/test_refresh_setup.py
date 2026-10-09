@@ -11,7 +11,6 @@ from tests.setup_world import (
     DAILY_START_KEY,
     GOOD_GITHUB_TOKEN,
     GOOD_TOKEN,
-    PROJECT_REF,
     PROJECT_URL,
     World,
     configured_env,
@@ -20,7 +19,7 @@ from tests.setup_world import (
 from tracker.services.setup.github_copy import repository_from_origin
 from tracker.services.setup.models import StepName
 from tracker.services.setup.step_refresh import RefreshStep, function_url, token_page
-from tracker.services.setup.wizard import default_steps
+from tracker.services.setup.wizard import extra_steps
 from tracker.shared.constants.setup import (
     REFRESH_PROBE_ATTEMPTS,
     REFRESH_PROBE_WAIT_SECONDS,
@@ -66,6 +65,15 @@ async def test_refresh_now_is_switched_on_end_to_end() -> None:
     assert "Refreshing…" in world.io.text()
 
 
+async def test_a_dashboard_on_netlify_is_the_one_origin_allowed() -> None:
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world.env.values["DASHBOARD_BASE_URL"] = "https://threadline-abc123.netlify.app"
+
+    await RefreshStep().run(world.context())
+
+    assert world.platform.secrets["DASHBOARD_ORIGIN"] == "https://threadline-abc123.netlify.app"
+
+
 async def test_neither_token_is_shown_or_written_to_env() -> None:
     world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
 
@@ -86,8 +94,7 @@ async def test_the_filled_in_github_page_and_the_supabase_page_open() -> None:
     assert world.io.opened == [token_page("you/threadline"), SUPABASE_TOKENS_PAGE]
     text = world.io.text()
     assert "'Only select repositories' and pick you/threadline" in text
-    assert "'Edge Functions' and 'Edge Function Secrets', both read and write" in text
-    assert f"Limit it to this project ({PROJECT_REF})" in text
+    assert "name it 'Threadline set-up'" in text
 
 
 async def test_the_github_token_page_is_filled_in_with_the_one_permission() -> None:
@@ -242,11 +249,10 @@ async def test_the_step_is_not_done_without_a_project_or_a_connection() -> None:
     assert not await RefreshStep().is_done(offline)
 
 
-async def test_refresh_comes_after_github_and_before_the_cloud_alternative() -> None:
-    names = [step.name for step in default_steps()]
+async def test_refresh_is_an_extra_between_linkedin_and_the_cloud_alternative() -> None:
+    names = [step.name for step in extra_steps()]
 
-    assert names.index(StepName.REFRESH) == names.index(StepName.GITHUB) + 1
-    assert names.index(StepName.CLOUD) == names.index(StepName.REFRESH) + 1
+    assert names == [StepName.LINKEDIN, StepName.REFRESH, StepName.CLOUD]
 
 
 async def test_the_function_address_is_below_the_project() -> None:

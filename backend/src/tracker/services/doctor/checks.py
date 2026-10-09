@@ -292,7 +292,7 @@ class DashboardCheck:
     status_of: Callable[[str], Awaitable[int]]
     address: str | None
     name: str = "Dashboard address"
-    fix: str = "check DASHBOARD_BASE_URL is the production address from Vercel's Domains tab"
+    fix: str = _setup("dashboard")
 
     async def run(self) -> CheckResult:
         """Open the address once."""
@@ -300,7 +300,7 @@ class DashboardCheck:
             return skipped(self.name, "DASHBOARD_BASE_URL is not set yet (optional)")
         status = await self.status_of(self.address)
         if status in _LOGIN_WALL_STATUSES:
-            detail = "the page asks for a Vercel login instead of showing the dashboard"
+            detail = "the page asks for a login instead of showing the dashboard"
             return problem(self.name, detail, self.fix)
         if status >= _FIRST_ERROR_STATUS:
             return problem(self.name, f"the page answered status {status}", self.fix)

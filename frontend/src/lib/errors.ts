@@ -8,7 +8,7 @@ export class DashboardError extends Error {
   }
 }
 
-/** The two `VITE_` settings are missing, so there is nothing to talk to. */
+/** The page has no database address and key, so there is nothing to talk to. */
 export class NotConfiguredError extends DashboardError {}
 
 /** The database refused or could not be reached. */

@@ -16,7 +16,7 @@ from typing import Final
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
-from tracker.shared.constants.github import DEFAULT_COPY_NAME, TEMPLATE_REMOTE
+from tracker.shared.constants.github import DEFAULT_COPY_NAME, GITHUB_CLI_PAGE, TEMPLATE_REMOTE
 from tracker.shared.errors import ValidationFailedError
 
 #: ``owner/name`` in a GitHub link, over https or ssh, with or without ``.git``.
@@ -157,9 +157,9 @@ def _explain_by_hand(ctx: SetupContext, *, gh_installed: bool) -> None:
     io.say("  1. Open this project's page and click 'Use this template' >")
     io.say("     'Create a new repository'.")
     io.say("  2. Give it a name, choose Private, and click 'Create repository'.")
-    io.say("  3. Download your copy as in part 1 of docs/setup-your-accounts.md, move the hidden")
-    io.say("     file .env from the top folder of this project into the top folder of the new")
-    io.say(f"     copy, and run 'uv run tracker setup {StepName.GITHUB}' in its backend folder.")
+    io.say("  3. Download your copy ('git clone' its address), move the hidden file .env")
+    io.say("     from the top folder of this project into the top folder of the new copy,")
+    io.say(f"     and run 'uv run tracker setup {StepName.GITHUB}' in its backend folder.")
     if not gh_installed:
-        io.say("Or install the GitHub CLI (from https://cli.github.com), sign in with")
+        io.say(f"Or install the GitHub CLI from {GITHUB_CLI_PAGE}, sign in with")
         io.say("'gh auth login', and run this step again: it can then create the copy for you.")

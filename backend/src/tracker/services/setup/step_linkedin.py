@@ -41,7 +41,7 @@ _INTRODUCTION: Final[tuple[str, ...]] = (
 
 _CREATE_APPLICATION: Final[tuple[str, ...]] = (
     "",
-    "Stage 1 of 3 - create a developer application (guide, part 6a).",
+    "Stage 1 of 3 - create a developer application (guide, part 8a, stage 1).",
     "On the LinkedIn page that opens, click 'Create app' and give it any name, such as",
     f"Threadline. For 'LinkedIn Page', choose '{LINKEDIN_DEFAULT_COMPANY}' -",
     "do not create a new page. Then tick the terms and click 'Create app'.",
@@ -50,7 +50,7 @@ _CREATE_APPLICATION: Final[tuple[str, ...]] = (
 
 _ADD_PRODUCT: Final[tuple[str, ...]] = (
     "",
-    "Stage 2 of 3 - add the product (guide, part 6b).",
+    "Stage 2 of 3 - add the product (guide, part 8a, stage 2).",
     "Stay on your application's page. Open its 'Products' tab, find",
     f"'{LINKEDIN_PRODUCT}' and click 'Request access'. Accept the terms.",
     "If LinkedIn says the product is not available to you, answer no below.",
@@ -63,10 +63,10 @@ _PRODUCT_UNAVAILABLE: Final[str] = (
 
 _RENEWAL: Final[tuple[str, ...]] = (
     "A LinkedIn key is already saved, so this is a renewal: you make a new key",
-    "and it replaces the old one (guide, part 6c).",
+    "and it replaces the old one (guide, part 8a, stage 3).",
 )
 
-_FIRST_KEY: Final[tuple[str, ...]] = ("", "Stage 3 of 3 - make the key (guide, part 6c).")
+_FIRST_KEY: Final[tuple[str, ...]] = ("", "Stage 3 of 3 - make the key (guide, part 8a, stage 3).")
 
 _MAKE_KEY: Final[tuple[str, ...]] = (
     "On the LinkedIn page that opens, pick your application, tick the permission whose",

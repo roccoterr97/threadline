@@ -1,7 +1,7 @@
 """The on-time morning start: the database's timer, and the daily time it reads.
 
 GitHub starts the scheduled workflow when it has room, often hours after its
-time. So a timer in the owner's database (pg_cron, migration 0016) calls the
+time. So a timer in the owner's database (pg_cron, migration 0017) calls the
 ``refresh-now`` function's scheduled path every 15 minutes, and the function
 starts the daily run on GitHub once the owner's daily time has passed.
 

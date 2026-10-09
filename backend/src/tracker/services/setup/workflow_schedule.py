@@ -108,7 +108,7 @@ def offer_push(ctx: SetupContext) -> None:
         _offer_commit(ctx)
         return
     ctx.io.say("GitHub uses the new time once this file is committed and pushed.")
-    if ctx.io.confirm("Run git add, git commit and git push for this file now?", default=False):
+    if ctx.io.confirm("Send the new time to your copy on GitHub now?", default=True):
         ctx.gateways.git.commit_and_push(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)
         ctx.io.say("Committed and pushed. GitHub will use the new time from now on.")
         return
@@ -132,6 +132,6 @@ def _offer_commit(ctx: SetupContext) -> None:
 
 def _say_commit_lines(ctx: SetupContext) -> None:
     """Print the git lines that save the workflow file, runnable from any folder."""
-    ctx.io.say("When you are ready, run these in Terminal, in any folder of the project:")
+    ctx.io.say("When you are ready, run these in a terminal, in any folder of the project:")
     ctx.io.say(f"  git add {_FROM_TOP}{WORKFLOW_PATH}")
     ctx.io.say(f'  git commit -m "{SCHEDULE_COMMIT_MESSAGE}"')

@@ -52,6 +52,18 @@ MIGRATIONS = "https://api.supabase.com/v1/projects/abcdefghijklmnop/database/mig
 # --- The computer's time zone ------------------------------------------------
 
 
+def not_windows() -> str:
+    """What asking Windows for its zone gives on a computer that is not Windows."""
+    return ""
+
+
+#: Windows has no ``/etc/localtime`` link, and making links there needs special rights.
+needs_posix_links = pytest.mark.skipif(
+    os.name == "nt", reason="Windows reads its zone with tzutil, not a link"
+)
+
+
+@needs_posix_links
 def test_the_computers_zone_is_read_from_the_localtime_link(tmp_path: Path) -> None:
     zone_file = tmp_path / "usr" / "share" / "zoneinfo" / "Europe" / "Paris"
     zone_file.parent.mkdir(parents=True)
@@ -59,15 +71,21 @@ def test_the_computers_zone_is_read_from_the_localtime_link(tmp_path: Path) -> N
     link = tmp_path / "localtime"
     link.symlink_to(zone_file)
 
-    assert detect_time_zone(link, {}) == "Europe/Paris"
-    assert detect_time_zone(link, {"TZ": "Asia/Tokyo"}) == "Asia/Tokyo"
-    assert detect_time_zone(tmp_path / "missing", {"TZ": "nonsense"}) == "UTC"
-    assert detect_time_zone(tmp_path / "missing", {"TZ": "asia/tokyo"}) == "Asia/Tokyo"
+    assert detect_time_zone(link, {}, not_windows) == "Europe/Paris"
+    assert detect_time_zone(link, {"TZ": "Asia/Tokyo"}, not_windows) == "Asia/Tokyo"
+
+
+def test_a_tz_setting_names_the_zone_in_any_case(tmp_path: Path) -> None:
+    missing = tmp_path / "missing"
+
+    assert detect_time_zone(missing, {"TZ": "nonsense"}, not_windows) == "UTC"
+    assert detect_time_zone(missing, {"TZ": "asia/tokyo"}, not_windows) == "Asia/Tokyo"
 
 
 # --- .env ----------------------------------------------------------------------
 
 
+@pytest.mark.skipif(os.name == "nt", reason="Windows keeps no Unix permissions")
 def test_a_new_env_file_is_readable_by_its_owner_only(tmp_path: Path) -> None:
     path = tmp_path / ".env"
 
@@ -649,12 +667,15 @@ def test_terminal_without_browser_or_clipboard_carries_on(
 
 
 def test_terminal_copies_with_pbcopy(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[dict[str, Any]] = []
-    monkeypatch.setattr(terminal_io.shutil, "which", lambda name: "/usr/bin/pbcopy")
-    monkeypatch.setattr(terminal_io.subprocess, "run", lambda args, **kwargs: calls.append(kwargs))
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+    monkeypatch.setattr(terminal_io.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        terminal_io.subprocess, "run", lambda args, **kwargs: calls.append((args, kwargs))
+    )
 
     assert TerminalIO().copy("value") is True
-    assert calls[0]["input"] == "value"
+    assert calls == [(["/usr/bin/pbcopy"], calls[0][1])]
+    assert calls[0][1]["input"] == "value"
 
 
 # --- The commands --------------------------------------------------------------

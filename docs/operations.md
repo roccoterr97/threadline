@@ -103,9 +103,10 @@ LinkedIn's Token Inspector showed when you made it. Seven days before that date,
 every morning summary carries a "LinkedIn key" line with the exact date. It
 takes about five minutes.
 
-1. On your computer, in the `backend` folder:
+1. On your computer, open a terminal and type:
 
    ```bash
+   cd ~/threadline/backend
    uv run tracker setup linkedin
    ```
 
@@ -115,15 +116,16 @@ takes about five minutes.
 2. On that page, pick your application, tick the permission starting with
    `r_dma_portability`, click **Request access token**, then **Allow**. Copy
    the token and paste it in the terminal. Then read its expiry date in
-   LinkedIn's **Token Inspector** and type it. Every click is in the setup
-   guide, parts [6c](setup-your-accounts.md#6c-make-the-key) and
-   [6d](setup-your-accounts.md#6d-the-expiry-date-and-your-profile-address).
+   LinkedIn's **Token Inspector** and type it. Every click is in the set-up
+   guide, part 8a: [stage 3](setup-your-accounts.md#stage-3-of-3-make-the-key)
+   and [the expiry date](setup-your-accounts.md#the-expiry-date-and-your-profile-address).
    The set-up checks the key with LinkedIn before it saves anything, and asks
    before replacing the old values.
 3. Put the same two values where the daily run reads them, or it keeps using
    the old key: run `uv run tracker setup github`, which saves
    `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_TOKEN_EXPIRES_ON` on GitHub for you
-   (press Enter when it asks for the Claude key, to keep the one GitHub has).
+   (press Enter when it asks for the Claude key, to keep the one GitHub has,
+   and answer `n` when it offers to start a daily run).
    On the alternative route, update the two in the cloud environment at
    <https://claude.ai/code> instead; `uv run tracker setup cloud` puts each
    value on your clipboard in turn.
@@ -147,7 +149,8 @@ You have to do this on your computer, because Microsoft shows you a code to
 type:
 
 ```bash
-cd backend && uv run tracker setup microsoft
+cd ~/threadline/backend
+uv run tracker setup microsoft
 ```
 
 It opens Microsoft's page and shows a short code. Type the code, approve the
@@ -157,7 +160,7 @@ It finishes with "Signed in as" and your address.
 Then check it:
 
 ```bash
-cd backend && uv run tracker doctor
+uv run tracker doctor
 ```
 
 The Microsoft sign-in, Mailbox and Calendar lines should all say `ok`.
@@ -185,8 +188,9 @@ reasons:
 Yahoo keeps app passwords when you change your password, so there it usually
 means the app password was removed.
 
-1. Make a new app password, exactly as in part 5 of
-   [the set-up guide](setup-your-accounts.md) for your provider.
+1. Make a new app password, exactly as in part 4 of
+   [the set-up guide](setup-your-accounts.md#4b-gmail-or-another-mailbox) for
+   your provider.
 
    **✅ Check:** the provider shows you the new password.
 
@@ -196,7 +200,8 @@ means the app password was removed.
 2. Give it to Threadline:
 
    ```bash
-   cd backend && uv run tracker setup mailbox
+   cd ~/threadline/backend
+   uv run tracker setup mailbox
    ```
 
    Choose the same provider and the same address, then paste the new password.
@@ -210,7 +215,7 @@ means the app password was removed.
 3. Check it:
 
    ```bash
-   cd backend && uv run tracker doctor
+   uv run tracker doctor
    ```
 
    **✅ Check:** the `IMAP mailbox` line says `ok`.
@@ -230,14 +235,17 @@ one year. When it expires, the run on GitHub fails with a red cross at the
 **Run the recipe with Claude** step, and no summary arrives. Put a reminder in
 your calendar for a week before the date you made it.
 
-1. In Terminal, run `claude setup-token`, sign in, and copy the key it prints.
-2. In the `backend` folder of your copy, run `uv run tracker setup github` and
-   paste the key when asked. It replaces the `CLAUDE_CODE_OAUTH_TOKEN` secret
-   and is saved nowhere else. (Without the GitHub tool `gh`: on GitHub, open **Settings →
-   Secrets and variables → Actions**, click the pencil next to
-   `CLAUDE_CODE_OAUTH_TOKEN`, paste the key and save.)
-3. On GitHub, open **Actions → Threadline run → Run workflow** with mode
-   **daily**.
+1. In a terminal, run `claude setup-token`, sign in, and copy the key it
+   prints.
+2. In the `backend` folder (`cd ~/threadline/backend`), run
+   `uv run tracker setup github` and paste the key when asked. It replaces the
+   `CLAUDE_CODE_OAUTH_TOKEN` secret and is saved nowhere else. (Without the
+   GitHub tool `gh`: on GitHub, open **Settings → Secrets and variables →
+   Actions**, click the pencil next to `CLAUDE_CODE_OAUTH_TOKEN`, paste the key
+   and save.)
+3. When it offers to start a daily run, press Enter for yes. (Without `gh`: on
+   GitHub, open **Actions → Threadline run → Run workflow** with mode
+   **daily**.)
 
 **✅ Check:** the run gets a green tick and the summary arrives.
 
@@ -249,15 +257,16 @@ never paste it anywhere but your own repository's secrets.
 ## Renew the Refresh now key (once a year)
 
 The dashboard's **Refresh now** button starts the workflow with a GitHub key of
-its own, which expires on the date you chose when you made it (part 8f of the
-set-up guide). From that day the dashboard says the key was turned down. In
-the `backend` folder of your copy, run:
+its own, which expires on the date you chose when you made it (part 8b of the
+[set-up guide](setup-your-accounts.md#8b-refresh-now-tracker-setup-refresh)).
+From that day the dashboard says the key was turned down. In a terminal, run:
 
 ```bash
+cd ~/threadline/backend
 uv run tracker setup refresh
 ```
 
-As in part 8f, it opens GitHub's page for a new key and Supabase's page for a
+As in part 8b, it opens GitHub's page for a new key and Supabase's page for a
 short-lived token, checks the key, and saves it in your Supabase project.
 Nothing changes on your computer. The way by hand is in
 [Renew the key](refresh-now.md#renew-the-key).
@@ -293,9 +302,10 @@ get a second copy on purpose, open the project in Claude Code and ask it to
 send today's summary again: `tracker summary build` and `tracker summary send`
 both accept `--send-again` for exactly this.
 
-**Change the time.** In the `backend` folder of your copy, run:
+**Change the time.** In a terminal, run:
 
 ```bash
+cd ~/threadline/backend
 uv run tracker setup schedule
 ```
 
@@ -311,6 +321,23 @@ it is pushed. (On the alternative route, edit the routine's schedule instead.)
 month of mornings uses roughly 150 to 300, plus a few for each **Refresh
 now**. **Settings → Billing and plans** on your GitHub account shows what is
 used.
+
+---
+
+## Publish a newer dashboard
+
+The dashboard on Netlify stays as it was when it was published. To publish it
+again, for example after your copy of Threadline was updated, run:
+
+```bash
+cd ~/threadline/backend
+uv run tracker setup dashboard
+```
+
+**✅ Check:** your dashboard's address opens the sign-in page, and after you
+sign in it shows your data as before.
+
+**If not:** follow the line the set-up printed, then run the command again.
 
 ---
 
@@ -338,7 +365,7 @@ its **On-time morning start** line:
 |---------|------------|
 | `ok`, with your time | It is on. If one morning was still late, Supabase was probably down; GitHub's backup ran instead. Nothing to do. |
 | `not switched on` | `uv run tracker setup refresh` (and `uv run tracker setup database` first, if it says so). |
-| the database and the workflow disagree | `uv run tracker setup schedule`, and press Return to keep the time. |
+| the database and the workflow disagree | `uv run tracker setup schedule`, and press Enter to keep the time. |
 | the timer is missing, or the helper answered a status | `uv run tracker setup refresh` again. |
 
 ---
@@ -380,7 +407,7 @@ One bad morning means nothing — services have outages. Use this rule:
 | How often | What to do |
 |-----------|------------|
 | Once | Nothing. The next run catches up. |
-| Two mornings in a row | Run `uv run tracker doctor` in the `backend` folder. It checks every connection and ends each problem line with the command that fixes it — usually `uv run tracker setup linkedin` or `uv run tracker setup microsoft`. |
+| Two mornings in a row | Run `uv run tracker doctor` in the `backend` folder (`cd ~/threadline/backend`). It checks every connection and ends each problem line with the command that fixes it, usually `uv run tracker setup linkedin` or `uv run tracker setup microsoft`. |
 | Three mornings in a row, after doing that | Open the project in Claude Code and say: "The daily run has failed three mornings with this message: …" and paste the sentence from the e-mail and the `PROBLEM` lines from the doctor — never a key. |
 
 Two things worth knowing while you wait:
@@ -409,7 +436,7 @@ Choose it when:
   though you redid it, **or**
 - on the alternative route, the cloud cannot reach your Gmail or other IMAP
   mailbox even though its server is in the allowed domains (IMAP is not web
-  traffic; see part A2 of the set-up guide), **or**
+  traffic; see part 8c of the [set-up guide](setup-your-accounts.md#8c-the-claude-cloud-route-tracker-setup-cloud)), **or**
 - the cloud sessions can no longer reach LinkedIn or the database.
 
 What it costs: your Mac must be awake at the scheduled time, and a morning where

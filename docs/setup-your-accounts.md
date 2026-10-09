@@ -6,10 +6,10 @@
 > paste into the Claude app.
 
 This guide takes you from nothing to the first summary e-mail, one small step at
-a time. You do not need to know how to program. Where something can be done for
-you, the tool does it (`uv run tracker setup`). Where only you can do it, such
-as creating an account or clicking "Allow", this guide says exactly what to
-click.
+a time. You do not need to know how to program. You paste one line into a
+terminal, and a guided set-up does most of the work. Where only you can do
+something, such as creating an account or clicking "Allow", this guide says
+exactly what to click.
 
 After every step there are two lines:
 
@@ -30,20 +30,35 @@ Do not skip a check. Each step builds on the one before it.
 
 | What | Why | Cost |
 |------|-----|------|
-| A **Mac or a Linux** computer with a terminal | to run the set-up once. **Windows is not supported.** | – |
-| A paid Claude plan: **Pro, Max or Team** | runs the daily job on GitHub with your own subscription, with your laptop shut. The daily run uses part of your plan's usage limits, like any other use of Claude | your existing plan |
+| A computer with **macOS, Linux or Windows** (10 or 11) | to run the set-up once. After that it can stay off | – |
+| A paid Claude plan: **Pro, Max or Team** | runs the daily job on GitHub with your own subscription, with your computer off. The daily run uses part of your plan's usage limits, like any other use of Claude | your existing plan |
 | **Claude Code** installed on that computer | makes the key that lets GitHub use your Claude plan (`claude setup-token`). Install it from the official page, <https://code.claude.com/docs/en/setup>, and sign in once | included in your plan |
-| A GitHub account | runs Threadline every day from your private copy (GitHub Actions) | free (2,000 minutes a month for private copies at the time of writing; a month of runs uses about 150–300) |
-| *Optional, recommended:* the GitHub command-line tool `gh` (<https://cli.github.com>) | signs you in to GitHub for the download in part 1 and lets the set-up create your private copy and save your settings for you | free |
-| A Supabase account | the database that keeps your people and conversations | free plan |
-| A Vercel account | publishes the dashboard so it opens on your phone | free "Hobby" plan, personal use only |
-| At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any mailbox that offers IMAP | the mail Threadline reads, read-only; Gmail and the others also send you the summary (with only Outlook, see the alternative route at the end) | free (Fastmail: a paid plan above Basic) |
+| A **GitHub** account | keeps your private copy of Threadline and runs it every day (GitHub Actions) | free (2,000 minutes a month for private copies at the time of writing; a month of runs uses about 150–300) |
+| A **Supabase** account | the database that keeps your people and conversations | free plan |
+| A **Netlify** account | publishes the dashboard so it opens on your phone | free plan |
+| At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any mailbox that offers IMAP | the mail Threadline reads, read-only. Gmail and the others also send you the summary (with only Outlook, see the Claude cloud route in part 8) | free (Fastmail: a paid plan above Basic) |
 | *Optional:* a Microsoft personal account (Outlook.com, Hotmail, Live) | the calendar, which is read from Outlook only for now | free |
-| *Optional:* a LinkedIn account | reads your LinkedIn messages too (only for members located in the EEA or Switzerland, see below) | free |
-| *Optional:* [Node.js](https://nodejs.org) 22 or newer | only for the manual way of switching on the dashboard's Refresh now button ([`refresh-now.md`](refresh-now.md)); the guided way needs nothing | free |
-| *Optional:* an Azure account | only if you want your own Microsoft application instead of the public one (see "Your own Microsoft application" in part 5) | free |
+| *Optional:* a LinkedIn account | reads your LinkedIn messages too (only for members located in the EEA or Switzerland, see part 8) | free |
 
-**Check Claude Code now.** In Terminal, type:
+**What the installer needs on your computer.** The one-line install in part 1
+adds the tools Threadline uses. It needs a little help depending on your
+computer:
+
+- **Windows:** nothing extra. It installs Git and the GitHub tool with
+  **winget**, which comes with Windows 10 and 11.
+- **Mac:** Git must be installed. If it is not, the Mac offers to install it
+  (the "command line developer tools") the first time. To install the GitHub
+  tool by itself, the installer needs **Homebrew** (<https://brew.sh>). Without
+  Homebrew, install the GitHub tool from <https://cli.github.com> first.
+- **Linux:** Git and curl must be installed. The installer adds the GitHub tool
+  with apt or dnf and may ask for your computer's password.
+
+**Create the free accounts first.** Sign up at <https://github.com>,
+<https://supabase.com> and <https://www.netlify.com> before you start, if you
+do not have them yet. You can sign in to Supabase and Netlify with your GitHub
+account. The set-up asks for Supabase in its very first step.
+
+**Check Claude Code now.** Open a terminal (see part 1) and type:
 
 ```bash
 claude --version
@@ -51,39 +66,33 @@ claude --version
 
 **✅ Check:** it prints a version number.
 
-**If not:** `command not found` means Claude Code is not installed yet, or
-Terminal was not reopened after installing it. Follow the official install page
-above, close Terminal, open it again and retry. Then type `claude` once and
-sign in with your Claude plan.
-
-**The LinkedIn limit.** LinkedIn lets only members whose profile is located in
-the **European Economic Area or Switzerland** export their messages this way.
-If you live elsewhere, skip LinkedIn: everything else works without it.
+**If not:** `command not found` (or "not recognized" on Windows) means Claude
+Code is not installed yet, or the terminal was not reopened after installing it.
+Follow the official install page above, close the terminal, open it again and
+retry. Then type `claude` once and sign in with your Claude plan.
 
 **The sign-in e-mail limit.** You will sign in to the dashboard with a link that
 Supabase e-mails to you. Supabase's built-in e-mail only reaches the address
 your Supabase account was registered with (or members of your Supabase
-organisation), unless you set up your own sending service ("custom SMTP"). Part 2
+organisation), unless you set up your own sending service ("custom SMTP"). Part 3
 explains what that means for you.
 
-**Time.** About an hour and a half the first time, most of it creating accounts
-and copying values from one screen to another. You can stop at any point:
-`uv run tracker setup` carries on where you left off.
+**Time.** About 10 to 15 minutes of your own time if you already have the
+accounts, plus a few minutes to create each one you lack. Part of it is
+waiting: a new Supabase project takes one to three minutes to start. Making a
+Gmail app password takes longer if 2-Step Verification is not on yet. The
+first summary e-mail arrives about ten minutes after the set-up ends. You can
+stop at any point: the set-up carries on where you left off.
 
-**What it costs.** No other paid service is needed. Supabase, Vercel, GitHub,
+**What it costs.** No other paid service is needed. GitHub, Supabase, Netlify,
 Google, Microsoft and LinkedIn are all used on their free plans; the only
 exception would be a paid mailbox you choose yourself, such as Fastmail.
 Free-plan limits change, so check the providers' pricing pages if in doubt.
 
-**Your keys.** Every key you paste is saved in a file called `.env` in the
-project folder, readable only by you. Never paste a key into a chat, an e-mail
-or a document.
-
-**On Linux.** This guide was written on a Mac. On Linux, the Mac keyboard
-shortcuts it gives (such as ⌘ + N for a new Terminal window) are your desktop's
-own, and the set-up cannot reach your clipboard: wherever it would put a value
-on the clipboard, it says `No clipboard is available here` and you copy the
-value from `.env` (or the file it names) yourself. Everything else is the same.
+**Your keys.** The settings the set-up saves are kept in a file called `.env`
+in your Threadline folder, readable only by you. Some keys are never saved at
+all: the set-up uses them and forgets them, and this guide says which. Never
+paste a key into a chat, an e-mail or a document.
 
 **Words used here.** A few words come up before they are explained:
 
@@ -106,116 +115,73 @@ value from `.env` (or the file it names) yourself. Everything else is the same.
 
 ---
 
-## 1. Get Threadline onto your computer
+## 1. Install Threadline (one line)
 
-1. Sign in to <https://github.com>. Open this project's page, click
-   **Use this template** → **Create a new repository**, give it a name, choose
-   **Private**, and click **Create repository** (the page may look slightly
-   different). A private copy keeps your settings and changes to yourself.
-2. Open **Terminal** (on a Mac: press ⌘ + Space, type `Terminal`, press Return).
-3. Install **uv**, the tool that runs Threadline. Paste this line and press
-   Return:
+One line gets Threadline onto your computer. It installs **uv** (the tool that
+runs Threadline) and the **GitHub tool** if they are missing, signs you in to
+GitHub, makes your own **private** copy of Threadline on GitHub (called
+`threadline`), downloads it to a `threadline` folder in your home folder, and
+starts the guided set-up.
 
-   ```bash
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-   ```
+1. Open a terminal.
+   - **Mac:** press ⌘ + Space, type `Terminal`, press Enter.
+   - **Windows:** open the Start menu, type `PowerShell`, press Enter.
+   - **Linux:** open your terminal app.
+2. Paste the line for your computer and press Enter.
 
-   Then close Terminal and open it again.
-4. Download your copy. GitHub no longer accepts your account password for
-   this, so the easiest way is the GitHub command-line tool. Download the
-   installer from <https://cli.github.com> (on a Mac: the `.pkg` file), open
-   it, then sign in once. Choose **GitHub.com**, **HTTPS**, say **yes** to
-   authenticating Git, and **Login with a web browser**:
+   **Mac or Linux:**
 
    ```bash
-   gh auth login
+   curl -LsSf https://raw.githubusercontent.com/roccoterr97/threadline/main/install.sh | sh
    ```
 
-   Then download your copy. Replace `<your-user>` with your GitHub name and
-   `<your-copy>` with the name you gave the copy in step 1:
+   **Windows (PowerShell):**
 
-   ```bash
-   gh repo clone <your-user>/<your-copy> tracker
-   cd tracker/backend
-   uv sync
+   ```powershell
+   irm https://raw.githubusercontent.com/roccoterr97/threadline/main/install.ps1 | iex
    ```
 
-   *Without the GitHub tool:* `git clone https://github.com/<your-user>/<your-copy>.git tracker`
-   also works, but when it asks for a password, do not type your GitHub
-   password: it will be refused. Sign in through the browser window that
-   Git's credential helper opens instead, or paste a personal access token
-   (GitHub: **Settings → Developer settings → Personal access tokens**).
-   Installing `gh` and running `gh auth login` first avoids all of this.
+3. If Windows asks whether to allow an installation, click **Yes**.
+4. When it says `Signing you in to GitHub`, the terminal shows a one-time code.
+   Press Enter, and a GitHub page opens in your browser. Sign in, type the code,
+   and click **Authorize**. If the terminal asks whether to authenticate Git
+   with your GitHub credentials, answer yes.
+5. Wait. It makes your copy, downloads it and installs Threadline's parts. This
+   takes a minute or two.
 
-**✅ Check:** `uv run tracker --help` prints a list of commands that includes
-`setup` and `doctor`.
+**✅ Check:** the terminal says `Starting the guided set-up`, then
+`Step 1 of 11: Your Supabase project`. Carry on with part 2.
 
-**If not:** if the Mac asks to install "command line developer tools", click
-**Install**, wait, then repeat step 4. If `gh` says `authentication required`
-or `Repository not found`, run `gh auth login` again and check the spelling of
-your user and copy names. If it says `uv: command not found`, close
-Terminal, open it again and repeat step 4.
+**If not:** every message that stops the installer says what to do, and
+pasting the line again is safe: it skips what is already done and carries on.
+
+- `Git is not installed yet` on a Mac: click **Install** in the window that
+  offers the "command line developer tools", wait for it to finish, then paste
+  the line again.
+- `The GitHub tool needs Homebrew`: install the GitHub tool from
+  <https://cli.github.com> (or Homebrew from <https://brew.sh>), then paste the
+  line again.
+- `… was installed but cannot be found yet`: close the terminal, open a new
+  one, and paste the line again.
+- `Your copy on GitHub is not ready yet`: wait a minute and paste the line
+  again.
+- `… exists but is not a copy of Threadline`: you already have a different
+  folder called `threadline` in your home folder. Rename it, then paste the line
+  again.
+
+**Stopping and carrying on.** You can stop the set-up at any time with
+Ctrl + C. Everything it has saved stays saved. To carry on, paste the install
+line again, or type the two lines below.
 
 **Where to type the commands.** Every `uv run tracker …` command in this guide
-is typed in Terminal inside the `backend` folder of your copy. Terminal opens
-in your home folder, where step 4 put the copy, so in every new Terminal window
-type this first (it works from any folder):
+is typed in a terminal, inside the `backend` folder of your copy. In every new
+terminal window, type this first (it works from any folder):
 
 ```bash
-cd ~/tracker/backend
+cd ~/threadline/backend
 ```
 
-**✅ Check:** the last line in Terminal, the one before your cursor, ends with
-`backend`.
-
-**If not:** `Failed to spawn: tracker` or `No such file or directory` means
-Terminal is in another folder: type `cd ~/tracker/backend` and try again. If
-you gave the folder another name in step 4, use that name instead of
-`tracker`. (The `git` lines the set-up prints work from any folder of the
-project.)
-
----
-
-## 2. Create your Supabase project
-
-Supabase is the database. This part cannot be automated: the project must
-belong to your own account.
-
-1. Go to <https://supabase.com> and click **Start your project**. Sign in with
-   GitHub, or with your e-mail address.
-2. Click **New project**.
-   - **Name:** anything, for example `tracker`.
-   - **Database password:** click **Generate a password**. You will not need it
-     for Threadline, but keep it in your password manager.
-   - **Region:** the one closest to you.
-   - **Plan:** **Free**.
-3. Click **Create new project** and wait about two minutes.
-
-**✅ Check:** the project's home page opens and no longer says it is being set
-up.
-
-**If not:** wait a few more minutes and reload the page. If it still shows an
-error, delete the project and create it again.
-
-**Important: which e-mail address you sign in with.** You will sign in to the
-dashboard with a link Supabase e-mails to you. Supabase's built-in e-mail sends
-only **two messages an hour**, and **only to the address your Supabase account
-was registered with (or to members of your Supabase organisation)**. So later,
-when the set-up asks for your dashboard e-mail, use the same address you signed
-up to Supabase with. (Using another address needs your
-own e-mail sending service, called "custom SMTP" in Supabase. This guide does
-not cover it.)
-
----
-
-## 3. Connect Supabase and build the database
-
-Now start the guided set-up. It runs the steps of parts 3 to 6 in order, and
-you can stop it at any time with Ctrl + C. Everything it has saved stays saved.
-
-```bash
-uv run tracker setup
-```
+Then, for example, `uv run tracker setup` carries on with the set-up.
 
 **Prefer a page to the terminal?** Add `--browser`:
 
@@ -225,62 +191,98 @@ uv run tracker setup --browser
 
 A page called *Threadline set-up* opens in your browser and asks the same
 questions, one at a time, with keys in hidden fields and a **Continue** button
-where this guide says "press Return". The page is served to your computer
-only (its address starts with `http://127.0.0.1:`). The terminal still shows
-what is asked, never what you answer. A **Stop for now** link at the bottom
-ends the set-up cleanly; everything saved stays saved. `--browser` works with a
-single step too, for example `uv run tracker setup database --browser`.
+where this guide says "press Enter". The page is served to your computer only
+(its address starts with `http://127.0.0.1:`). The terminal still shows what is
+asked, never what you answer. A **Stop for now** link at the bottom ends the
+set-up cleanly; everything saved stays saved. `--browser` works with a single
+step and with the extras too, for example `uv run tracker setup database
+--browser`.
 
-The full set-up goes through these steps in this order: `supabase`,
-`encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`,
-`microsoft`, `linkedin`, `dashboard`, `schedule`, `github`, `refresh` (and
-`cloud`, only for the alternative route). This guide follows the same order,
-with one detour: the dashboard needs Vercel, which comes in part 7.
+**✅ Check:** the last line in the terminal, the one before your cursor, ends
+with `backend`.
 
-**The first time you run it:** carry on through parts 3 to 6 as the set-up asks.
-When it reaches `Is the dashboard published already?`, answer **no**: the
-set-up stops there by itself, because the steps after it need the dashboard's
-address. Do part 7 (Vercel), then run `uv run tracker setup` again: it skips
-what is already done and carries on from the dashboard through the steps of
-part 8.
+**If not:** `Failed to spawn: tracker` or `No such file or directory` means the
+terminal is in another folder: type `cd ~/threadline/backend` and try again.
+If you set Threadline up before the one-line install existed, your copy may be
+in a folder called `tracker`: use that name instead of `threadline`.
 
-**✅ Check:** after you answer **no**, you see `Stopped: the dashboard is not
-published yet - publish it first (part 7 of the guide).` and then `Fix that,
-then run 'uv run tracker setup' again: finished steps are kept and it carries
-on from here.`
+**What the set-up does next.** It runs 11 steps in order, numbered on screen
+(`Step 1 of 11`, `Step 2 of 11`, …). This guide follows the same order:
 
-**If not:** if you answered **yes** by mistake, it asks for the address: press
-Ctrl + C to stop. Nothing is lost; carry on from part 7.
+| Steps | Part of this guide |
+|-------|--------------------|
+| 1 to 3: Supabase, the encryption key, the database | [2](#2-supabase-one-token) |
+| 4 to 6: your login, categories and time zone | [3](#3-your-login-categories-and-time-zone) |
+| 7 and 8: your mailbox, and Outlook | [4](#4-your-mailbox-and-calendar) |
+| 9: the dashboard | [5](#5-the-dashboard-netlify) |
+| 10 and 11: the daily time, the Claude key and the first run | [6](#6-run-it-every-day-on-github-the-claude-key-and-the-first-run) |
 
 To run one step again later, name it, for example
-`uv run tracker setup database`.
+`uv run tracker setup database`. The optional extras (LinkedIn, the Refresh now
+button and the Claude cloud route) come later, in part 8.
 
-### 3a. The address and the two keys (`tracker setup supabase`)
+---
 
-**What the set-up does for you:** it opens the right Supabase page, asks for the
-three values, checks each one with Supabase straight away, and saves them. The
-secret key is typed hidden and never shown.
+## 2. Supabase (one token)
+
+Supabase is the database. You make **one access token** on Supabase's website,
+and the set-up does the rest: it creates the project (or reuses one of yours),
+waits until it is up, reads its address and keys, builds the database, and later
+switches off sign-ups. The token is kept in memory while the set-up runs and is
+**never saved**.
+
+### 2a. The token and your project (`tracker setup supabase`)
 
 **What you do:**
 
-1. When it asks for the **project address**, open **Project Settings** (the cog)
-   → **General**, copy the **Project ID** and paste it. The set-up turns it into
-   `https://<project-id>.supabase.co` for you.
-2. The set-up opens **Project Settings → API Keys**, tab **Publishable and
-   secret API keys**. Copy the **Publishable key** (it starts with
-   `sb_publishable_`) and paste it.
-3. On the same page, under **Secret keys**, click the eye icon, copy the key
-   (it starts with `sb_secret_`) and paste it. Nothing appears on screen while
-   you paste: that is on purpose.
+1. The set-up asks `Create the project (or pick an existing one) for you?`.
+   Press Enter for yes.
+2. Supabase's **Access Tokens** page opens
+   (<https://supabase.com/dashboard/account/tokens>). Sign in if asked.
+3. Click **Generate new token** and name it `Threadline set-up`.
+4. Choose the **shortest expiry** offered: the token is only needed today.
+5. If it asks which access to give, give it your **whole account**. That is the
+   simplest choice: the set-up uses the token to create the project, read its
+   keys, build the database and switch sign-ups off.
+6. Click **Generate token**, copy it (it starts with `sbp_`), and paste it into
+   the terminal. Nothing appears while you paste: that is on purpose.
+7. If you have several Supabase organisations, type the number of the one to
+   use.
+8. If you already have projects, it asks `Use one of them instead of creating a
+   new project?`. Press Enter for no, to create a new one.
+9. Press Enter to accept the name `threadline`, then press Enter to accept the
+   region it offers (the one nearest your time zone), or type another number.
+10. Wait while Supabase starts the project. This takes one to three minutes.
 
-**✅ Check:** you see `Supabase accepted the address and both keys.`
+The project's database password is made up for you and not kept: Threadline
+never needs it. If you ever do, reset it in Supabase under **Project Settings →
+Database**.
 
-**If not:** "did not accept the publishable key" means the address and the key
-belong to different projects, or the key was cut short: copy it again with the
-copy icon. "refused the secret key" usually means the publishable key was pasted
-there by mistake.
+**✅ Check:** you see `The project is up.` (for a new project), then
+`Supabase accepted the address and both keys.`
 
-### 3b. The encryption key (`tracker setup encryption`)
+**If not:**
+
+- `Supabase did not accept the access token`: copy the token again, all of it,
+  and paste it once more. The set-up lets you try three times.
+- `your Supabase account has no organization yet`: open <https://supabase.com>,
+  create an organisation (any name, free plan), then run
+  `uv run tracker setup supabase`.
+- If Supabase refuses to create the project, your free plan may already have as
+  many active projects as it allows. Run `uv run tracker setup supabase` again
+  and answer yes to use an existing project, or pause a project you no longer
+  use in Supabase first.
+- `the project is still being set up after 5 minutes`: run
+  `uv run tracker setup supabase` again in a while and pick the project from the
+  list.
+
+**If you prefer** to create the project yourself, answer **n** at step 1. The
+set-up then opens your Supabase projects and asks for the project address, the
+publishable key and the secret key (under **Project Settings → API Keys**, tab
+**Publishable and secret API keys**), checking each one as you paste it. The
+later steps then ask for an access token once, for the database.
+
+### 2b. The encryption key (`tracker setup encryption`)
 
 **What the set-up does for you:** everything. It makes a key that locks your
 Microsoft sign-in and your mailbox's app password inside the database, and
@@ -292,74 +294,69 @@ saves it without showing it.
 **If not:** if it asks whether to replace an existing key, answer **no** unless
 you know the old one is wrong. A new key means signing in to Microsoft again.
 
-### 3c. The database structure (`tracker setup database`)
+### 2c. The database (`tracker setup database`)
 
-**What the set-up does for you:** it looks at your database, lists the structure
-files that are missing (and any whose effect it cannot see and that may not have
-run yet: running one of those a second time is harmless), and applies them for
-you through Supabase's official
-Management API. For that it needs a **personal access token**, which you paste
-once. The token is used for this step only and **never saved**.
+**What the set-up does for you:** it looks at your new database, lists the
+structure files it needs, and applies them with the same token, one at a time,
+a second or two apart. This takes about half a minute. If Supabase refuses a
+file, the set-up shows Supabase's reason in one line and tries that file once
+more by itself.
 
-**What you do:**
-
-1. Answer **yes** to "Apply them automatically?".
-2. On the page that opens (**Account → Access Tokens**), click **Generate new
-   token**, give it any name, choose the shortest expiry offered, and leave the
-   access as Supabase offers it: the set-up needs to read and write the
-   database's **migrations** (its structure files). Copy the token. (The page
-   may look slightly different.)
-3. Paste it into Terminal. Once the step is done, delete the token on the same
-   Supabase page.
-
-The files go one at a time, a second or two apart, so this takes about half a
-minute. If Supabase refuses a file, the set-up shows Supabase's reason in one
-line and tries that file once more by itself.
+Run on its own later (`uv run tracker setup database`), the step first asks
+`Apply them automatically?`: press Enter, and paste a Supabase token made as in
+2a. The token needs to read and write the database's **migrations** (its
+structure files); access to your whole account covers that.
 
 **✅ Check:** the step starts with `To apply: 0001_schema, 0002_access_rules, …`,
 naming every file still missing (all of them on a new project). Then you see
 `Applied 0001_schema`, one line per file, and `The database structure is in
 place.`
 
-**If not:** if you prefer not to create a token, or a file still fails, the
-set-up switches to the manual route by itself: it opens the **SQL Editor**, puts
-each file on your clipboard in turn, and waits. For each file: click **+** for a
-new query, paste, click **Run**, wait for `Success. No rows returned`, and only
-then press Return in Terminal. Pressing Return is not enough on its own: the
-set-up checks that the file really ran, and if it did not, it says
-`The database does not show … yet` and gives you the same file again. At the
-end it checks the database once more. If it still lists a file as missing, run
-`uv run tracker setup database` again.
+**If not:** if a file still fails, the set-up switches to the manual route by
+itself: it opens the **SQL Editor**, puts each file on your clipboard in turn,
+and waits. For each file: click **+** for a new query, paste, click **Run**,
+wait for `Success. No rows returned`, and only then press Enter in the
+terminal. Pressing Enter is not enough on its own: the set-up checks that the
+file really ran, and if it did not, it says `The database does not show … yet`
+and gives you the same file again. At the end it checks the database once
+more. If it still lists a file as missing, run `uv run tracker setup database`
+again.
 
 ---
 
-## 4. Your dashboard login, categories and time zone
+## 3. Your login, categories and time zone
 
-### 4a. Your dashboard login (`tracker setup login`)
+### 3a. Your dashboard login (`tracker setup login`)
 
 The dashboard only lets in the one login recorded as its owner. Nobody else can
 create a login, so nobody else can read your data.
 
+**Which e-mail address to use.** You sign in to the dashboard with a link
+Supabase e-mails to you. Supabase's built-in e-mail sends only **two messages
+an hour**, and **only to the address your Supabase account was registered with
+(or to members of your Supabase organisation)**. So use the same address you
+signed up to Supabase with. (Another address needs your own e-mail sending
+service, called "custom SMTP" in Supabase. This guide does not cover it.)
+
 **What the set-up does for you:** it creates your login, records it as the only
-owner, and checks that sign-ups are switched off.
+owner, and switches off sign-ups in Supabase with the token from part 2.
 
-**What you do:**
+**What you do:** type the e-mail address you signed up to Supabase with, and
+press Enter. If you signed in to Supabase with GitHub, it is the main e-mail
+address of your GitHub account; Supabase shows it under **Account →
+Preferences**.
 
-1. Type the e-mail address you signed up to Supabase with (see the warning in
-   part 2). If you signed in to Supabase with GitHub, it is the main e-mail
-   address of your GitHub account; Supabase shows it under **Account →
-   Preferences**.
-2. If it says "Sign-ups are still open", the page **Authentication → Sign In /
-   Providers** opens. Switch off **Allow new users to sign up**, click **Save**,
-   and press Return in Terminal.
+**✅ Check:** you see `… can now sign in to the dashboard, and nobody else can
+read it.` and then `Sign-ups are now switched off: nobody else can create a
+login.` (or `Sign-ups are switched off` if they already were).
 
-**✅ Check:** you see `… can now sign in to the dashboard` and `Sign-ups are
-switched off: nobody else can create a login.`
+**If not:** if Supabase would not change the setting, the set-up opens the page
+**Authentication → Sign In / Providers**. Switch off **Allow new users to sign
+up**, click **Save**, and press Enter in the terminal. If the switch keeps
+coming back on, reload the page, switch it off again and click **Save** before
+pressing Enter.
 
-**If not:** if the switch keeps coming back on, reload the Supabase page, switch
-it off again and click **Save** before pressing Return.
-
-### 4b. Your categories (`tracker setup categories`)
+### 3b. Your categories (`tracker setup categories`)
 
 Threadline puts each person you talk to in a category, such as "Startup" or
 "Investor". Here you choose those categories. This step is optional: skip it
@@ -373,44 +370,44 @@ tells the AI helper about them.
 
 1. Answer **y** to "Choose your categories now?" (or **n** to skip).
 2. Type the number of the list closest to what you track, for example `3` for a
-   job search or `5` for sales. Press Return to accept the number it suggests.
-3. It lists the suggested categories and asks "Use all of them?". Press Return
-   to keep them all. If you type `n`, it asks about each one: press Return to
+   job search or `5` for sales. Press Enter to accept the number it suggests.
+3. It lists the suggested categories and asks "Use all of them?". Press Enter
+   to keep them all. If you type `n`, it asks about each one: press Enter to
    keep it, or type `n` to drop it.
 4. To add one of your own, answer **y**, then type its name ("Supplier"), a
-   name for a group (press Return to accept "Suppliers"), who belongs there in
-   one sentence ("Companies that sell to us") and a colour (press Return to
+   name for a group (press Enter to accept "Suppliers"), who belongs there in
+   one sentence ("Companies that sell to us") and a colour (press Enter to
    accept the one offered). The sentence matters: the AI helper reads it to
    decide who goes where. Answer **n** when you have no more to add.
-5. Look at the list it shows, then press Return to save it.
+5. Look at the list it shows, then press Enter to save it.
 
 **✅ Check:** you should now see `Saved … categories, 'Not known' included.`
-Once the dashboard is published (part 7), its **Settings** page shows the same
+Once the dashboard is published (part 5), its **Settings** page shows the same
 categories.
 
 **If not:** "That did not work" means a name was empty, too long, already in
 your list, or the colour was not one of those offered: type it again. If you
 answered **n** by mistake, run `uv run tracker setup categories` again.
 
-### 4c. Your time zone (`tracker setup timezone`)
+### 3c. Your time zone (`tracker setup timezone`)
 
 **What the set-up does for you:** it reads the time zone your computer uses and
 offers it, such as `Your time zone [Europe/Paris]:`. Your time zone decides what
-"today" is for due dates and the summary, and the daily run's time (part 8) is
+"today" is for due dates and the summary, and the daily run's time (part 6) is
 read in it. It is saved as `OWNER_TIME_ZONE` and later sent to GitHub with your
 other settings. When the zone differs from the one in the daily run's workflow
 file (`.github/workflows/threadline-run.yml`), it writes the new zone there
-too, keeping the time, shows the line it changed and offers to save it in git
-for you, exactly as in part 8b.
+too, keeping the time, shows the line it changed and offers to send it to
+your copy on GitHub, as in part 6a.
 
 **What you do:**
 
-1. Press Return to keep the zone offered, or type yours in the same form
+1. Press Enter to keep the zone offered, or type yours in the same form
    (`America/New_York`, `Asia/Tokyo`, `UTC`). Capital letters do not matter:
    `europe/rome` is accepted and saved as `Europe/Rome`.
 2. It then asks for your name as people write it (such as `Sam Rivera`). This
    is optional: it helps only when your e-mail address does not spell your name
-   (`jd123@…`). Press Return to skip it.
+   (`jd123@…`). Leave it empty and press Enter to skip it.
 
 **✅ Check:** you see `Saved OWNER_TIME_ZONE=…` with your zone.
 
@@ -420,37 +417,37 @@ later, run `uv run tracker setup timezone`.
 
 ---
 
-## 5. Your mailbox and calendar
+## 4. Your mailbox and calendar
 
 Threadline needs **at least one mailbox**: Gmail, Outlook.com/Hotmail, iCloud,
 Yahoo, Fastmail, or any other mailbox that offers IMAP. It only ever reads:
 nothing is sent, moved, deleted, or even marked as read.
 
 **The calendar is read from Outlook only, for now.** With Gmail alone,
-Threadline reads your e-mail — including interview invitations that arrive by
-mail — but not your Google Calendar.
+Threadline reads your e-mail, including interview invitations that arrive by
+mail, but not your Google Calendar.
 
-### 5a. Choose your mailbox (`tracker setup mailbox`)
+### 4a. Choose your mailbox (`tracker setup mailbox`)
 
 The set-up asks: *Which mailbox should Threadline read? gmail, outlook, icloud,
-yahoo, fastmail or other*. Type one word and press Return.
+yahoo, fastmail or other*. Type one word and press Enter.
 
 - **outlook** (also for Hotmail and Live): go on to
-  [5c](#5c-outlook-mailbox-and-calendar-tracker-setup-microsoft). Good to know
-  now rather than in part 8: with Outlook alone, the run on GitHub cannot
+  [4c](#4c-outlook-mailbox-and-calendar-tracker-setup-microsoft). Good to know
+  now rather than in part 6: with Outlook alone, the run on GitHub cannot
   e-mail you the morning summary, because Microsoft allows no app password for
   sending. Connect a Gmail or other mailbox as well (run
   `uv run tracker setup mailbox` again later), or use the
-  [alternative route](#alternative-the-daily-run-in-a-claude-cloud-routine).
-- **anything else**: follow 5b below for your provider.
+  [Claude cloud route](#8c-the-claude-cloud-route-tracker-setup-cloud).
+- **anything else**: follow 4b below for your provider.
 
-**✅ Check:** the set-up either asks for your address (5b) or says the Microsoft
-step signs you in (5c).
+**✅ Check:** the set-up either asks for your address (4b) or says the Microsoft
+step signs you in (4c).
 
 **If not:** if it says "please answer gmail, outlook, …", type one of those
 words exactly.
 
-### 5b. Gmail (or another mailbox)
+### 4b. Gmail (or another mailbox)
 
 Gmail, iCloud, Yahoo and Fastmail do not let other programs use your normal
 password. Instead you make an **app password**: a separate password just for
@@ -461,17 +458,17 @@ given to Threadline.
 passwords, opens your provider's page, and waits for you to paste the new
 password (nothing is shown while you paste). Then it **checks it live**: it
 signs in, opens your inbox read-only, counts the messages of the last 30 days
-and looks for your Sent folder. Only then does it store the password —
-encrypted, in your database, **never in `.env`** — and offer to add the
-address to your own addresses.
+and looks for your Sent folder. Only then does it store the password,
+encrypted, in your database, **never in `.env`**, and offer to add the address
+to your own addresses.
 
-**✅ Check (for every provider):** Terminal shows
+**✅ Check (for every provider):** the terminal shows
 `Connected. Your inbox has … messages from the last 30 days.`, then
 `Your own replies are read from the folder '…'.` and
 `Saved the app password, encrypted, in your database - it is not in .env.`
 
 **If not:** "refused the app password" means the password was copied wrongly,
-belongs to another address, or the account does not allow app passwords — see
+belongs to another address, or the account does not allow app passwords: see
 your provider below. The set-up lets you paste again twice. "No Sent folder was
 found" still works, but your own replies will not be read: tell the project
 which folder your mail program saves sent mail in.
@@ -486,10 +483,10 @@ which folder your mail program saves sent mail in.
 
    **If not:** finish Google's steps; app passwords appear only once it is on.
 
-2. **Make the app password.** Type `gmail` and your Gmail address in Terminal.
-   The set-up opens <https://myaccount.google.com/apppasswords>. Sign in if
-   asked, type a name such as `Threadline`, and create it. The page may look
-   slightly different.
+2. **Make the app password.** Type `gmail` and your Gmail address in the
+   terminal. The set-up opens <https://myaccount.google.com/apppasswords>. Sign
+   in if asked, type a name such as `Threadline`, and create it. The page may
+   look slightly different.
 
    **✅ Check:** Google shows a 16-character password. Copy it now: Google shows
    it only once.
@@ -498,9 +495,9 @@ which folder your mail program saves sent mail in.
    true: 2-Step Verification is off; you sign in only with security keys;
    Advanced Protection is on; or it is a work or school account whose
    administrator switched app passwords (or IMAP) off. Only the administrator
-   can change the last one — use Outlook instead, or ask them.
+   can change the last one: use Outlook instead, or ask them.
 
-3. **Paste it in Terminal** and press Return. Spaces do not matter.
+3. **Paste it in the terminal** and press Enter. Spaces do not matter.
 
    **✅ Check:** the lines of the general check above, with the folder
    `[Gmail]/Sent Mail` (or its name in your language).
@@ -509,7 +506,7 @@ which folder your mail program saves sent mail in.
 
 Good to know: IMAP is always on for personal Gmail accounts, so there is no
 setting to switch on. **Changing your Google password removes every app
-password** — see "Renew a mailbox app password" in
+password**: see "Renew a mailbox app password" in
 [`operations.md`](operations.md).
 
 #### iCloud Mail
@@ -532,7 +529,7 @@ password** — see "Renew a mailbox app password" in
    **If not:** check you are signed in with the Apple Account that owns the
    mailbox.
 
-3. **Paste it in Terminal.**
+3. **Paste it in the terminal.**
 
    **✅ Check:** the general check above.
 
@@ -558,7 +555,7 @@ app-specific password.
    a browser you usually sign in to Yahoo with, not a private window, and try
    again later.
 
-2. **Paste it in Terminal**, then click **Done** on Yahoo's page.
+2. **Paste it in the terminal**, then click **Done** on Yahoo's page.
 
    **✅ Check:** the general check above.
 
@@ -582,7 +579,7 @@ IMAP needs a paid Fastmail plan above Basic.
 
    **If not:** if there is no such setting, your plan does not include IMAP.
 
-2. **Paste it in Terminal.** Wait for the check to pass before clicking
+2. **Paste it in the terminal.** Wait for the check to pass before clicking
    **Done** on Fastmail's page.
 
    **✅ Check:** the general check above.
@@ -601,41 +598,39 @@ IMAP needs a paid Fastmail plan above Basic.
    normal password; Threadline stores it encrypted the same way, but an app
    password is safer because you can remove it on its own.
 
-2. Type `other`, then the server, the port (press Return for 993), the name
+2. Type `other`, then the server, the port (press Enter for 993), the name
    you sign in with (usually your address), and paste the password.
 
 3. Once your mailbox is saved, the set-up asks for the **sending server**
-   (SMTP), which it needs to
-   e-mail you the morning summary from this mailbox (the usual way; it skips
-   this when you chose another way to send the summary). Your provider's help
-   pages list it next to the IMAP server. It suggests a name (for
-   `imap.example.com` it offers `smtp.example.com`): press Return to accept
-   it, or type the right one. Then type the port, **465** or **587** (press
-   Return for 465). The set-up signs in to that server once with the same
-   app password, to catch a wrong server now rather than every morning. It
-   sends nothing.
+   (SMTP), which it needs to e-mail you the morning summary from this mailbox
+   (the usual way; it skips this when you chose another way to send the
+   summary). Your provider's help pages list it next to the IMAP server. It
+   suggests a name (for `imap.example.com` it offers `smtp.example.com`): press
+   Enter to accept it, or type the right one. Then type the port, **465** or
+   **587** (press Enter for 465). The set-up signs in to that server once with
+   the same app password, to catch a wrong server now rather than every
+   morning. It sends nothing.
 
    **✅ Check:** after the general check above, you see
    `Signed in to the sending server. Nothing was sent.`
 
    **If not:** "did not answer" means the server name or port is wrong, or the
    provider does not offer it over TLS on that port. The set-up asks
-   `Try another server or port?`: press Return to try again, or type `n` to
+   `Try another server or port?`: press Enter to try again, or type `n` to
    carry on without it for now. After three tries it carries on by itself.
    Either way your mailbox stays connected and is read every morning; only the
    morning summary cannot be e-mailed yet. Check the name and port in your
    provider's help pages, then run `uv run tracker setup mailbox` again: it
    asks for the app password once more (make a new one if you no longer have
-   it) and then for the sending server. If your daily run is on GitHub, run
-   `uv run tracker setup github` after that, so the run there is told the
-   sending server too. A sending server saved for a different mailbox is
-   removed at this point, so the summary is never sent through the wrong one.
-   Later, `uv run tracker doctor` shows a **Summary e-mail** line for the
-   sending server.
+   it) and then for the sending server. Then run `uv run tracker setup github`,
+   so the run on GitHub is told the sending server too. A sending server saved
+   for a different mailbox is removed at this point, so the summary is never
+   sent through the wrong one. Later, `uv run tracker doctor` shows a **Summary
+   e-mail** line for the sending server.
 
-### 5c. Outlook mailbox and calendar (`tracker setup microsoft`)
+### 4c. Outlook mailbox and calendar (`tracker setup microsoft`)
 
-If you chose another mailbox in 5a, this step asks first whether to connect
+If you chose another mailbox in 4a, this step asks first whether to connect
 Outlook as well. Answer **no** to skip it; you can add it later with
 `uv run tracker setup microsoft`.
 
@@ -646,12 +641,12 @@ From then on the key renews itself every day.
 
 **What you do:**
 
-1. Type the code shown in Terminal on the Microsoft page that opens.
+1. Type the code shown in the terminal on the Microsoft page that opens.
 2. Sign in with your Outlook.com or Hotmail account.
 3. Microsoft lists the permissions: **read your mail**, **read your calendars**,
    and **keep access**. All are read-only. Click **Accept** (or **Yes**).
-4. Back in Terminal, answer **yes** when it offers to save the signed-in address
-   as one of your own.
+4. Back in the terminal, answer **yes** when it offers to save the signed-in
+   address as one of your own.
 
 **✅ Check:** you see `Signed in as you@example.com.` with your own address.
 
@@ -685,39 +680,288 @@ default, and run `uv run tracker setup microsoft` again.
 
 ---
 
-## 6. LinkedIn (optional; EEA and Switzerland only)
+## 5. The dashboard (Netlify)
+
+The dashboard is a private web page. The set-up publishes it on Netlify, for
+free, so you can open it on your computer and your phone. You make one token on
+Netlify's website and paste it. Nothing needs installing.
+
+**What you do:**
+
+1. When the set-up asks `Publish it on Netlify now?`, press Enter (yes).
+2. It asks whether you already have a Netlify account. If not, answer **n**:
+   Netlify's sign-up page opens. Signing up with GitHub is quickest. Press
+   Enter in the terminal once you are signed in.
+3. Netlify's token page opens. Click **New access token**, name it
+   `Threadline set-up`, choose the shortest expiry offered, click
+   **Generate token** and copy it. The page may look slightly different.
+4. Paste the token into the terminal. It stays hidden and is never saved.
+
+**What the set-up does for you:** it downloads the ready-made dashboard, adds
+your project's address and its public key, and publishes it at an address such
+as `https://threadline-xxxxxx.netlify.app`. It saves that address so the
+morning e-mail links to it, and points Supabase's sign-in link at it with the
+Supabase token from part 2. Netlify's free plan is enough.
+
+**✅ Check:** on your phone, open the address, type your e-mail, and click the
+link in the e-mail Supabase sends. The dashboard opens (it is empty until the
+first run).
+
+**If not:** "Email address not authorized" means the address is not the one of
+your Supabase account (see part 3a). A link that opens `localhost` means the
+sign-in link was not connected: run `uv run tracker setup dashboard` again.
+
+**Not on Netlify?** If you answer **n** to `Publish it on Netlify now?`, the
+set-up asks whether you publish it somewhere else instead. Answer **y** and
+paste its address: the set-up opens it once and saves it if it shows the
+dashboard. Answer **n** to both and the set-up stops there with `Stopped: the
+dashboard is not published yet - publish it first (part 5 of the guide).`,
+because the steps after it need the dashboard's address. Run
+`uv run tracker setup` again when you are ready: it skips what is already done
+and carries on from the dashboard.
+
+**Put it on your home screen.** Open the address in your phone's browser. On an
+iPhone, tap **Share → Add to Home Screen**. On Android, tap **⋮ → Add to Home
+screen**. It then opens like an app.
+
+To publish the dashboard again later, run `uv run tracker setup dashboard`.
+
+---
+
+## 6. Run it every day on GitHub: the Claude key and the first run
+
+Every morning GitHub starts Threadline on your private copy, runs the daily
+job with **your own Claude subscription**, and e-mails you the summary from
+your own mailbox, with your computer off. At the time of writing, GitHub's
+free plan includes 2,000 minutes a month for private repositories; one run
+takes about five to ten minutes, so a month of mornings uses roughly 150 to 300.
+
+**Which mailbox sends the summary.** Threadline sends it from the Gmail,
+iCloud, Yahoo, Fastmail or other mailbox you connected in part 4, with the same
+app password (no new password to make). If you connected **only Outlook**, it
+cannot: Microsoft requires its own sign-in method (OAuth2) for Outlook.com,
+Hotmail and Live mail programs, and turned off plain passwords and app
+passwords for them in September 2024. You have two choices: connect a Gmail or
+other mailbox as well in part 4 (Threadline can read both), or use the
+[Claude cloud route](#8c-the-claude-cloud-route-tracker-setup-cloud), which
+sends through Claude's Gmail connector.
+
+### 6a. The daily time (`tracker setup schedule`)
+
+**What the set-up does for you:** it asks what time the run should start, reads
+it in the time zone you gave in part 3c, writes both into the workflow file
+`.github/workflows/threadline-run.yml`, and shows you the two lines it changed.
+GitHub follows your summer and winter time by itself.
+
+**What you do:**
+
+1. Type the time on the 24-hour clock, such as `07:07`, or press Enter to keep
+   the one offered (07:00 unless you chose another before). GitHub's own timer
+   is busiest on the hour and often starts a run late, sometimes by hours; the
+   Refresh now extra ([8b](#8b-refresh-now-tracker-setup-refresh)) makes your
+   Supabase project start it on time instead.
+2. When it asks `Send the new time to your copy on GitHub now?`, press Enter
+   (yes). GitHub only uses the new time once the change is uploaded.
+
+**✅ Check:** you see `Committed and pushed. GitHub will use the new time from
+now on.`
+
+**If not:** if you answered **n**, run the `git` lines the set-up printed
+(they work from any folder of the project), or run
+`uv run tracker setup schedule` again and answer **y**. If the terminal answers
+*Please tell me who you are*, git does not know your name yet: run
+`git config --global user.name "Your Name"` and
+`git config --global user.email you@example.com` once, with your own name and
+address, then run the `git` lines again.
+
+To use a different time zone later, run `uv run tracker setup timezone`: it
+moves the workflow's zone too, keeping the time.
+
+### 6b. The Claude key and your settings on GitHub (`tracker setup github`)
+
+The run on GitHub cannot read the `.env` file on your computer, so your
+settings go into your copy's **secrets** (hidden in every log) and
+**variables** (the harmless ones, such as your time zone). GitHub also needs a
+key that lets it use your Claude subscription.
+
+**What you do:**
+
+1. When the set-up asks for the Claude key, open a **second** terminal window
+   and type:
+
+   ```bash
+   claude setup-token
+   ```
+
+2. Sign in in the browser that opens, then go back to that second window: it
+   prints a long key that starts with `sk-ant-` and lasts one year. Copy all of
+   it.
+3. Paste it into the set-up in the first window (nothing shows while you
+   paste) and press Enter.
+4. When it asks `Save … secrets and … variables in … with the GitHub CLI now?`,
+   press Enter for yes.
+
+The key goes straight to GitHub: it is never saved on your computer, not even
+in `.env`. Anyone with this key can use your Claude subscription, so never
+paste it anywhere else.
+
+**What the set-up does for you:** it saves every secret and variable on your
+copy and names each one as it goes, never its value. The **secrets** include
+the Claude key, your Supabase keys, the encryption key, your own addresses
+(`OWNER_EMAIL_ADDRESSES`), and, when you have set them, `IMAP_USERNAME`,
+`DASHBOARD_BASE_URL` and `OWNER_DISPLAY_NAME`. The **variables** are the
+harmless settings, such as `OWNER_TIME_ZONE`, `MAIL_SOURCES` and
+`IMAP_PROVIDER`.
+
+If you emptied a setting on your computer (for example you removed
+`OWNER_DISPLAY_NAME` from `.env`) and GitHub still holds it, the set-up lists
+each one by name and asks once whether to delete them on GitHub, so the daily
+run stops using the old values. Press Enter to delete them, or type `n` to keep
+them.
+
+**✅ Check:** the list names every secret and variable it set, ending with
+`Done. GitHub has everything it needs to run Threadline on your copy.`
+
+**If not:** if the set-up stopped with `there is no private copy on GitHub
+yet`, this folder is not linked to your own private copy. Paste the install
+line from part 1 again: it makes the copy and downloads it.
+
+### 6c. The first run starts by itself
+
+Right after saving, the set-up asks `Start the first daily run on GitHub now?`.
+Press Enter for yes. It makes sure GitHub Actions and the workflow are switched
+on in your copy, then starts the run.
+
+**✅ Check:** you see `The first run has started.` with the address of the
+run's page, and `The summary e-mail arrives in about 10 minutes.`
+
+**If not:** if GitHub refused, the set-up says so in one line and names the page
+where you start the run yourself:
+
+1. Open that page (**Actions → Threadline run** in your copy on GitHub). If it
+   shows **Enable workflow**, click it.
+2. Click **Run workflow**, keep **mode: daily**, and click the green **Run
+   workflow** button.
+
+The same steps apply if you set Threadline up without the installer and the
+set-up could not use the GitHub tool: it then lists the setting names to add on
+**Settings → Secrets and variables → Actions**, puts each value on your
+clipboard in turn, and ends with the same two steps.
+
+### 6d. See the run, and the e-mail
+
+On the run's page, a new run appears with a yellow dot and, after about five to
+ten minutes, has a green tick. Open the finished run and click **Threadline**,
+then **Run the recipe with Claude**: the log ends with Claude's short report of
+the run, in plain English. It never contains the text of your messages.
+
+**✅ Check:** within about ten minutes of the start, the summary e-mail is in
+your inbox, sent from your own mailbox, and the dashboard's **Daily runs** page
+shows the run as **Worked** or **Partly worked**.
+
+**If not:**
+
+- *Green tick after a few seconds, nothing sent:* a required secret is
+  missing. Open the run; a note at the top names the missing secrets. Run
+  `uv run tracker setup github` again.
+- *Red cross:* open the run, click **Threadline**, and open the step with the
+  red cross. **Run the recipe with Claude** failing usually means the Claude
+  key is wrong or expired: run `claude setup-token` again, then
+  `uv run tracker setup github`, and paste the new key.
+- *Green tick but no e-mail:* a green tick only means the job ran, not that
+  every part worked. Read Claude's report at the end of the log, then run
+  `uv run tracker doctor` on your computer: its **Summary e-mail** line checks
+  that your mailbox accepts the app password for sending, without sending
+  anything.
+- *A run stopped half-way (cancelled, or GitHub stopped it):* nothing to clean
+  up. The dashboard's **Daily runs** page shows it as **Running** for a while;
+  when the next run starts (at least three hours later), it is closed as
+  **Did not work**, with the step where it stopped marked "The run stopped
+  here and never finished", and the next morning summary mentions it once.
+
+From now on the run starts by itself every day at the time you chose, as
+GitHub's timer allows; with Refresh now switched on (part 8b), exactly on time.
+
+---
+
+## 7. The final check
+
+The set-up ends by saying `Set-up done.`, when the first summary e-mail will
+arrive, the daily time, and how to add the extras. Then it checks every
+connection once and prints one line for each.
+
+You can run the same check yourself at any time:
+
+```bash
+uv run tracker doctor
+```
+
+**✅ Check:** the last line says `Everything Threadline needs is working.` Lines
+start with `ok`, or with `skipped` or `warning` for the optional parts. Until
+you add the extras (part 8), these are expected:
+
+- `skipped  LinkedIn …: LinkedIn is not connected (optional)`
+- `warning  Refresh now: not switched on yet (optional)`
+- `warning  On-time morning start: not switched on (optional): GitHub alone
+  starts the daily run, often late`
+
+**If not:** fix the lines marked `PROBLEM` from top to bottom. Each one ends
+with the command that repairs it, usually `uv run tracker setup <step>`.
+
+You are done. You can delete the Supabase token now, on the same Supabase page
+where you made it. From now on, [`operations.md`](operations.md) is the page to
+keep: what happens every morning, and what to do when the summary asks for
+something.
+
+---
+
+## 8. Extras (optional, later)
+
+Three extras can be added at any time. None of them is needed for the morning
+summary, though Refresh now also makes it arrive on time. To go through all three in order, each one skippable:
+
+```bash
+uv run tracker setup extras
+```
+
+It shows `Step 1 of 3` (LinkedIn), `Step 2 of 3` (Refresh now) and
+`Step 3 of 3` (the Claude cloud route). To do one alone, name it:
+`uv run tracker setup linkedin`, `uv run tracker setup refresh` or
+`uv run tracker setup cloud`.
+
+### 8a. LinkedIn (`tracker setup linkedin`)
 
 This is the least friendly step in the guide, because LinkedIn offers no
 sign-in button for it: you make a key by hand on LinkedIn's developer pages.
 Before you decide, here is what to expect:
 
-- **It is optional.** Everything else works without LinkedIn, and you can add
-  it later with `uv run tracker setup linkedin`.
+- **It is optional.** Everything else works without LinkedIn.
 - **It depends on where your LinkedIn profile is located.** LinkedIn offers
   this only to members whose profile is located in the European Economic Area
   or Switzerland. It is the location on your profile that counts, not your
-  citizenship.
+  citizenship. If you live elsewhere, skip LinkedIn.
 - **LinkedIn messages appear a day or two late.** LinkedIn's copy of your
   messages runs one to two days behind (measured on 24 September 2026), so a
   message you receive on LinkedIn today shows up in Threadline tomorrow or the
   day after. Nothing is lost; it only arrives later.
 - **It takes about ten minutes.** When the key expires you repeat only the last
-  part (6c and 6d).
+  stages ([stage 3](#stage-3-of-3-make-the-key) and
+  [the expiry date](#the-expiry-date-and-your-profile-address)).
 
 <!-- The one-to-two-day delay is recorded beside LINKEDIN_OVERLAP_DAYS in
      backend/src/tracker/shared/constants/collection.py. -->
 
-**What the set-up does for you (`tracker setup linkedin`):** it takes you
-through three stages in order, opens the right LinkedIn page for each one and
-waits while you click. Then it makes one small call to LinkedIn with your new
-key and saves the key only if LinkedIn accepts it.
+**What the set-up does for you:** it takes you through three stages in order,
+opens the right LinkedIn page for each one and waits while you click. Then it
+makes one small call to LinkedIn with your new key and saves the key only if
+LinkedIn accepts it.
 
 **What you do:** answer **yes** to "Connect LinkedIn now?" (or press Enter to
-skip LinkedIn), then follow 6a to 6d as the pages open.
+skip LinkedIn), then follow the stages below as the pages open.
 
-### 6a. Create the developer application
+#### Stage 1 of 3: create the developer application
 
-**Stage 1 of 3.** The set-up opens <https://www.linkedin.com/developers/apps>.
+The set-up opens <https://www.linkedin.com/developers/apps>.
 
 1. Click **Create app**.
 2. **App name:** anything, for example `Threadline`.
@@ -734,9 +978,9 @@ skip LinkedIn), then follow 6a to 6d as the pages open.
 default company named above. If you already created the application on an
 earlier try, do not make a second one: click it in the list instead.
 
-### 6b. Add the Member Data Portability product
+#### Stage 2 of 3: add the Member Data Portability product
 
-**Stage 2 of 3.** Stay on your application's page, the one stage 1 ended on.
+Stay on your application's page, the one stage 1 ended on.
 
 1. Open its **Products** tab.
 2. Find **Member Data Portability API (Member)** and click **Request access**.
@@ -751,9 +995,9 @@ earlier try, do not make a second one: click it in the list instead.
 is most likely not located in the EEA or Switzerland. Answer **no**. The set-up
 says `Skipped: …`, saves nothing, and Threadline carries on without LinkedIn.
 
-### 6c. Make the key
+#### Stage 3 of 3: make the key
 
-**Stage 3 of 3.** The set-up opens LinkedIn's token page,
+The set-up opens LinkedIn's token page,
 <https://www.linkedin.com/developers/tools/oauth/token-generator>. In
 LinkedIn's own menu it is **Docs and tools → OAuth Token Tools → Create token**.
 
@@ -767,13 +1011,13 @@ LinkedIn's own menu it is **Docs and tools → OAuth Token Tools → Create toke
 
 **✅ Check:** you see `LinkedIn accepted the key.`
 
-**If not:** if **Request access token** is greyed out, the product from 6b has
-not been approved yet. Wait a few minutes and reload. "wrong or has expired":
-make a new token (steps 1 to 4) and paste that one; the set-up asks up to three
-times. "lacks the data portability permission": you ticked a different
-permission in step 2.
+**If not:** if **Request access token** is greyed out, the product from stage 2
+has not been approved yet. Wait a few minutes and reload. "wrong or has
+expired": make a new token (steps 1 to 4) and paste that one; the set-up asks
+up to three times. "lacks the data portability permission": you ticked a
+different permission in step 2.
 
-### 6d. The expiry date and your profile address
+#### The expiry date and your profile address
 
 The key stops working on a fixed day, and only LinkedIn can tell you which. The
 set-up asks for that day so the morning summary can remind you **seven days**
@@ -797,302 +1041,47 @@ for `LINKEDIN_TOKEN_EXPIRES_ON` and `OWNER_LINKEDIN_PROFILE_URL`.
 **If not:** "that date has already passed": you typed the day the token was
 made, or the wrong year. Type the day it **expires**.
 
-**When the key expires.** Run `uv run tracker setup linkedin` again. A key is
-already saved, so the set-up skips 6a and 6b and goes straight to 6c. The steps
-are in [Renew the LinkedIn key](operations.md#renew-the-linkedin-key).
+#### Send it to GitHub
 
----
-
-## 7. Publish the dashboard (Vercel)
-
-The dashboard is a web page. Publishing it on Vercel lets you open it on your
-phone.
-
-1. Sign in to <https://vercel.com> with GitHub.
-2. Click **New Project** and import your copy of Threadline (the labels may
-   read **Add New… → Project** and **Import Git Repository**; the page may look
-   slightly different).
-3. On the page before **Deploy**:
-   - **Root Directory:** click **Edit** and choose **`frontend`**. This is easy
-     to miss, and nothing works without it. If Vercel instead says
-     *"Multiple applications detected"* and lists **backend** and **frontend**,
-     click **Import single project** next to **frontend** (marked *Vite*): that
-     sets the folder for you.
-   - **Environment Variables:** add two. These are the address and the
-     **Publishable key** from part 3a: **Supabase → Project Settings → API
-     Keys**.
-     - `VITE_SUPABASE_URL` = your project address (`https://<project-id>.supabase.co`)
-     - `VITE_SUPABASE_ANON_KEY` = your **publishable** key (it starts with
-       `sb_publishable_`). Never the secret one.
-4. Click **Deploy** (or **Create Project**, then **Deploy**) and wait for it to
-   finish. If Vercel only says *"Project created … then deploy"* and nothing
-   starts, open the project and choose **Deployments → Redeploy**, or push any
-   change to your copy: every push publishes the dashboard again.
-5. Open the project's **Settings → Domains** and copy the **production
-   address**, which looks like `https://<name>.vercel.app`.
-
-**About Vercel's login wall.** New Vercel projects protect every address except
-the production one with a Vercel login. Always use the production address from
-the **Domains** tab and you will not meet it. You only need to change
-**Settings → Deployment Protection** if you want other addresses to open too.
-
-**✅ Check:** the production address opens the dashboard's sign-in page in a
-private browser window.
-
-**If not:** a Vercel sign-in page means you opened a different address: use the
-one from **Domains**. A blank page or "missing settings" means the two
-environment variables are missing or misspelt: fix them, then in **Deployments**
-choose **Redeploy** (changed variables only apply after a redeploy).
-
-### 7a. Tell Threadline and Supabase (`tracker setup dashboard`)
-
-Back in Terminal, in the `backend` folder, start the set-up again:
-
-```bash
-uv run tracker setup
-```
-
-It skips every finished step (an optional step you skipped before, such as
-LinkedIn, is offered once more: answer **n** to skip it again) and asks
-`Is the dashboard published already?`. Answer **yes** this time, and paste the
-production address from step 5. (To redo only this step later:
-`uv run tracker setup dashboard`.)
-
-**What the set-up does for you:** it opens the address once to check it shows
-the dashboard (and not a Vercel login), saves it so the morning e-mail links to
-it, and opens Supabase's **Authentication → URL Configuration** page.
-
-**What you do on that Supabase page:**
-
-- **Site URL:** your production address.
-- **Redirect URLs:** add your production address followed by `/**`.
-- Click **Save**, then press Return in Terminal.
-
-**✅ Check:** you see `Saved DASHBOARD_BASE_URL in .env.`, and the set-up goes
-straight on to `Step 11 of 14: The daily time (GitHub Actions)`, which is part
-8b. Later, on your phone, open the address, type your e-mail, and click the
-link in the e-mail Supabase sends: the dashboard opens (it is empty until the
-first run).
-
-**If not:** "Email address not authorized" means the address is not the one of
-your Supabase account (see part 2). A link that opens `localhost` means the
-Site URL was not saved.
-
----
-
-## 8. Run it every day on GitHub
-
-Every morning GitHub starts Threadline on your private copy, runs the daily
-job with **your own Claude subscription**, and e-mails you the summary from
-your own mailbox, with your laptop shut. At the time of writing, GitHub's
-free plan includes 2,000 minutes a month for private repositories; one run takes
-about five to ten minutes, so a month of mornings uses roughly 150 to 300.
-
-The set-up you restarted in 7a carries on here by itself, in this order: the
-daily time (8b), your settings on GitHub (8c) and Refresh now (8f). It ends
-with the doctor's check of every connection. The command under each of those
-headings runs that one step again on its own, later. Parts 8a, 8d and 8e are
-done on the GitHub website once the set-up has finished.
-
-**Which mailbox sends the summary.** Threadline sends it from the Gmail,
-iCloud, Yahoo, Fastmail or other mailbox you connected in part 5, with the same
-app password (no new password to make). If you connected **only Outlook**, it
-cannot: Microsoft requires its own sign-in method (OAuth2) for Outlook.com,
-Hotmail and Live mail programs, and turned off plain passwords and app
-passwords for them in September 2024. You have two choices: connect a Gmail or
-other mailbox as well in part 5 (Threadline can read both), or use the
-[alternative route](#alternative-the-daily-run-in-a-claude-cloud-routine),
-which sends through Claude's Gmail connector.
-
-### 8a. Turn on GitHub Actions for your copy
-
-Open your Threadline copy on <https://github.com> and click the **Actions**
-tab. If GitHub shows a button such as **I understand my workflows, go ahead
-and enable them**, click it.
-
-**✅ Check:** the Actions tab lists a workflow called **Threadline run**.
-
-**If not:** open **Settings → Actions → General**, choose **Allow all actions
-and reusable workflows**, click **Save**, and open the Actions tab again.
-
-### 8b. Choose the time (`tracker setup schedule`)
-
-The set-up reaches this step right after the dashboard. To run it on its own
-later:
-
-```bash
-uv run tracker setup schedule
-```
-
-**What the set-up does for you:** it asks what time the run should start,
-reads it in the time zone you gave in part 4c, writes both into the workflow
-file `.github/workflows/threadline-run.yml`, and shows you the two lines it
-changed. GitHub follows your summer and winter time by itself. To use a
-different zone, run `uv run tracker setup timezone`: it updates the workflow's
-zone too. This step then asks whether to
-run `git add`, `git commit` and `git push` for you; it only does so after you
-answer yes.
-
-A time a few minutes past the hour (such as **07:07**) starts more reliably:
-GitHub is busiest on the hour and may start a run a few minutes late.
-
-**✅ Check:** on GitHub, open `.github/workflows/threadline-run.yml` in your copy.
-The `cron:` line shows your minute and hour (`7 7 * * *` for 07:07), and the
-`timezone:` line shows your zone.
-
-**If not:** the change was not pushed yet. In Terminal, run the `git` lines the
-set-up printed (they work from any folder of the project). If Terminal answers
-*Please tell me who you are*, git does not know your name yet: run
-`git config --global user.name "Your Name"` and
-`git config --global user.email you@example.com` once, with your own name and
-address, then run the `git` lines again. If the set-up said
-`This folder is not linked to a copy of yours on GitHub yet`, carry on with 8c:
-it makes your copy and uploads the change with it.
-
-### 8c. Put your settings on GitHub (`tracker setup github`)
-
-The set-up goes on with this step after the daily time. To run it on its own
-later:
+The daily run on GitHub only learns about LinkedIn once the new values are
+there. Run:
 
 ```bash
 uv run tracker setup github
 ```
 
-The run on GitHub cannot read the `.env` file on your computer, so your
-settings go into your copy's **secrets** (hidden in every log) and
-**variables** (the harmless ones, such as your time zone).
+Press Enter when it asks for the Claude key (GitHub keeps the one it has), press
+Enter to save, and answer **n** when it offers to start a daily run, unless you
+want one now.
 
-**Your private copy comes first.** The settings are saved into your own private
-copy on GitHub, so the set-up first checks that this folder is linked to one.
-Only a **private** repository that **you administer** counts as your copy: a
-folder still linked to the public Threadline project, or to someone else's
-copy, is not, and nothing is saved there. (Without `gh` the set-up can only see
-that the folder is linked to GitHub, not whose copy it is.) If it is not
-linked to your copy, it says so and, when the GitHub command-line tool `gh` is
-installed and signed in (`gh auth login`), offers to create it for you: answer
-**y**, then press Return to accept the name `threadline` or type another. It
-creates a **private** copy and uploads this folder to it. Without `gh`, it
-explains the **Use this template → Private** steps from part 1 and stops; run
-`uv run tracker setup github` again from the new copy's `backend` folder.
+**✅ Check:** the list includes `secret LINKEDIN_ACCESS_TOKEN saved`.
 
-**The Claude key.** GitHub also needs a key that lets it use your Claude
-subscription. The set-up asks for it. Open a second Terminal window (on a Mac:
-⌘ + N) and run:
+**If not:** run `uv run tracker setup github` again and read the line where it
+stopped.
 
-```bash
-claude setup-token
-```
+**When the key expires.** Run `uv run tracker setup linkedin` again. A key is
+already saved, so the set-up skips stages 1 and 2 and goes straight to stage 3.
+The steps are in [Renew the LinkedIn key](operations.md#renew-the-linkedin-key).
 
-Sign in in the browser that opens, then go back to that second Terminal window:
-it prints a long key that starts with `sk-ant-` and lasts one year. Copy all of
-it and paste it into the set-up in the first window when asked (nothing shows
-while you paste). The set-up hands it straight to GitHub; it is never saved on
-your computer, not even in `.env`. Anyone with this key can use your Claude
-subscription, so never paste it anywhere else.
+### 8b. Refresh now (`tracker setup refresh`)
 
-**What the set-up does for you:**
+The dashboard's **Refresh now** button starts one extra, quick update whenever
+you want: it reads only what is new and sends no e-mail. This step switches it
+on, together with the **on-time morning start** described below. It puts a small helper called `refresh-now` into your Supabase project. You
+install nothing: the set-up does it through Supabase's and GitHub's websites.
+It needs two keys, each pasted once (nothing shows while you paste) and never
+saved on your computer.
 
-- If the GitHub command-line tool `gh` is installed and signed in
-  (`gh auth login`), it offers to save every secret and variable for you, and
-  names each one as it goes, never its value.
-- Otherwise it prints the **names** to add, opens the page
-  (**Settings → Secrets and variables → Actions**), and puts each value on your
-  clipboard in turn. On the **Secrets** tab, click **New repository secret**
-  for each name in the secrets list; on the **Variables** tab, click **New
-  repository variable** for each name in the variables list.
-
-When it saves, the set-up lists every secret and every variable it sets, by
-name. The **secrets** include the Claude key, your Supabase keys, the
-encryption key, your own addresses (`OWNER_EMAIL_ADDRESSES`), and, when you
-have set them, `IMAP_USERNAME`, `DASHBOARD_BASE_URL`, `OWNER_DISPLAY_NAME` and
-the LinkedIn values. The **variables** are the harmless settings, such as
-`OWNER_TIME_ZONE`, `MAIL_SOURCES` and `IMAP_PROVIDER`.
-
-If you emptied a setting on your computer (for example you removed
-`OWNER_DISPLAY_NAME` from `.env`) and GitHub still holds it, the set-up then
-lists each one by name and asks once whether to delete them on GitHub, so the
-daily run stops using the old values. Answer **y** (or press Return) and it
-deletes them and names each one; answer **n** and they stay. This only happens
-when `gh` saves the settings for you; by hand, delete them yourself on the
-same page.
-
-**✅ Check:** the set-up's list names every secret and variable it set,
-including `IMAP_USERNAME`, `DASHBOARD_BASE_URL` and `OWNER_DISPLAY_NAME`
-(secrets) and `OWNER_TIME_ZONE` (a variable) if you gave them a value. On
-GitHub, **Settings → Secrets and variables → Actions** shows at least
-`CLAUDE_CODE_OAUTH_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-`SUPABASE_ANON_KEY`, `TOKEN_ENCRYPTION_KEY` and `OWNER_EMAIL_ADDRESSES` on the
-Secrets tab.
-
-**If not:** add the missing ones by hand on that page, with the exact names.
-A name with a typo is ignored. If the set-up stopped with `there is no private
-copy on GitHub yet`, make the copy (see above), then run
-`uv run tracker setup github` again.
-
-### 8d. Start the first run by hand
-
-1. On GitHub, open **Actions → Threadline run**.
-2. Click **Run workflow**, keep **mode: daily**, and click the green **Run
-   workflow** button.
-
-**✅ Check:** after a few seconds a new run appears with a yellow dot, and after
-about five to ten minutes it has a green tick.
-
-**If not:**
-
-- *Green tick after a few seconds, nothing sent:* a required secret is
-  missing. Open the run; a note at the top names the missing secrets. Go back
-  to 8c.
-- *Red cross:* open the run, click **Threadline**, and open the step with the
-  red cross. **Run the recipe with Claude** failing usually means the Claude
-  key is wrong or expired: run `claude setup-token` again and replace the
-  `CLAUDE_CODE_OAUTH_TOKEN` secret.
-- *A run stopped half-way (cancelled, or GitHub stopped it):* nothing to clean
-  up. The dashboard's **Daily runs** page shows it as **Running** for a while;
-  when the next run starts (at least three hours later), it is closed as
-  **Did not work**, with the step where it stopped marked "The run stopped
-  here and never finished", and the next morning summary mentions it once.
-
-### 8e. See the log, and the e-mail
-
-Open the finished run and click **Threadline**, then **Run the recipe with
-Claude**: the log ends with Claude's short report of the run, in plain
-English. It never contains the text of your messages.
-
-**✅ Check:** within about ten minutes of the start, the summary e-mail is in
-your inbox, sent from your own mailbox, and the dashboard's **Daily runs** page
-shows the run as **Worked** or **Partly worked**.
-
-**If not:** a green tick only means the job ran, not that every part worked.
-Read Claude's report at the end of the log, then run `uv run tracker doctor` on
-your computer: its **Summary e-mail** line checks that your mailbox accepts the
-app password for sending, without sending anything.
-
-From now on the run starts by itself every day at the time you chose. The
-dashboard's **Refresh now** button starts the same workflow in **refresh**
-mode: it reads only what is new and sends no e-mail. Part 8f switches it on.
-
-### 8f. Switch on Refresh now (`tracker setup refresh`)
-
-The set-up reaches this step right after 8c, so you will meet it before the
-first run of 8d. To run it on its own later:
-
-```bash
-uv run tracker setup refresh
-```
-
-It puts a small helper called `refresh-now` into your Supabase project, so the
-button can start an extra update. You install nothing: the set-up does it
-through Supabase's and GitHub's websites. It needs two keys, each pasted once
-(nothing shows while you paste) and never saved on your computer.
-
-**Before you start:** the dashboard is published (part 7a) and your private
-copy is on GitHub (part 8c). If not, the set-up says which part to do first.
-As in 8c, only a private repository you administer counts as your copy: if
-this folder still points at the public template, the set-up says
+**Before you start:** the dashboard is published (part 5) and your private
+copy is on GitHub (part 1). If not, the set-up says which step to run first.
+Only a private repository you administer counts as your copy: if this folder
+still points at the public template, the set-up says
 `This folder is not linked to your own private copy on GitHub yet` and stops
-before anything is made. Without the GitHub command-line tool it cannot check
-this, so it names the repository it will use and asks you to confirm it.
+before anything is made. Without the GitHub tool it cannot check this, so it
+names the repository it will use and asks you to confirm it.
+
+**What you do:** answer **yes** to `Switch on Refresh now for …?` (press Enter),
+then make the two keys.
 
 **1. The GitHub key.** A GitHub page opens with the name
 (`Threadline refresh now`), a one-year expiry date and the permission
@@ -1109,15 +1098,10 @@ this, so it names the repository it will use and asks you to confirm it.
 Put the expiry date in your calendar: on that day the button stops working
 until you run `uv run tracker setup refresh` again with a new key.
 
-**2. The Supabase key.** Supabase's **Access Tokens** page opens. Click
-**Generate new token**, name it `Threadline refresh now`, and:
-
-1. limit it to this project (the set-up shows its identifier) and choose the
-   shortest expiry offered, for example 7 days: it is only used now;
-2. under the permissions, give **Edge Functions** and **Edge Function
-   Secrets** read and write access, and nothing else;
-3. click **Generate token**, copy it (it starts with `sbp_`), and paste it into
-   the set-up.
+**2. The Supabase token.** The set-up asks for a Supabase access token once
+more, because it never saved the one from part 2. Make one exactly as in
+[part 2a](#2a-the-token-and-your-project-tracker-setup-supabase) (steps 2 to 6),
+or paste the one from part 2 if you still have it.
 
 The set-up then saves the helper's settings in Supabase (your GitHub key goes
 straight there), puts the helper in place, and checks that it answers.
@@ -1140,46 +1124,25 @@ appear in a few minutes."
 - *`GitHub did not accept the token` or `the token cannot see the workflow`:*
   make the key again and check that step 1 picked your copy of Threadline and
   that **Actions** says **Read and write**.
-- *`Supabase did not accept the access token`:* make the Supabase key again
-  with both permissions ticked and this project chosen.
+- *`Supabase did not accept the access token`:* make the Supabase token again,
+  with access to your whole account.
 - *`The workflow is switched off on GitHub`:* open the link the set-up shows
   and click **Enable workflow**.
 - *The dashboard still says "not switched on yet":* close the dashboard tab and
   open it again (it remembers that answer until the tab is closed).
 - *`your database does not have the on-time morning start yet`:* run
   `uv run tracker setup database`, then `uv run tracker setup refresh` again.
-- Anything else: the manual way in [`docs/refresh-now.md`](refresh-now.md)
-  does the same by hand.
+- Anything else: the manual way in [`refresh-now.md`](refresh-now.md) does the
+  same by hand.
 
----
+### 8c. The Claude cloud route (`tracker setup cloud`)
 
-## 9. The final check
-
-On your computer:
-
-```bash
-uv run tracker doctor
-```
-
-**✅ Check:** every line starts with `ok` (optional parts may say `skipped`),
-and the last line says `Everything Threadline needs is working.`
-
-**If not:** fix the lines marked `PROBLEM` from top to bottom. Each one ends
-with the command that repairs it, usually `uv run tracker setup <step>`.
-
-You are done. From now on, [`docs/operations.md`](operations.md) is the page to
-keep: what happens every morning, and what to do when the summary asks for
-something.
-
----
-
-## Alternative: the daily run in a Claude cloud routine
-
-Use this instead of part 8 only if GitHub does not suit you, most often
-because you read **only Outlook**, whose mail programs cannot send with an app
-password. A Claude cloud routine sends the summary through Claude's Gmail
-connector, so you also need a Google account with Gmail. Do not run both
-routes: you would get two e-mails.
+Use this instead of the daily run on GitHub only if GitHub does not suit you,
+most often because you read **only Outlook**, whose mail programs cannot send
+with an app password. A Claude cloud routine sends the summary through Claude's
+Gmail connector, so you also need a Google account with Gmail. Do not run both
+routes: you would get two e-mails. To stop the GitHub run, see "Pause and
+resume" in [`operations.md`](operations.md#pause-and-resume).
 
 Set `SUMMARY_DELIVERY=gmail_connector` in `.env` if you also read a Gmail or
 other IMAP mailbox: a Claude cloud session can most likely reach only web
@@ -1188,7 +1151,7 @@ addresses, not the mail ports that sending by SMTP needs.
 This part is done on <https://claude.ai/code> and cannot be automated from
 your computer.
 
-### A1. Let Claude open your copy of Threadline
+#### Cloud 1. Let Claude open your copy of Threadline
 
 Go to <https://github.com/apps/claude>, install the **Claude** GitHub app, and
 give it access to your Threadline copy only.
@@ -1198,10 +1161,10 @@ of repositories.
 
 **If not:** open the Claude app's settings on GitHub and add the repository.
 
-### A2. Create the cloud environment (`tracker setup cloud`)
+#### Cloud 2. Create the cloud environment
 
-Answer **yes** when the set-up asks whether to set up the Claude cloud
-routine instead.
+Answer **yes** when the set-up asks whether to set up the Claude cloud routine
+instead.
 
 **What the set-up does for you:** it lists the **names** of the variables the
 cloud needs (never their values), lists the web addresses the cloud must be
@@ -1235,7 +1198,7 @@ never have to open `.env`.
    mailbox settings (`MAIL_SOURCES`, `IMAP_PROVIDER`, `IMAP_USERNAME`),
    `OWNER_LINKEDIN_PROFILE_URL`, `LINKEDIN_ACCESS_TOKEN`,
    `LINKEDIN_TOKEN_EXPIRES_ON` and `DASHBOARD_BASE_URL`. For each one, type
-   `NAME=`, go back to Terminal and press Return to get the value onto the
+   `NAME=`, go back to the terminal and press Enter to get the value onto the
    clipboard, then paste it.
 5. Save the environment.
 
@@ -1251,7 +1214,7 @@ cloud almost always means a missing allowed domain. "missing or wrong" names a
 missing variable. Change the environment, then start a **new** session: changes
 only reach sessions started afterwards.
 
-### A3. Connect Gmail
+#### Cloud 3. Connect Gmail
 
 In Claude, open **Customize → Connectors**, click **+**, choose **Gmail** and
 click **Connect**.
@@ -1260,11 +1223,11 @@ click **Connect**.
 
 **If not:** disconnect it and connect it again, making sure you allow sending.
 
-### A4. Create the routine
+#### Cloud 4. Create the routine
 
 1. Go to <https://claude.ai/code/routines> and click **New routine**.
 2. **Name:** for example `Threadline daily run`.
-3. **Repository:** your Threadline copy. **Environment:** the one from A2.
+3. **Repository:** your Threadline copy. **Environment:** the one from Cloud 2.
 4. **Prompt:** `Run the daily-run command from this repository.`
 5. **Connectors:** keep **Gmail**, and **remove every other connector**. In a
    routine, connectors act without asking you first. Gmail can send e-mail, so

@@ -9,6 +9,7 @@ machines, so it is code rather than configuration.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
@@ -17,6 +18,30 @@ from tracker.shared.config import REPOSITORY_ROOT
 #: The workflow's file name. The dashboard's "Refresh now" starts it by this
 #: name through GitHub's API, so it must never change.
 WORKFLOW_FILE_NAME: Final[str] = "threadline-run.yml"
+
+#: The workflow's title (its ``name:`` line), as GitHub's Actions tab lists it.
+WORKFLOW_DISPLAY_NAME: Final[str] = "Threadline run"
+
+
+class WorkflowMode(StrEnum):
+    """The two ways the workflow is started by hand, its ``mode`` input."""
+
+    DAILY = "daily"
+    REFRESH = "refresh"
+
+
+#: The workflow input that carries the mode.
+WORKFLOW_MODE_INPUT: Final[str] = "mode"
+
+#: GitHub's API path for whether Actions may run in a repository at all.
+ACTIONS_PERMISSIONS_API_PATH: Final[str] = "repos/{repository}/actions/permissions"
+
+#: The policy the set-up asks for when it has to switch Actions on: every
+#: action may run, as the guide's by-hand route chooses too.
+ALLOWED_ACTIONS_ALL: Final[str] = "all"
+
+#: About how long a daily run takes before the summary e-mail is sent.
+FIRST_SUMMARY_MINUTES: Final[int] = 10
 
 #: Where the workflow lives in the repository.
 WORKFLOW_FILE: Final[Path] = REPOSITORY_ROOT / ".github" / "workflows" / WORKFLOW_FILE_NAME
@@ -75,6 +100,9 @@ WORKFLOW_PAGE: Final[str] = (
 
 #: The commit message the set-up offers when the daily time changes.
 SCHEDULE_COMMIT_MESSAGE: Final[str] = "Set the daily Threadline time"
+
+#: Where the GitHub command-line tool is explained and downloaded, for every system.
+GITHUB_CLI_PAGE: Final[str] = "https://cli.github.com"
 
 #: The name offered for the owner's private copy when the set-up creates it.
 DEFAULT_COPY_NAME: Final[str] = "threadline"

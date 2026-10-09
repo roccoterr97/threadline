@@ -1,7 +1,17 @@
 """Supabase over plain HTTPS: the Management API and the auth server's settings.
 
-Two things the service-key client cannot do:
+What the service-key client cannot do, all with one personal access token that
+is held in memory for one set-up run and never written anywhere:
 
+* **Create the project and read its keys.** The token's organizations
+  (``GET /v1/organizations``) and projects (``GET /v1/projects``) are listed, a
+  project is created (``POST /v1/projects``) and watched until it is up
+  (``GET /v1/projects/{ref}``), and its API keys are read revealed
+  (``GET /v1/projects/{ref}/api-keys?reveal=true``) or created
+  (``POST`` on the same path).
+* **Change the auth settings.** ``PATCH /v1/projects/{ref}/config/auth`` takes
+  ``disable_signup``, ``site_url`` and ``uri_allow_list`` (one comma-separated
+  string); only the fields the caller set are sent.
 * **Apply the database structure.** Supabase's Management API runs a migration
   file when given a personal access token
   (``POST /v1/projects/{ref}/database/migrations``) and lists the ones it has
@@ -25,6 +35,14 @@ from typing import Any, Final, Self
 import httpx
 from pydantic import SecretStr
 
+from tracker.domain.supabase import (
+    ApiKey,
+    ApiKeyKind,
+    AuthSettings,
+    NewProject,
+    Organization,
+    SupabaseProject,
+)
 from tracker.shared.constants.collection import HTTP_TIMEOUT_SECONDS
 from tracker.shared.constants.setup import (
     SERVICE_ERROR_DETAIL_LENGTH,
@@ -53,6 +71,18 @@ _FILE_FIELD: Final[str] = "file"
 
 #: Path of the auth server's public settings, below the project address.
 AUTH_SETTINGS_PATH: Final[str] = "/auth/v1/settings"
+
+#: Query that makes the API keys endpoint return the keys themselves.
+REVEAL_KEYS: Final[dict[str, str]] = {"reveal": "true"}
+
+#: How a new project's region is asked for: Supabase picks within a group.
+SMART_REGION_TYPE: Final[str] = "smartGroup"
+
+#: What Supabase shows beside a key the set-up created.
+API_KEY_DESCRIPTION: Final[str] = "Created by Threadline's set-up"
+
+#: What a refusal of a plain read with the token is called.
+_TOKEN: Final[str] = "the access token"
 
 _log = get_logger(__name__)
 
@@ -110,6 +140,185 @@ class SupabasePlatform:
             what="the publishable key",
         )
         return _json_object(response).get("disable_signup") is True
+
+    async def organizations(self, token: SecretStr) -> tuple[Organization, ...]:
+        """List the organizations the token's owner belongs to.
+
+        A read that changes nothing, so it also proves a freshly typed token.
+
+        Args:
+            token: A personal access token.
+
+        Returns:
+            The organizations, in Supabase's order.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceUnavailableError: If Supabase could not be reached.
+        """
+        response = await self._send(
+            "GET", f"{SUPABASE_MANAGEMENT_API_URL}/organizations", _bearer(token), what=_TOKEN
+        )
+        return tuple(
+            Organization(slug=str(item["slug"]), name=str(item.get("name", item["slug"])))
+            for item in _json_objects(response)
+            if "slug" in item
+        )
+
+    async def projects(self, token: SecretStr) -> tuple[SupabaseProject, ...]:
+        """List every project the token can see.
+
+        Args:
+            token: A personal access token.
+
+        Returns:
+            The projects, with their current status.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceUnavailableError: If Supabase could not be reached.
+        """
+        response = await self._send(
+            "GET", f"{SUPABASE_MANAGEMENT_API_URL}/projects", _bearer(token), what=_TOKEN
+        )
+        return tuple(_project(item) for item in _json_objects(response) if "ref" in item)
+
+    async def create_project(self, token: SecretStr, request: NewProject) -> SupabaseProject:
+        """Create a project; it comes back still being set up.
+
+        Args:
+            token: A personal access token allowed to create projects.
+            request: The organization, name, region group and database password.
+
+        Returns:
+            The new project, usually with status ``COMING_UP``.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceRequestRejectedError: If Supabase refused the request; its
+                message carries Supabase's own reason.
+            SourceUnavailableError: If the project could not be created.
+        """
+        body = {
+            "name": request.name,
+            "organization_slug": request.organization_slug,
+            "db_pass": request.database_password.get_secret_value(),
+            "region_selection": {"type": SMART_REGION_TYPE, "code": request.region.value},
+        }
+        response = await self._send(
+            "POST",
+            f"{SUPABASE_MANAGEMENT_API_URL}/projects",
+            _bearer(token),
+            what="the access token for creating a project",
+            json_body=body,
+            once=True,
+        )
+        project = _project(_json_object(response))
+        _log.info("project_created", ref=project.ref, region=request.region.value)
+        return project
+
+    async def project(self, token: SecretStr, project_ref: str) -> SupabaseProject:
+        """Read one project, with its current status.
+
+        Args:
+            token: A personal access token.
+            project_ref: The project's identifier.
+
+        Returns:
+            The project.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceUnavailableError: If Supabase could not be reached.
+        """
+        response = await self._send("GET", _project_api(project_ref), _bearer(token), what=_TOKEN)
+        return _project(_json_object(response))
+
+    async def api_keys(self, project_ref: str, token: SecretStr) -> tuple[ApiKey, ...]:
+        """List a project's publishable and secret API keys, revealed.
+
+        Legacy JWT keys are left out.
+
+        Args:
+            project_ref: The project's identifier.
+            token: A personal access token allowed to read keys and their secrets.
+
+        Returns:
+            The keys; a value is ``None`` when Supabase did not reveal it.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceUnavailableError: If Supabase could not be reached.
+        """
+        response = await self._send(
+            "GET",
+            _api_keys_url(project_ref),
+            _bearer(token),
+            what="the access token for reading the API keys",
+            params=REVEAL_KEYS,
+        )
+        return tuple(
+            key for key in (_api_key(item) for item in _json_objects(response)) if key is not None
+        )
+
+    async def create_api_key(
+        self, project_ref: str, token: SecretStr, kind: ApiKeyKind, name: str
+    ) -> SecretStr:
+        """Create one API key and return it.
+
+        Args:
+            project_ref: The project's identifier.
+            token: A personal access token allowed to create keys.
+            kind: Publishable or secret.
+            name: The key's name in the dashboard.
+
+        Returns:
+            The key.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceUnavailableError: If the key could not be created or came back hidden.
+        """
+        response = await self._send(
+            "POST",
+            _api_keys_url(project_ref),
+            _bearer(token),
+            what="the access token for creating an API key",
+            params=REVEAL_KEYS,
+            json_body={"type": kind.value, "name": name, "description": API_KEY_DESCRIPTION},
+        )
+        key = _api_key(_json_object(response))
+        if key is None or key.value is None:
+            raise _unreadable()
+        _log.info("api_key_created", kind=kind.value, name=name)
+        return key.value
+
+    async def configure_auth(
+        self, project_ref: str, token: SecretStr, settings: AuthSettings
+    ) -> None:
+        """Change a project's auth settings; only the fields that are set are sent.
+
+        Args:
+            project_ref: The project's identifier.
+            token: A personal access token allowed to change the auth settings.
+            settings: The fields to change; ``None`` leaves a field alone.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceRequestRejectedError: If Supabase refused a value.
+            SourceUnavailableError: If the settings could not be saved.
+        """
+        body = _auth_body(settings)
+        if not body:
+            return
+        await self._send(
+            "PATCH",
+            f"{_project_api(project_ref)}/config/auth",
+            _bearer(token),
+            what="the access token for the auth settings",
+            json_body=body,
+        )
+        _log.info("auth_configured", fields=sorted(body))
 
     async def applied_migrations(self, project_ref: str, token: SecretStr) -> frozenset[str]:
         """List the names of the migrations Supabase has recorded as applied.
@@ -233,30 +442,39 @@ class SupabasePlatform:
         headers: dict[str, str],
         *,
         what: str,
+        params: dict[str, str] | None = None,
         json_body: object | None = None,
         form: dict[str, str] | None = None,
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
+        once: bool = False,
     ) -> httpx.Response:
-        """Send one request and turn every failure into a typed error."""
+        """Send one request and turn every failure into a typed error.
+
+        ``once`` sends it a single time even when Supabase answers "too many
+        requests" or a server error: a project created twice would be worse
+        than a clear error.
+        """
         if self._http is None:
             message = "Supabase client used outside its context manager"
             raise SourceUnavailableError(message)
         try:
             if method == "GET":
                 response = await get_with_retries(
-                    self._http, url, headers=headers, source="supabase"
+                    self._http, url, params=params, headers=headers, source="supabase"
                 )
             else:
                 response = await request_with_retries(
                     self._http,
                     method,
                     url,
+                    params=params,
                     headers=headers,
                     json_body=json_body,
                     data=form,
                     files=files,
                     source="supabase",
                     retry_after_send=False,
+                    attempts=1 if once else None,
                 )
         except httpx.HTTPError as error:
             _log.error("supabase_unreachable", error_type=type(error).__name__)
@@ -315,14 +533,68 @@ def _json_object(response: httpx.Response) -> dict[str, Any]:
     return payload
 
 
+def _json_objects(response: httpx.Response) -> list[dict[str, Any]]:
+    """Read a JSON list of objects out of a response, or raise a typed error."""
+    try:
+        payload: Any = response.json()
+    except ValueError as error:
+        raise _unreadable() from error
+    if not isinstance(payload, list):
+        raise _unreadable()
+    return [item for item in payload if isinstance(item, dict)]
+
+
 def _unreadable() -> SourceUnavailableError:
     """Build the error for an answer that is not the expected JSON."""
     return SourceUnavailableError("Supabase answered with something unexpected")
 
 
+def _project(item: dict[str, Any]) -> SupabaseProject:
+    """Read one project out of the Management API's description of it."""
+    try:
+        return SupabaseProject(
+            ref=str(item["ref"]),
+            name=str(item.get("name", "")),
+            organization_slug=str(item.get("organization_slug", "")),
+            status=str(item.get("status", "")),
+        )
+    except KeyError as error:
+        raise _unreadable() from error
+
+
+def _api_key(item: dict[str, Any]) -> ApiKey | None:
+    """Read one key out of the Management API's description, or ``None`` for a legacy key."""
+    kind = item.get("type")
+    if kind not in {member.value for member in ApiKeyKind}:
+        return None
+    value = item.get("api_key")
+    return ApiKey(
+        kind=ApiKeyKind(kind),
+        name=str(item.get("name", "")),
+        value=SecretStr(value) if isinstance(value, str) and value else None,
+    )
+
+
+def _auth_body(settings: AuthSettings) -> dict[str, object]:
+    """The fields of a PATCH to the auth config; a field left ``None`` is not sent."""
+    body: dict[str, object] = {}
+    if settings.disable_signup is not None:
+        body["disable_signup"] = settings.disable_signup
+    if settings.site_url is not None:
+        body["site_url"] = settings.site_url
+    if settings.redirect_urls is not None:
+        body["uri_allow_list"] = ",".join(settings.redirect_urls)
+    return body
+
+
 def _project_api(project_ref: str) -> str:
     """Address of a project in the Management API."""
     return f"{SUPABASE_MANAGEMENT_API_URL}/projects/{project_ref}"
+
+
+def _api_keys_url(project_ref: str) -> str:
+    """Address of a project's API keys."""
+    return f"{_project_api(project_ref)}/api-keys"
 
 
 def _migrations_url(project_ref: str) -> str:

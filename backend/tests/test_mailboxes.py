@@ -655,7 +655,8 @@ def test_a_refused_microsoft_sign_in_keeps_its_own_words() -> None:
 
 
 def test_the_daily_recipe_records_every_mailbox_under_a_real_step() -> None:
-    recipe = (config.REPOSITORY_ROOT / ".claude" / "commands" / "daily-run.md").read_text()
+    recipe_file = config.REPOSITORY_ROOT / ".claude" / "commands" / "daily-run.md"
+    recipe = recipe_file.read_text(encoding="utf-8")
 
     steps = set(re.findall(r"--step (\w+)", recipe))
 

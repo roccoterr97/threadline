@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import { netlifyHeadersFile, netlifyRedirectsFile } from './src/hosting/hostingRules';
 
 /** `vite --mode demo` (what `npm run demo` runs) turns the demo on. */
 const DEMO_MODE = 'demo';
@@ -98,11 +99,42 @@ function demoListing(isDemo: boolean, siteUrl: string | null): Plugin {
   };
 }
 
+/** The tag in `index.html` that loads a published dashboard's database settings. */
+const RUNTIME_CONFIG_TAG = /(\s*<!--[^>]*-->)*\s*<script src="\/config\.js"><\/script>/;
+
+/** True when the build compiles both database settings in (`.env.local`, a Vercel project). */
+function hasCompiledSettings(mode: string): boolean {
+  const env = loadEnv(mode, import.meta.dirname, 'VITE_');
+  return Boolean(env.VITE_SUPABASE_URL?.trim()) && Boolean(env.VITE_SUPABASE_ANON_KEY?.trim());
+}
+
+/**
+ * The prebuilt dashboard every owner publishes with `tracker setup dashboard`
+ * carries nobody's settings: it loads them from a `config.js` the set-up adds.
+ * A build with the settings compiled in, and the demo, have no such file, so
+ * they leave the tag out rather than ask the host for a file it lacks. Only
+ * such a settings-free build gets Netlify's header and fallback files.
+ */
+function runtimeConfig(needsConfigFile: boolean): Plugin {
+  return {
+    name: 'threadline-runtime-config',
+    transformIndexHtml(html) {
+      return needsConfigFile ? html : html.replace(RUNTIME_CONFIG_TAG, '');
+    },
+    generateBundle() {
+      if (!needsConfigFile) return;
+      this.emitFile({ type: 'asset', fileName: '_headers', source: netlifyHeadersFile() });
+      this.emitFile({ type: 'asset', fileName: '_redirects', source: netlifyRedirectsFile() });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     tailwindcss(),
     demoListing(demoFlag(mode) === 'true', demoSiteUrl(mode)),
+    runtimeConfig(demoFlag(mode) === 'false' && !hasCompiledSettings(mode)),
   ],
   define: {
     'import.meta.env.VITE_DEMO': JSON.stringify(demoFlag(mode)),

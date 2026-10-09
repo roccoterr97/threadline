@@ -18,9 +18,12 @@ from tracker.shared.constants.github import (
     CLAUDE_TOKEN_SECRET,
     REQUIRED_SECRETS,
     VARIABLE_SETTINGS,
+    WORKFLOW_DISPLAY_NAME,
     WORKFLOW_FILE,
     WORKFLOW_FILE_NAME,
     WORKFLOW_FIXED_SETTINGS,
+    WORKFLOW_MODE_INPUT,
+    WorkflowMode,
 )
 from tracker.shared.errors import ValidationFailedError
 
@@ -59,10 +62,14 @@ def test_it_runs_on_a_schedule_with_a_time_zone_and_by_hand_in_two_modes() -> No
     [schedule] = TRIGGERS["schedule"]
     assert re.fullmatch(r"\d{1,2} \d{1,2} \* \* \*", schedule["cron"])
     assert schedule["timezone"]
-    mode = TRIGGERS["workflow_dispatch"]["inputs"]["mode"]
+    mode = TRIGGERS["workflow_dispatch"]["inputs"][WORKFLOW_MODE_INPUT]
     assert mode["type"] == "choice"
-    assert mode["options"] == ["daily", "refresh"]
-    assert mode["default"] == "daily"
+    assert mode["options"] == ["daily", "refresh"] == [str(choice) for choice in WorkflowMode]
+    assert mode["default"] == WorkflowMode.DAILY
+
+
+def test_the_set_up_names_the_workflow_as_the_actions_tab_lists_it() -> None:
+    assert WORKFLOW["name"] == WORKFLOW_DISPLAY_NAME
 
 
 def test_it_can_only_read_the_repository_and_never_overlaps() -> None:

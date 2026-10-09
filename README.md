@@ -32,8 +32,8 @@ Live demo: <https://try-threadline.vercel.app>
 
 See the dashboard with made-up data before setting anything up. You need
 [Node.js](https://nodejs.org) 22 or newer; no accounts and no settings.
-Download the code first (part 1 of the guide, or the green **Code → Download
-ZIP** button on this page), then in Terminal, inside that folder:
+Download the code first (the green **Code → Download ZIP** button on this
+page), then in a terminal, inside that folder:
 
 ```bash
 cd frontend
@@ -118,22 +118,23 @@ Outlook-only set-ups). The design is described in
 
 | Item | What it is used for | Cost |
 |------|---------------------|------|
-| A Mac or a Linux computer with a terminal | Running the set-up once. Windows is not supported | – |
+| A computer with macOS, Linux or Windows (10 or 11) | Running the set-up once. After that it can stay off | – |
 | A paid Claude plan (Pro, Max or Team) | The Claude Code session that runs everything and does the judging. The daily run uses part of your plan's usage limits | Your existing subscription; no separate API key |
 | [Claude Code](https://code.claude.com/docs/en/setup), installed (check with `claude --version`) | Making the key that lets GitHub use your plan (`claude setup-token`) | Included in your plan |
-| A GitHub account (recommended: the [GitHub CLI](https://cli.github.com), `gh`) | Your private copy of the code, and GitHub Actions, which starts the run every day. `gh` signs you in for the download and lets the set-up create your copy and save your settings; without it, both take extra steps by hand | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
-| A [Supabase](https://supabase.com) project | The database and the dashboard sign-in. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
-| A [Vercel](https://vercel.com) account | Publishing the dashboard | Hobby plan, free for personal, non-commercial use |
+| A [GitHub](https://github.com) account | Your private copy of the code, and GitHub Actions, which starts the run every day. The installer adds the [GitHub CLI](https://cli.github.com) (`gh`), which signs you in, makes your copy and saves your settings | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
+| A [Supabase](https://supabase.com) account | The database and the dashboard sign-in. The set-up creates the project with one access token. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
+| A [Netlify](https://www.netlify.com) account | Publishing the dashboard | Free plan |
 | At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any IMAP mailbox | The mail that is read (read-only). Gmail and the others need an app password, which also sends you the summary; Outlook needs a one-time sign-in | Free (Fastmail: a paid plan above Basic) |
 | *Optional:* a Microsoft personal account | The calendar, which is read from Outlook only for now | Free |
 | *Optional:* a LinkedIn developer app | Reading your LinkedIn messages; only for members located in the EEA or Switzerland (see below) | Free |
 | *Optional:* [Node.js](https://nodejs.org) 22 or newer | Only the manual way of switching on the dashboard's Refresh now button; also needed for the demo above | Free |
 | *Optional:* an Azure account | Only to use your own Microsoft application instead of the public one | Free |
-| *Only for the alternative route:* a Gmail account connected to Claude | Sending the summary from a Claude cloud routine, when you read Outlook alone | Free |
+| *Only for the Claude cloud route:* a Gmail account connected to Claude | Sending the summary from a Claude cloud routine, when you read Outlook alone | Free |
 
 No other paid service is needed, unless you choose a paid mailbox such as
-Fastmail. Setting it up takes about an hour and a half the first time, most of
-it creating accounts and copying values from one screen to another.
+Fastmail. Setting it up takes about 10 to 15 minutes of your own time if you
+already have the accounts, plus a few minutes to create any you lack. The first
+summary e-mail arrives about ten minutes after the set-up ends.
 
 ### LinkedIn: only in the EEA and Switzerland
 
@@ -152,38 +153,52 @@ calendar entries are read as they are at the moment of the run.
 Claude can run the whole set-up for you: install the tools, make your private
 copy, start the guided set-up and check the result, while you create the
 accounts and click where it says. Keys go into a page in your browser, never
-into the chat. About an hour. See
-[`docs/setup-with-claude.md`](./docs/setup-with-claude.md): it is one
-sentence to paste into the Claude app.
+into the chat. See [`docs/setup-with-claude.md`](./docs/setup-with-claude.md):
+it is one sentence to paste into the Claude app.
 
-**By hand**, in a terminal:
+**By hand:** create free GitHub, Supabase and Netlify accounts first, and
+install [Claude Code](https://code.claude.com/docs/en/setup). Then paste one
+line into a terminal.
 
-The set-up guide, [`docs/setup-your-accounts.md`](./docs/setup-your-accounts.md),
-takes you through everything in order, with a check after every step and a
-short list of the words it uses (IMAP, app password, secrets…). In brief:
+On macOS or Linux:
 
-1. Make your private copy of this repository and download it
-   ([part 1](./docs/setup-your-accounts.md#1-get-threadline-onto-your-computer):
-   **Use this template**, then `gh repo clone` and `uv sync` in its `backend`
-   folder).
-2. In that `backend` folder, run `uv run tracker setup`. It connects Supabase,
-   builds the database, creates your login and connects your mailbox
-   ([parts 3 to 6](./docs/setup-your-accounts.md#3-connect-supabase-and-build-the-database)),
-   and stops when it asks whether the dashboard is published.
-   Add `--browser` to have the questions asked on a page in your web browser
-   instead of in the terminal: keys go into hidden fields, and the page is
-   served to your computer only.
-3. Publish the dashboard on Vercel
-   ([part 7](./docs/setup-your-accounts.md#7-publish-the-dashboard-vercel)),
-   then run `uv run tracker setup` again: it carries on from there with the
-   daily time, your settings on GitHub and the Refresh now button
-   ([part 8](./docs/setup-your-accounts.md#8-run-it-every-day-on-github)),
-   which also switches on the on-time morning start (GitHub often starts its
-   scheduled runs hours late, so your Supabase project starts the daily run
-   at your time instead, and GitHub's own schedule stays as a backup), and
-   ends with `tracker doctor`'s check of every connection.
-4. Start the first run by hand on GitHub (**Actions → Threadline run → Run
-   workflow**), as part 8 describes.
+```bash
+curl -LsSf https://raw.githubusercontent.com/roccoterr97/threadline/main/install.sh | sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/roccoterr97/threadline/main/install.ps1 | iex
+```
+
+What happens next:
+
+1. The installer adds uv and the GitHub CLI if they are missing (and Git, on
+   Windows), signs you in to GitHub in the browser, makes your private copy
+   called `threadline`, downloads it to `~/threadline`, and starts the guided
+   set-up. Pasting the line again carries on where it stopped.
+2. The set-up runs 11 steps. With one Supabase access token it creates your
+   project, builds the database, creates your dashboard login and switches
+   sign-ups off. It then asks for your categories, time zone and mailbox,
+   publishes the dashboard, and asks for the daily time.
+3. Last, it saves your settings and your Claude key on GitHub, starts the first
+   run, and checks every connection. The first summary e-mail arrives about ten
+   minutes later, then every day at the time you chose.
+4. LinkedIn, the dashboard's Refresh now button and the Claude cloud route are
+   optional extras: `uv run tracker setup extras`, any time. Refresh now also
+   switches on the on-time morning start: GitHub often starts its scheduled
+   runs hours late, so your Supabase project starts the daily run at your time
+   instead, and GitHub's own schedule stays as a backup.
+
+Add `--browser` to any `uv run tracker setup` command to have the questions
+asked on a page in your web browser instead of in the terminal: keys go into
+hidden fields, and the page is served to your computer only.
+
+[`docs/setup-your-accounts.md`](./docs/setup-your-accounts.md) walks through
+every step, with what you should see and a short list of the words it uses
+(IMAP, app password, secrets…). To come back to the set-up later, open a
+terminal and type `cd ~/threadline/backend`, then `uv run tracker setup`.
 
 Day-to-day operation — what to do when something fails, renewing the LinkedIn
 key and the yearly Claude key, redoing the Microsoft sign-in, changing the time,
@@ -200,14 +215,16 @@ information.
 
 | Command | What it does |
 |---------|--------------|
-| `tracker setup` | Guided setup that writes your `.env` |
-| `tracker setup <step>` | Re-run one step of the set-up. The steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `linkedin`, `dashboard`, `schedule`, `github`, `refresh` and `cloud` |
+| `tracker setup` | The guided set-up: every unfinished core step in order, then a final check of every connection. Running it again carries on where it stopped |
+| `tracker setup extras` | The optional steps, in order, each skippable: `linkedin`, `refresh` and `cloud` |
+| `tracker setup <step>` | Run one step alone, even if it was done before. The core steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `dashboard`, `schedule` and `github`; the extras are `linkedin`, `refresh` and `cloud` |
 | `tracker setup [<step>] --browser` | The same, asked on a page in your web browser instead of the terminal; what is said and asked is still shown in the terminal, answers never are |
+| `tracker setup supabase` | Create your Supabase project (or reuse one) with one access token, and save its address and keys; the token is never saved. Typing an existing project's address and keys is also offered |
 | `tracker setup mailbox` | Choose the mailbox to read; for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
 | `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow, and into the database for the on-time morning start; commit and push the workflow only after a yes |
-| `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. It only ever uses your own private copy |
+| `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. With `gh` it then switches the workflow on and starts the first daily run after a yes. It only ever uses your own private copy |
 | `tracker setup refresh` | Switch on the dashboard's Refresh now button: deploy the `refresh-now` function and its settings through Supabase's Management API, with a GitHub key that can only start your workflow. It also switches on the on-time morning start: a timer in your database that starts the daily run at its time, every 15 minutes checking whether it is due |
-| `tracker setup cloud` | The alternative route: what a Claude cloud routine needs |
+| `tracker setup cloud` | The Claude cloud route, the alternative to GitHub: what a Claude cloud routine needs |
 | `tracker doctor` | Check that every account and setting is in order |
 | `tracker sample load` | Write made-up sample records, their dates moved so they look as fresh today as on the day the sample was written; running it twice changes nothing |
 | `tracker sample clear` | Remove the made-up sample records, leaving real data untouched |

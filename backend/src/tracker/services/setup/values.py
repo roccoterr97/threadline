@@ -25,6 +25,8 @@ _HOST: Final[re.Pattern[str]] = re.compile(
 _MAX_PORT: Final[int] = 65_535
 _CLOCK_TIME: Final[re.Pattern[str]] = re.compile(r"^(\d{1,2})(?:[:.](\d{2}))?$")
 _REPOSITORY_NAME: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+#: The longest project name Supabase's Management API accepts.
+_MAX_PROJECT_NAME_LENGTH: Final[int] = 256
 _MONTH_NAMES: Final[tuple[str, ...]] = (
     "january",
     "february",
@@ -258,7 +260,7 @@ def web_address(raw: str) -> str:
     cleaned = raw.strip().rstrip("/")
     parts = urlsplit(cleaned)
     if parts.scheme != _HTTPS or not parts.hostname:
-        message = "the address should start with https://, for example https://you.vercel.app"
+        message = "the address should start with https://, for example https://you.netlify.app"
         raise ValidationFailedError(message)
     return cleaned
 
@@ -318,6 +320,45 @@ def time_zone(raw: str) -> str:
         message = "that is not a time-zone name, such as Europe/Rome, America/New_York or UTC"
         raise ValidationFailedError(message)
     return canonical
+
+
+def project_name(raw: str) -> str:
+    """Accept a name for a Supabase project.
+
+    Args:
+        raw: What was typed.
+
+    Returns:
+        The name without surrounding spaces.
+
+    Raises:
+        ValidationFailedError: If it is empty or longer than Supabase allows.
+    """
+    cleaned = raw.strip()
+    if not cleaned or len(cleaned) > _MAX_PROJECT_NAME_LENGTH:
+        message = f"give the project a name of 1 to {_MAX_PROJECT_NAME_LENGTH} characters"
+        raise ValidationFailedError(message)
+    return cleaned
+
+
+def list_number(raw: str, count: int) -> int:
+    """Accept the number of an item in a list shown as ``1.``, ``2.`` and so on.
+
+    Args:
+        raw: What was typed.
+        count: How many items the list has.
+
+    Returns:
+        The number, from 1 to ``count``.
+
+    Raises:
+        ValidationFailedError: If it is not one of the numbers shown.
+    """
+    cleaned = raw.strip().rstrip(".")
+    if not cleaned.isdigit() or not 1 <= int(cleaned) <= count:
+        message = f"type a number from 1 to {count}"
+        raise ValidationFailedError(message)
+    return int(cleaned)
 
 
 def repository_name(raw: str) -> str:

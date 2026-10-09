@@ -107,11 +107,13 @@ If your daily update runs on **GitHub** (the main way), switch it on with:
 uv run tracker setup refresh
 ```
 
-in Terminal, in the `backend` folder of your copy. You install nothing else:
-the set-up opens a GitHub page and a Supabase page, you make one key on each
-and paste it, and it does what steps 2A, 3 and 4 below do by hand. [Part 8f of the
-set-up guide](./setup-your-accounts.md) walks through it, with what to tick on
-each page. If you set Threadline up before Refresh now existed, run
+in a terminal, in the `backend` folder of your Threadline copy
+(`cd ~/threadline/backend`). You install nothing else: the set-up opens a
+GitHub page and a Supabase page, you make one key on each and paste it, and it
+does what steps 2A, 3 and 4 below do by hand. [Part 8b of the set-up
+guide](./setup-your-accounts.md#8b-refresh-now-tracker-setup-refresh) walks
+through it, with what to tick on each page. `uv run tracker setup extras`
+offers it too, as its second step. If you set Threadline up before Refresh now existed, run
 `uv run tracker setup database` first (step 1).
 
 **✅ Check:** the set-up says `Refresh now is switched on` and ends with
@@ -161,13 +163,15 @@ file you are missing, in the same go):
   the database, a list of the days it started an update, and the timer that
   calls the helper every 15 minutes (it does nothing until step 6).
 
-**What you do:** in Terminal, in the `backend` folder of your copy, run:
+**What you do:** in a terminal, in the `backend` folder of your Threadline copy
+(`cd ~/threadline/backend`), run:
 
 ```bash
 uv run tracker setup database
 ```
 
-and answer as in the main set-up guide ([step 3c](./setup-your-accounts.md)).
+and answer as in the main set-up guide
+([part 2c](./setup-your-accounts.md#2c-the-database-tracker-setup-database)).
 
 **✅ Check:** you see an `Applied …` line for each of those files you did not
 have yet, then `The database structure is in place.` (or, if you had them all
@@ -266,12 +270,13 @@ project.
 | `GITHUB_TOKEN_REFRESH` | the `github_pat_…` token from step 2A |
 | `GITHUB_REPOSITORY` | your repository, e.g. `your-name/threadline` |
 | `GITHUB_REF` | the branch, usually `main` (you can leave this out for `main`) |
-| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://threadline-you.vercel.app` |
+| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://threadline-you.netlify.app` |
 | `DAILY_START_KEY` | a long random key for the on-time morning start (see below) |
 
-For `DAILY_START_KEY`, make a key of at least 32 letters and digits. In
-Terminal, `openssl rand -hex 32` prints one. Keep it on the screen until
-step 6, which needs the same key; then close the window.
+For `DAILY_START_KEY`, make a key of at least 32 letters and digits. In a
+terminal, `openssl rand -hex 32` prints one (on Windows without `openssl`, any
+password manager can make one). Keep it on the screen until step 6, which needs
+the same key; then close the window.
 
 **For the Claude routine (2B):**
 
@@ -280,7 +285,7 @@ step 6, which needs the same key; then close the window.
 | `REFRESH_TARGET` | `claude_routine` |
 | `ROUTINE_FIRE_URL` | the address ending in `/fire` from step 2B |
 | `ROUTINE_TOKEN` | the `sk-ant-oat01-…` token from step 2B |
-| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://threadline-you.vercel.app` |
+| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://threadline-you.netlify.app` |
 
 `DASHBOARD_ORIGIN` is the address in your browser's address bar when the
 dashboard is open, **without** anything after the name (no `/` at the end, no
@@ -334,8 +339,8 @@ that the file's name is exactly that.
 
 ### 4B. With the terminal
 
-In Terminal, in the top folder of your copy (the one that holds the `supabase`
-folder, not `backend`):
+In a terminal, in the top folder of your Threadline copy (`cd ~/threadline`,
+the folder that holds the `supabase` folder, not `backend`):
 
 ```bash
 npx supabase login

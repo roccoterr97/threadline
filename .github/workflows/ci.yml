@@ -37,6 +37,28 @@ jobs:
       - name: Test
         run: uv run pytest -q
 
+  # The same checks on Windows, so the set-up keeps working there too.
+  backend-windows:
+    name: Backend on Windows (ruff, pyright, pytest)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install
+        run: uv sync --locked
+      - name: Lint
+        run: uv run ruff check .
+      - name: Type check
+        run: uv run pyright
+      - name: Test
+        run: uv run pytest -q
+
   frontend:
     name: Frontend (lint, typecheck, test, build)
     runs-on: ubuntu-latest

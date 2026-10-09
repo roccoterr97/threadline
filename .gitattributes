@@ -1,0 +1,6 @@
+# Every text file is stored and checked out with Unix line endings, on every
+# system. Windows' Git would otherwise turn them into Windows ones on checkout,
+# so files the set-up rewrites (the workflow, .env) would differ in every line,
+# and install.sh, which macOS and Linux run straight from GitHub, must never
+# carry a Windows line ending. PowerShell reads Unix line endings as well.
+* text=auto eol=lf

@@ -15,11 +15,14 @@ from tracker.infrastructure.github_api import GitHubApi
 from tracker.infrastructure.github_cli import GitHubCli, GitRepository, TextFile, run_command
 from tracker.infrastructure.imap.connection import ImapConnection
 from tracker.infrastructure.linkedin.client import LinkedInSnapshotClient
+from tracker.infrastructure.local_dashboard_build import LocalDashboardBuild
 from tracker.infrastructure.local_time_zone import detect_time_zone
 from tracker.infrastructure.microsoft.connection import MicrosoftConnection
+from tracker.infrastructure.netlify_api import NetlifyApi
 from tracker.infrastructure.supabase_admin import SupabaseAdmin
 from tracker.infrastructure.supabase_platform import SupabasePlatform
 from tracker.infrastructure.terminal_io import TerminalIO
+from tracker.infrastructure.web_download import WebDownload
 from tracker.infrastructure.web_probe import WebProbe
 from tracker.repositories import build_repositories
 from tracker.services.database_structure import list_migration_files
@@ -29,6 +32,11 @@ from tracker.services.setup.context import SetupContext
 from tracker.services.setup.ports import SetupGateways, SetupIO
 from tracker.shared.clock import Clock, SystemClock
 from tracker.shared.config import REPOSITORY_ROOT
+from tracker.shared.constants.dashboard import (
+    FRONTEND_DIRECTORY,
+    SITE_NAME_ALPHABET,
+    SITE_NAME_SUFFIX_LENGTH,
+)
 from tracker.shared.constants.github import WORKFLOW_FILE
 from tracker.shared.constants.profile import GUIDE_FILE, GUIDE_TEMPLATE_FILE, PROFILE_FILE
 from tracker.shared.constants.setup import (
@@ -72,6 +80,11 @@ def build_context(
         local_time_zone=detect_time_zone,
         github_api=GitHubApi(),
         refresh_function=read_refresh_function,
+        netlify=NetlifyApi(),
+        download=WebDownload().fetch,
+        local_build=LocalDashboardBuild(FRONTEND_DIRECTORY),
+        page_of=WebProbe().page_of,
+        site_name_suffix=random_site_suffix,
         make_daily_start_key=make_daily_start_key,
     )
     return SetupContext(io=io or TerminalIO(), env=EnvFile(env_path), gateways=gateways)
@@ -108,6 +121,11 @@ def read_refresh_function() -> dict[str, bytes]:
     return {
         name: (REFRESH_FUNCTION_DIRECTORY / name).read_bytes() for name in REFRESH_FUNCTION_FILES
     }
+
+
+def random_site_suffix() -> str:
+    """Make the random end of a new Netlify site's name, such as ``k3x9q2``."""
+    return "".join(secrets.choice(SITE_NAME_ALPHABET) for _ in range(SITE_NAME_SUFFIX_LENGTH))
 
 
 def make_encryption_key() -> str:

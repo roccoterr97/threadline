@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { fileURLToPath } from 'node:url';
 import { build, type Rollup } from 'vite';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { netlifyHeadersFile, netlifyRedirectsFile } from '../hosting/hostingRules';
 import { DEMO_OWNER_EMAIL } from './demoData';
 
 const FRONTEND_ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -69,11 +70,35 @@ describe('the demo in built bundles', () => {
   );
 
   it(
+    'loads config.js only when no settings are compiled in, and never ships one',
+    async () => {
+      // The test set-up compiles in stand-in settings, like a Vercel project.
+      const compiled = await buildInMemory('production');
+      expect(page(compiled)).not.toContain('config.js');
+      expect(compiled.assets.has('_headers')).toBe(false);
+
+      // The prebuilt release is built with none, like the release workflow.
+      vi.stubEnv('VITE_SUPABASE_URL', '');
+      vi.stubEnv('VITE_SUPABASE_ANON_KEY', '');
+      const prebuilt = await buildInMemory('production');
+      vi.unstubAllEnvs();
+      const html = page(prebuilt);
+      expect(html).toContain('<script src="/config.js"></script>');
+      expect(html.indexOf('/config.js')).toBeLessThan(html.indexOf('type="module"'));
+      expect(prebuilt.assets.has('config.js')).toBe(false);
+      expect(prebuilt.assets.get('_headers')).toBe(netlifyHeadersFile());
+      expect(prebuilt.assets.get('_redirects')).toBe(netlifyRedirectsFile());
+    },
+    BUILD_TIMEOUT_MS * 2,
+  );
+
+  it(
     'is present in a demo build, with the link preview tags and picture',
     async () => {
       const built = await buildInMemory('demo');
       expect(containsDemo(built.chunks)).toBe(true);
       expect(page(built)).not.toContain('noindex');
+      expect(page(built)).not.toContain('config.js');
       for (const tag of ['og:title', 'og:description', 'og:image', 'twitter:card']) {
         expect(page(built)).toContain(tag);
       }

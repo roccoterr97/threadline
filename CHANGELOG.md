@@ -8,6 +8,41 @@ All notable changes to this project are recorded here. The format follows
 
 ### Added
 
+- One Supabase access token for the whole `tracker setup` run. It is asked
+  once (Supabase's token page opens; name it "Threadline set-up", shortest
+  expiry), checked with a read of your organizations that changes nothing,
+  kept in memory until the run ends and never written to `.env`, logged or
+  shown. `tracker setup supabase` now uses it to create the project (or reuse
+  one of yours), in the region group nearest your time zone, with a generated
+  database password that is never kept; it waits until Supabase reports the
+  project healthy, reads its publishable and secret keys (creating them if
+  the project has none) and saves the address and both keys as before. Typing
+  an existing project's address and keys by hand is still offered.
+- A one-line install. On macOS or Linux,
+  `curl -LsSf https://raw.githubusercontent.com/roccoterr97/threadline/main/install.sh | sh`;
+  on Windows, in PowerShell,
+  `irm https://raw.githubusercontent.com/roccoterr97/threadline/main/install.ps1 | iex`.
+  It installs uv and the GitHub CLI when they are missing (Homebrew on a Mac,
+  winget on Windows, apt or dnf on Linux), signs you in to GitHub in the
+  browser, makes your private copy from the template, downloads it to
+  `~/threadline`, and starts `uv run tracker setup`. Pasting the line again
+  carries on where it stopped and reuses a copy that already exists.
+- `tracker setup dashboard` publishes the dashboard on Netlify by itself, free
+  and with nothing to install: it downloads the ready-made dashboard from the
+  template's GitHub Release, checks its SHA-256, adds a `config.js` holding
+  only the project address and the publishable key, asks for a Netlify
+  personal access token (pasted hidden, checked with one harmless read, never
+  saved), creates a site under a free random name, uploads it, waits until it
+  is live and checks the address opens. It then sets Supabase's Site URL and
+  Redirect URLs itself with the run's Supabase token, opening the URL
+  Configuration page only if Supabase refuses. The site is remembered as
+  `NETLIFY_SITE_ID` in `.env` (not a secret), so running the step again
+  publishes the newest dashboard to the same address. Contributors with
+  Node.js 22 can publish a local build instead; hosting it elsewhere still
+  works by typing its address.
+- `.github/workflows/dashboard-release.yml`: every push to `main` of the
+  public template builds the dashboard once and publishes
+  `dashboard.zip` and `dashboard.zip.sha256` on the rolling `latest` release.
 - Notes you type on a person: on a person's page, "Your notes" keeps what no
   message says ("met at the Lyon fair, prefers calls after 4pm"), newest
   first with the day each was written and the day it was last changed.
@@ -40,18 +75,62 @@ All notable changes to this project are recorded here. The format follows
   cloud routine. GitHub's own schedule stays as a backup: a run it starts
   stops early when a daily run of the owner's day already started (or
   finished well), and the once-a-day e-mail rule remains the last net.
-  `tracker setup refresh` switches it on (a fresh key in the function's
-  settings and in Vault, the timer made sure of), `tracker setup schedule` and
-  `tracker setup timezone` keep the daily time in the database in step with
-  the workflow, and `tracker doctor` gains an **On-time morning start** line.
+  `tracker setup refresh`, one of the extras, switches it on (a fresh key in
+  the function's settings and in Vault, the timer made sure of),
+  `tracker setup schedule` and `tracker setup timezone` keep the daily time in
+  the database in step with the workflow, and `tracker doctor` gains an
+  **On-time morning start** line.
   Free on Supabase's free plan: pg_cron, pg_net and Vault are built in.
 
 ### Changed
 
-- `tracker setup` stops at "Is the dashboard published already?" when the
-  answer is no, instead of carrying on to steps that need the dashboard;
-  running `uv run tracker setup` again carries on from there. A full run's
-  stop line now names `uv run tracker setup` as the command to run again.
+- `tracker setup database` and `tracker setup refresh` use the run's Supabase
+  token instead of asking for their own, and `tracker setup login` switches
+  sign-ups off through Supabase's Management API, opening the settings page
+  only if Supabase refuses. A token that may not apply the structure now
+  falls back to the SQL editor rather than stopping.
+- `tracker setup` runs only the core steps, the ones the first morning
+  e-mail needs: supabase, encryption, database, login, categories, timezone,
+  mailbox, microsoft, dashboard, schedule and github. It ends by saying the
+  first run has started (or which page starts it), that the summary e-mail
+  arrives in about ten minutes and then every day at the time and zone in the
+  workflow, and how to add the extras later; the final doctor report stays.
+  The optional steps, LinkedIn (EEA and Switzerland only), the Refresh now
+  button and the Claude cloud route, move to the new `tracker setup extras`,
+  which runs them in that order, each skippable. `tracker setup linkedin`,
+  `refresh` and `cloud` still run one step alone.
+- `tracker setup github` finishes the job itself. With the GitHub CLI signed
+  in, after saving the secrets and variables it makes sure Actions and the
+  `threadline-run.yml` workflow are switched on in your copy, then starts the
+  first daily run after one yes (the default) and prints the page where the
+  run can be watched; the summary e-mail arrives about ten minutes later.
+  When GitHub refuses (codes `workflow_not_enabled`, `workflow_not_started`),
+  or without the CLI, it names the page where 'Run workflow' is pressed by
+  hand instead. Opening the Actions tab and pressing the button yourself is
+  no longer part of the set-up.
+- The set-up runs on Windows. The clipboard uses `clip` there (and `wl-copy`,
+  `xclip` or `xsel` on Linux, `pbcopy` on a Mac, whichever works first); the
+  computer's time zone is read with `tzutil` and turned into its standard
+  name; `.env` is written the same way everywhere, and a disk that keeps no
+  file permissions no longer stops it; `gh` and `git` are found as `gh.exe`
+  and `git.exe` and read as UTF-8. The set-up's wording no longer assumes a
+  Mac ("a terminal" and "Enter", the GitHub CLI's own download page). Windows
+  installs the small `tzdata` package, which Python needs there for time-zone
+  names. CI runs the backend checks on Windows too.
+- The dashboard reads its Supabase address and publishable key from a
+  `config.js` beside it when there is one, and from the `VITE_` values
+  compiled in otherwise, so one prebuilt dashboard serves every owner while
+  `npm run dev`, Vercel projects and the demo work as before. A build without
+  settings also writes Netlify's `_headers` and `_redirects` from the same
+  rules as `frontend/vercel.json`, and a test keeps the two in step.
+- `tracker doctor` no longer assumes the dashboard is on Vercel: a dashboard
+  that does not open points to `tracker setup dashboard`.
+- `tracker setup` stops at the dashboard step when the dashboard is not
+  published (no to Netlify, and no to another host), instead of carrying on
+  to steps that need it; running `uv run tracker setup` again carries on from
+  there. A stopped run's last line names the command to run again:
+  `uv run tracker setup` for the core steps, `uv run tracker setup extras`
+  for the extras.
 - `tracker setup github` says plainly when the run on GitHub cannot e-mail
   the morning summary (Outlook alone, or `SUMMARY_DELIVERY=gmail_connector`)
   and names the two ways out.

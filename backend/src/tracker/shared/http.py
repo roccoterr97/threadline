@@ -74,6 +74,7 @@ async def request_with_retries(
     data: dict[str, str] | None = None,
     json_body: object | None = None,
     files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
+    content: bytes | None = None,
     source: str,
     retry_after_send: bool = True,
     attempts: int | None = None,
@@ -95,6 +96,8 @@ async def request_with_retries(
         json_body: A JSON body, for a request that carries one instead.
         files: Files to upload as ``(field, (file name, content, type))``;
             together with ``data`` they make a multipart body.
+        content: A raw body, such as a zip file, for a request that carries
+            neither form fields nor JSON; its type goes in ``headers``.
         source: Name of the source, used in the log line only.
         retry_after_send: Whether a failure *after* the request was sent may be
             retried. True for a plain read. False for anything that changes
@@ -135,6 +138,7 @@ async def request_with_retries(
                 data=data,
                 json=json_body,
                 files=files,
+                content=content,
             )
         except httpx.HTTPError as error:
             if not retry_after_send and not isinstance(error, CONNECT_ERRORS):

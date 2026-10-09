@@ -5,8 +5,9 @@ project to start the GitHub workflow once more. This step puts that function
 in place with no extra program installed: GitHub's token page opens already
 filled in, a harmless read proves the token can see the workflow (nothing is
 started), and Supabase's Management API saves the function's settings and
-deploys it from this repository's files. Both tokens are pasted hidden, kept
-in memory for this run only, and never written to ``.env``. Then the function
+deploys it from this repository's files, with the same Supabase access token
+as the rest of the run. Both tokens are pasted hidden, kept in memory for this
+run only, and never written to ``.env``. Then the function
 is called without a sign-in: a deployed one refuses that, which shows it is
 there and guarding.
 
@@ -26,6 +27,7 @@ from tracker.services.setup.context import SetupContext
 from tracker.services.setup.daily_start import daily_start_ready, switch_on_daily_start
 from tracker.services.setup.github_copy import LinkedCopy, linked_copy
 from tracker.services.setup.models import StepName
+from tracker.services.setup.supabase_session import require_supabase_token
 from tracker.shared.constants.github import (
     FINE_GRAINED_TOKEN_PAGE,
     REFRESH_TOKEN_DAYS,
@@ -44,7 +46,6 @@ from tracker.shared.constants.setup import (
     REFRESH_PROBE_ATTEMPTS,
     REFRESH_PROBE_WAIT_SECONDS,
     REFRESH_TARGET_GITHUB,
-    SUPABASE_TOKENS_PAGE,
     RefreshSetting,
 )
 from tracker.shared.errors import SourceUnavailableError, ValidationFailedError
@@ -197,20 +198,14 @@ def _function_settings(
 
 
 async def _save_and_deploy(ctx: SetupContext, ref: str, settings: dict[str, SecretStr]) -> None:
-    """Take a Supabase token, save the settings with it, then deploy the function."""
+    """Save the settings with this run's Supabase token, then deploy the function."""
     io = ctx.io
-    io.say("Next, a Supabase access token, used once now and not saved. On the page that opens:")
-    io.say("  1. Click 'Generate new token' and name it 'Threadline refresh now'.")
-    io.say(f"  2. Limit it to this project ({ref}) and choose the shortest expiry offered.")
-    io.say("  3. Permissions: 'Edge Functions' and 'Edge Function Secrets', both read and write.")
-    io.say("  4. Click 'Generate token' and copy it (sbp_...).")
-    io.open_page(SUPABASE_TOKENS_PAGE)
-    token = await ctx.ask_until_accepted(
-        lambda: io.ask_secret("Paste the Supabase access token (it stays hidden)"),
-        lambda raw: _save_settings(ctx, ref, raw, settings),
-    )
+    io.say("Next, Supabase saves the helper's settings and puts it in place.")
+    token = await require_supabase_token(ctx)
+    platform = ctx.gateways.platform
+    await platform.set_secrets(ref, token, settings)
     io.say(f"Saved the helper's {len(settings)} settings in Supabase.")
-    await ctx.gateways.platform.deploy_function(
+    await platform.deploy_function(
         ref,
         token,
         REFRESH_FUNCTION_SLUG,
@@ -218,15 +213,6 @@ async def _save_and_deploy(ctx: SetupContext, ref: str, settings: dict[str, Secr
         verify_jwt=REFRESH_FUNCTION_VERIFY_JWT,
     )
     io.say(f"Put the helper '{REFRESH_FUNCTION_SLUG}' in place.")
-
-
-async def _save_settings(
-    ctx: SetupContext, ref: str, raw: str, settings: dict[str, SecretStr]
-) -> SecretStr:
-    """Check the token by saving the settings with it."""
-    token = SecretStr(values.non_empty(raw, "the access token"))
-    await ctx.gateways.platform.set_secrets(ref, token, settings)
-    return token
 
 
 async def _check_deployed(ctx: SetupContext, project_url: str) -> None:

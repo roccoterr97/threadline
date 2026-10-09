@@ -1,4 +1,4 @@
-"""``tracker setup``: the guided set-up, all of it or one step, here or on a page."""
+"""``tracker setup``: the core steps, the extras or one step, here or on a page."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from tracker.cli.commands.doctor import print_doctor_report
 from tracker.cli.setup_wiring import build_context
 from tracker.infrastructure.setup_form import open_setup_form
 from tracker.infrastructure.supabase_platform import SupabasePlatform
-from tracker.services.setup.models import StepName
+from tracker.services.setup.models import StepGroup, StepName
 from tracker.services.setup.ports import SetupIO
 from tracker.services.setup.wizard import SetupWizard, default_steps
 from tracker.shared import config
@@ -25,17 +25,23 @@ from tracker.shared import config
 HELP_PANEL: Final[str] = "system"
 
 #: What the page says at the end.
-_FINISHED_ALL: Final[str] = "All done. Threadline is set up."
+_FINISHED_CORE: Final[str] = "All done. Threadline is set up."
+_FINISHED_EXTRAS: Final[str] = "All done. The extras are set up."
 _FINISHED_STEP: Final[str] = "Done. This step is finished."
 _NOT_FINISHED: Final[str] = (
-    "Stopped before the end. Run 'uv run tracker setup' again to carry on; "
-    "what is finished stays saved."
+    "Stopped before the end. Run '{command}' again to carry on; what is finished stays saved."
 )
+#: How the owner types the set-up.
+_COMMAND: Final[str] = "uv run tracker setup"
 
-StepArgument = Annotated[
-    StepName | None,
+TargetArgument = Annotated[
+    str | None,
     typer.Argument(
-        help="Run only this step. Without it, every unfinished step runs in order.",
+        metavar="[STEP]",
+        help=(
+            f"Run only this step, or '{StepGroup.EXTRAS}' for the optional steps. "
+            "Without it, every unfinished core step runs in order."
+        ),
         show_default=False,
     ),
 ]
@@ -59,33 +65,58 @@ def register(cli: typer.Typer) -> None:
     cli.command("setup", rich_help_panel=HELP_PANEL)(setup)
 
 
-def setup(step: StepArgument = None, browser: BrowserOption = False) -> None:
+def setup(target: TargetArgument = None, browser: BrowserOption = False) -> None:
     """Set up every connection, checking each one live before saving it.
 
-    Steps: supabase, encryption, database, login, categories, timezone, mailbox,
-    microsoft, linkedin, dashboard, schedule, github, refresh (the dashboard's
-    Refresh now button), and cloud (the alternative to GitHub). Running it
-    again carries on where it stopped.
+    The core steps, run in order without an argument: supabase, encryption,
+    database, login, categories, timezone, mailbox, microsoft, dashboard,
+    schedule and github, which starts the first daily run. Running it again
+    carries on where it stopped. 'extras' runs the optional steps: linkedin,
+    refresh (the dashboard's Refresh now button and the on-time daily start)
+    and cloud (the alternative to GitHub). A step's name runs that step alone.
     """
+    request = parse_target(target)
     if not browser:
-        if not _run_in_terminal(step):
+        if not _run_in_terminal(request):
             raise typer.Exit(1)
         return
     form = open_setup_form(typer.echo)
     try:
-        finished = _run_with(form.io, step)
-        form.finish(ok=finished, message=_ending(step, finished=finished))
+        finished = _run_with(form.io, request)
+        form.finish(ok=finished, message=_ending(request, finished=finished))
     finally:
         form.close()
     if not finished:
         raise typer.Exit(1)
 
 
-def _run_in_terminal(step: StepName | None) -> bool:
-    """Run here, with the final check printed after a full run."""
-    if not run_interruptible(_run(step)):
+def parse_target(target: str | None) -> StepName | StepGroup:
+    """Read what to run: nothing (the core steps), a half by name, or one step by name.
+
+    Args:
+        target: What was typed after ``tracker setup``, if anything.
+
+    Returns:
+        The step, or the half of the set-up, to run.
+
+    Raises:
+        typer.BadParameter: If it is neither a step nor a half.
+    """
+    if target is None:
+        return StepGroup.CORE
+    if target in StepGroup:
+        return StepGroup(target)
+    if target in StepName:
+        return StepName(target)
+    message = f"choose a step ({', '.join(StepName)}) or '{StepGroup.EXTRAS}'"
+    raise typer.BadParameter(message)
+
+
+def _run_in_terminal(request: StepName | StepGroup) -> bool:
+    """Run here, with the final check printed after the core steps."""
+    if not run_interruptible(_run(request)):
         return False
-    if step is not None:
+    if request is not StepGroup.CORE:
         return True
     typer.echo("")
     typer.echo("Final check of every connection:")
@@ -93,11 +124,11 @@ def _run_in_terminal(step: StepName | None) -> bool:
     return print_doctor_report()
 
 
-def _run_with(io: SetupIO, step: StepName | None) -> bool:
-    """Run through the page, with the final check shown there after a full run."""
-    if not run_interruptible(_run(step, io)):
+def _run_with(io: SetupIO, request: StepName | StepGroup) -> bool:
+    """Run through the page, with the final check shown there after the core steps."""
+    if not run_interruptible(_run(request, io)):
         return False
-    if step is not None:
+    if request is not StepGroup.CORE:
         return True
     io.say("")
     io.say("Final check of every connection:")
@@ -147,17 +178,22 @@ def _raise_interrupt(_signum: int, _frame: FrameType | None) -> None:
     raise KeyboardInterrupt
 
 
-def _ending(step: StepName | None, *, finished: bool) -> str:
+def _ending(request: StepName | StepGroup, *, finished: bool) -> str:
     """The last line the page shows."""
     if not finished:
-        return _NOT_FINISHED
-    return _FINISHED_STEP if step is not None else _FINISHED_ALL
+        command = f"{_COMMAND} {request}" if request is not StepGroup.CORE else _COMMAND
+        return _NOT_FINISHED.format(command=command)
+    if request is StepGroup.CORE:
+        return _FINISHED_CORE
+    return _FINISHED_EXTRAS if request is StepGroup.EXTRAS else _FINISHED_STEP
 
 
-async def _run(step: StepName | None, io: SetupIO | None = None) -> bool:
+async def _run(request: StepName | StepGroup, io: SetupIO | None = None) -> bool:
     """Run the wizard on real clients."""
     async with SupabasePlatform() as platform:
         wizard = SetupWizard(build_context(config.ENV_FILE, platform, io), default_steps())
-        if step is None:
-            return await wizard.run_all()
-        return await wizard.run_one(step)
+        if request is StepGroup.CORE:
+            return await wizard.run_core()
+        if request is StepGroup.EXTRAS:
+            return await wizard.run_extras()
+        return await wizard.run_one(request)

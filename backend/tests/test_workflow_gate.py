@@ -95,7 +95,13 @@ _FAKE_SLEEP: Final[str] = """sleep() {
 }
 """
 
-pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="the gate is a bash script")
+#: The gate only ever runs on GitHub's Linux machines. On Windows, "bash" may be
+#: Git's or the Linux subsystem's, each with its own idea of paths, so a result
+#: there would say nothing about the gate.
+pytestmark = pytest.mark.skipif(
+    shutil.which("bash") is None or os.name == "nt",
+    reason="the gate is a bash script that runs on Linux only",
+)
 
 
 @dataclass(frozen=True, slots=True)

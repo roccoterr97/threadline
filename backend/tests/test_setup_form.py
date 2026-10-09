@@ -371,6 +371,6 @@ async def test_the_wizard_stops_cleanly_when_the_page_stops_it() -> None:
     world = make_world()
     wizard = SetupWizard(world.context(), [StoppingStep()])
 
-    assert await wizard.run_all() is False
+    assert await wizard.run_core() is False
     assert "Stopped here: you stopped the set-up from the page." in world.io.said
     assert "Fix that" not in world.io.text()

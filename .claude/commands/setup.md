@@ -37,7 +37,7 @@ already done.
    and read the result. Do not tell them something worked unless you saw it.
 5. **Ask permission before installing anything**, and say in one sentence
    what it is for.
-6. **Never push, delete or change anything on GitHub, Supabase or Vercel
+6. **Never push, delete or change anything on GitHub, Supabase or Netlify
    that the set-up steps do not do themselves.** Never run `git push --force`,
    never delete a repository or a project.
 7. When something fails, read the message, explain it in one or two plain
@@ -47,8 +47,10 @@ already done.
 
 ## Part 1 — tools (`tools`)
 
-Everything runs on a Mac or Linux. On Windows, stop and say Threadline does
-not support Windows yet.
+This recipe's commands are for a Mac or Linux. On Windows, Threadline works
+too, but through its own one-line install: ask them to follow part 1 of
+`docs/setup-your-accounts.md` in PowerShell, and help them through the guide
+from there.
 
 Check what is there, quietly, the way the Terminal app would see it:
 `zsh -lc 'git --version; uv --version; gh --version; claude --version'`
@@ -112,39 +114,35 @@ and `doctor`, and `git remote get-url origin` names *their* GitHub user.
 
 Every later `uv run tracker …` command is run from `~/threadline/backend`.
 
-## Part 3 — the three accounts (`accounts`)
+## Part 3 — the accounts (`accounts`)
 
 These cannot be made for them: each must belong to the person. Do them in
 this order, one message each, and wait for "done" between them. The exact
 clicks are in `docs/setup-your-accounts.md`; read the named part before you
 explain it, then explain it in your own plain words, and keep the warnings.
 
-1. **Supabase** (the database) — part 2 of the guide. Free account, **New
-   project**, Free plan, region near them, generate the password and keep it
-   in their password manager. Tell them clearly: **the dashboard will only let
-   in the e-mail address they sign up to Supabase with**, so sign up with the
-   address they want to use every day.
-2. **Vercel** (publishes the dashboard) — part 7 of the guide. Sign in with
-   GitHub, **New Project**, import their copy of Threadline, set **Root
-   Directory** to `frontend`, add the two environment variables
-   `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (the project address and
-   the **publishable** key from Supabase → Project Settings → API Keys; never
-   the secret key), **Deploy**, then copy the production address from
-   **Settings → Domains**. These two values are not secret, so it is fine if
-   they paste them in the chat to ask whether they look right.
-3. **The mailbox** — part 5 of the guide. Ask which mailbox they use. Gmail,
+1. **Supabase** (the database) — "Before you start" and part 2 of the guide.
+   Only a free account is needed: the set-up creates the project itself with
+   one access token they paste into the set-up page. Tell them clearly: **the
+   dashboard will only let in the e-mail address they sign up to Supabase
+   with**, so sign up with the address they want to use every day (signing in
+   with GitHub uses the GitHub account's main address).
+2. **Netlify** (publishes the dashboard) — part 5 of the guide. Only a free
+   account is needed (signing up with GitHub is quickest): the set-up
+   publishes the dashboard itself with a token they paste into the set-up page.
+3. **The mailbox** — part 4 of the guide. Ask which mailbox they use. Gmail,
    iCloud, Yahoo, Fastmail and other IMAP mailboxes need an **app password**
    (the guide says where it is made for each); they make it now and keep the
    page open for the set-up page. Outlook.com/Hotmail signs in during the
-   wizard instead, and cannot send the summary on its own (part 8 of the guide
-   explains the choice).
+   wizard instead, and cannot send the summary on its own (part 4a of the
+   guide explains the choice).
 
-LinkedIn (part 6) only works for members in the EEA or Switzerland and takes
-twenty minutes of clicking: offer it as optional, and say it can be added any
-day later with `uv run tracker setup linkedin --browser`.
+LinkedIn (part 8a) only works for members in the EEA or Switzerland and takes
+twenty minutes of clicking: it is an extra, so say it can be added any day
+later with `uv run tracker setup linkedin --browser`.
 
-**Check:** the Supabase project page opens and is no longer "setting up"; the
-Vercel production address opens a sign-in page; the app password exists.
+**Check:** they can sign in at <https://supabase.com> and
+<https://www.netlify.com>; the app password exists.
 
 ## Part 4 — the wizard, on a page in their browser (`wizard`)
 
@@ -170,22 +168,23 @@ Threadline set-up, or to run the command again; do not paste the address.
 While it runs, you see every question and every line it says, never an
 answer. Follow along; when it opens a page for them (a line starting with
 `Open https://…`), say in one sentence what to find there, from the guide's
-matching part (3a Supabase keys, 3c the access token, 4a login, 4b
-categories, 4c time zone, 5 mailbox, 5c Microsoft, 6 LinkedIn, 7a dashboard,
-8b schedule, 8c GitHub, 8f Refresh now).
+matching part (2a the Supabase token and project, 2c database, 3a login, 3b
+categories, 3c time zone, 4 mailbox, 4c Microsoft, 5 dashboard on Netlify, 6a
+daily time, 6b GitHub, 6c first run).
 
 Two moments need a word from you:
 
-- **The Claude key** (step "The settings on GitHub"). The page asks for a key
-  from `claude setup-token`. Tell them: open the **Terminal** app (⌘ + Space,
-  type Terminal, Return), type `claude setup-token`, press Return, sign in in
-  the browser, come back to Terminal, copy the long key that starts with
-  `sk-ant-` and paste it into the set-up page. Not into this chat. If
+- **The Claude key** (the GitHub step). The page asks for a key from
+  `claude setup-token`. Tell them: open the **Terminal** app (on a Mac:
+  ⌘ + Space, type Terminal, Return), type `claude setup-token`, press Return,
+  sign in in the browser, come back to Terminal, copy the long key that starts
+  with `sk-ant-` and paste it into the set-up page. Not into this chat. If
   Terminal answers `command not found`, the command-line tool is missing: do
   the **claude** line of part 1, then ask them to open a new Terminal window
   and try again.
-- **"Is the dashboard published already?"** — they did Vercel in part 3, so
-  the answer is yes, and the address is the production one from Vercel.
+- **"Publish it on Netlify now?"** — yes. The page then asks for a Netlify
+  token: part 5 of the guide says where it is made. If they answer no twice,
+  the set-up stops there, because the steps after it need the dashboard.
 
 The page's own last words ("All done", "Stopped before the end") are shown on
 the page only; what you see is the final check. If the page says **Stopped**,
@@ -198,29 +197,36 @@ If the command is cut off by a timeout, nothing is lost: run it again.
 
 **Check:** the command ends with the final check and
 `Everything Threadline needs is working.` Lines marked `PROBLEM` name the step
-to redo.
+to redo. The `warning` lines for Refresh now and the on-time morning start are
+expected until part 5 below.
 
-## Part 5 — the first run (`first run`)
+## Part 5 — the first run, and the on-time start (`first run`)
 
-1. Ask them to open their copy on github.com → **Actions**. If GitHub shows a
-   button like **I understand my workflows, go ahead and enable them**, click
-   it (guide, 8a).
-2. Start the first run: with gh,
+1. The GitHub step switches Actions on and starts the first run by itself
+   after a yes; it says `The first run has started.` with the run's page. If
+   it said it could not, start it: with gh,
    `gh workflow run threadline-run.yml -f mode=daily` from `~/threadline`.
-   Wait a few seconds, find the run's number with
-   `gh run list --workflow threadline-run.yml --limit 1 --json databaseId --jq '.[0].databaseId'`,
-   then follow it with `gh run watch <that number>` (about five to ten
-   minutes; `gh run watch` with no number refuses to run without a terminal).
    Without gh: tell them **Actions → Threadline run → Run workflow → Run
-   workflow**.
+   workflow** (if GitHub shows **I understand my workflows, go ahead and
+   enable them**, click it first; guide, 6c).
+2. Follow it: find the run's number with
+   `gh run list --workflow threadline-run.yml --limit 1 --json databaseId --jq '.[0].databaseId'`,
+   then run `gh run watch <that number>` (about five to ten minutes;
+   `gh run watch` with no number refuses to run without a terminal).
 3. When it ends, tell them to look for the summary e-mail in their inbox, and
    to open the dashboard address and sign in with the link Supabase e-mails
    them (only two such e-mails an hour).
+4. Offer the **Refresh now** extra (guide, 8b): GitHub often starts the daily
+   run hours late, and this extra also makes their Supabase project start it
+   at their time. Run `uv run tracker setup refresh --browser` in the
+   background as in part 4; the page asks for a GitHub key made on a page it
+   opens, and a Supabase token. Say plainly it is optional.
 
-**Check:** the run has a green tick, `uv run tracker doctor` is all `ok`, and
-they say the e-mail arrived. A green tick after a few seconds with nothing
-sent means a setting is missing on GitHub: the run's page names it; redo
-`uv run tracker setup github --browser`.
+**Check:** the run has a green tick, `uv run tracker doctor` shows no
+`PROBLEM` line, and they say the e-mail arrived. A green tick after a few
+seconds with nothing sent means a setting is missing on GitHub: the run's page
+names it; redo `uv run tracker setup github --browser`. After the extra, the
+doctor's **On-time morning start** line says `ok`.
 
 ## Part 6 — the end (`check`)
 

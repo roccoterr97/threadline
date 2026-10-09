@@ -415,7 +415,7 @@ const REFRESH_GUIDE = 'the guide docs/refresh-now.md in your copy of Threadline'
 
 /** What to do when Refresh now is not there yet: one command switches it on. */
 const SWITCH_ON =
-  "Refresh now is not switched on yet. Run 'uv run tracker setup refresh' in your copy of Threadline (the guide, part 8f, explains).";
+  "Refresh now is not switched on yet. Run 'uv run tracker setup refresh' in your copy of Threadline (the guide, part 8b, explains).";
 
 /** Who runs the extra update, as the owner knows it. */
 function runnerName(target: RefreshTarget | null): string {
@@ -488,7 +488,7 @@ export const states = {
   retry: 'Try again',
   notSignedIn: 'Your session has ended. Please sign in again.',
   notConfigured:
-    'This page has not been connected to its database yet. Whoever set it up needs to add the two settings and publish again.',
+    'This page has not been connected to its database yet. Whoever set it up needs to publish it again with its database settings (uv run tracker setup dashboard).',
 } as const;
 
 export const values = {

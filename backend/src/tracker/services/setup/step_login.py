@@ -1,14 +1,32 @@
-"""Step 4: the first dashboard login, and switching off sign-ups."""
+"""Step 4: the first dashboard login, and switching off sign-ups.
+
+Sign-ups are switched off through Supabase's Management API with this run's
+access token; the settings page is opened only when Supabase refuses that.
+"""
 
 from __future__ import annotations
 
 from pydantic import SecretStr
 
+from tracker.domain.supabase import AuthSettings
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
-from tracker.shared.constants.setup import SUPABASE_SIGN_IN_PAGE
-from tracker.shared.errors import ValidationFailedError
+from tracker.services.setup.supabase_session import require_supabase_token
+from tracker.shared.constants.setup import (
+    SIGNUP_CHECK_ATTEMPTS,
+    SIGNUP_CHECK_WAIT_SECONDS,
+    SUPABASE_SIGN_IN_PAGE,
+)
+from tracker.shared.errors import (
+    SourceAuthError,
+    SourceRequestRejectedError,
+    SourceUnavailableError,
+    ValidationFailedError,
+)
+from tracker.shared.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 class LoginStep:
@@ -55,21 +73,56 @@ async def _signups_disabled(ctx: SetupContext) -> bool:
 
 
 async def _switch_off_signups(ctx: SetupContext) -> None:
-    """Make sure strangers cannot create a login, guiding by hand if needed."""
+    """Make sure strangers cannot create a login: through the API, or by hand if refused."""
     io = ctx.io
     if await _signups_disabled(ctx):
         io.say("Sign-ups are switched off: nobody else can create a login.")
         return
-    io.say("Sign-ups are still open. On the page that opens, switch off")
-    io.say("'Allow new users to sign up', then click Save.")
-    io.open_page(
-        SUPABASE_SIGN_IN_PAGE.format(
-            ref=values.project_ref(ctx.require("SUPABASE_URL", "supabase"))
-        )
-    )
-    io.pause("Once you have saved")
+    io.say("Sign-ups are still open, so they are switched off now.")
+    if await _switched_off_through_the_api(ctx) and await _signups_off_once_applied(ctx):
+        io.say("Sign-ups are now switched off: nobody else can create a login.")
+        return
+    _guide_by_hand(ctx)
     if await _signups_disabled(ctx):
         io.say("Sign-ups are now switched off.")
         return
     message = "sign-ups are still open - switch them off, then run this step again"
     raise ValidationFailedError(message)
+
+
+async def _switched_off_through_the_api(ctx: SetupContext) -> bool:
+    """Ask Supabase to refuse new sign-ups; ``False`` when it would not."""
+    if ctx.session.supabase_token is None and not ctx.io.confirm(
+        "Switch them off with a Supabase access token (used now, not saved)?", default=True
+    ):
+        return False
+    ref = values.project_ref(ctx.require("SUPABASE_URL", StepName.SUPABASE))
+    try:
+        token = await require_supabase_token(ctx)
+        await ctx.gateways.platform.configure_auth(ref, token, AuthSettings(disable_signup=True))
+    except (SourceAuthError, SourceRequestRejectedError) as error:
+        ctx.io.say(f"Supabase would not change the setting: {error.message}.")
+        return False
+    return True
+
+
+async def _signups_off_once_applied(ctx: SetupContext) -> bool:
+    """Read the public settings until the change shows; the auth server takes a moment."""
+    for attempt in range(1, SIGNUP_CHECK_ATTEMPTS + 1):
+        try:
+            if await _signups_disabled(ctx):
+                return True
+        except SourceUnavailableError as error:
+            _log.warning("auth_settings_unavailable", code=error.code)
+        if attempt < SIGNUP_CHECK_ATTEMPTS:
+            await ctx.gateways.sleep(SIGNUP_CHECK_WAIT_SECONDS)
+    return False
+
+
+def _guide_by_hand(ctx: SetupContext) -> None:
+    """Open the sign-in settings page and wait for the switch to be saved."""
+    io = ctx.io
+    io.say("On the page that opens, switch off 'Allow new users to sign up', then click Save.")
+    ref = values.project_ref(ctx.require("SUPABASE_URL", StepName.SUPABASE))
+    io.open_page(SUPABASE_SIGN_IN_PAGE.format(ref=ref))
+    io.pause("Once you have saved")

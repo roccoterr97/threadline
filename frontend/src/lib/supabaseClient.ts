@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { NotConfiguredError } from './errors';
+import { readSupabaseSettings, type SupabaseSettings } from './runtimeConfig';
 
 /**
  * The single Supabase client for the whole dashboard.
@@ -12,40 +13,33 @@ import { NotConfiguredError } from './errors';
 
 let client: SupabaseClient | null = null;
 
-function readSetting(name: 'VITE_SUPABASE_URL' | 'VITE_SUPABASE_ANON_KEY'): string {
-  // Vite types every build-time setting as `any`; treat them as unknown text.
-  const settings: Record<string, unknown> = import.meta.env;
-  const value = settings[name];
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new NotConfiguredError(`Missing ${name}`);
+/** The database settings, or a typed error saying they are missing. */
+function requireSettings(): SupabaseSettings {
+  const settings = readSupabaseSettings();
+  if (settings === null) {
+    throw new NotConfiguredError('Missing the database address or public key');
   }
-  return value.trim();
+  return settings;
 }
 
 /**
- * True when there is something to talk to — both settings are present, or a
- * client was installed at start-up — so the UI can explain rather than crash.
+ * True when there is something to talk to — both settings are present (see
+ * `runtimeConfig.ts`), or a client was installed at start-up — so the UI can
+ * explain rather than crash.
  */
 export function isConfigured(): boolean {
-  if (client !== null) return true;
-  try {
-    readSetting('VITE_SUPABASE_URL');
-    readSetting('VITE_SUPABASE_ANON_KEY');
-    return true;
-  } catch (error) {
-    if (error instanceof NotConfiguredError) return false;
-    throw error;
-  }
+  return client !== null || readSupabaseSettings() !== null;
 }
 
 /**
  * Returns the shared client, creating it on first use.
  *
- * @throws {NotConfiguredError} when the two `VITE_` settings are not set.
+ * @throws {NotConfiguredError} when the page has no database settings.
  */
 export function getSupabaseClient(): SupabaseClient {
   if (client === null) {
-    client = createClient(readSetting('VITE_SUPABASE_URL'), readSetting('VITE_SUPABASE_ANON_KEY'), {
+    const { url, anonKey } = requireSettings();
+    client = createClient(url, anonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,

@@ -2,7 +2,10 @@
 
 Only the set-up writes to it. Lines it does not touch — comments, blank lines,
 other settings — stay exactly as they were. Every write leaves the file
-readable by you alone, even one that was readable by others before.
+readable by you alone on macOS and Linux, even one that was readable by others
+before. Windows keeps a file in your user folder private to you by itself and
+ignores these permissions, so there they change nothing. Lines always end the
+same way, so a ``.env`` moved between computers reads the same everywhere.
 
 Values are read the way python-dotenv reads them for the settings: when a name
 appears twice, the last line wins, and quotes are removed only when the same
@@ -18,6 +21,7 @@ from typing import Final
 
 from tracker.shared.constants.setup import ENV_FILE_MODE
 from tracker.shared.errors import ValidationFailedError
+from tracker.shared.logging import get_logger
 
 _SEPARATOR: Final[str] = "="
 _COMMENT: Final[str] = "#"
@@ -27,6 +31,9 @@ _LITERAL_QUOTE: Final[str] = "'"
 _INLINE_COMMENTS: Final[tuple[str, ...]] = (" #", "\t#")
 #: The shortest quoted value: the two quotes and nothing between them.
 _QUOTED_LENGTH: Final[int] = 2
+_NEWLINE: Final[str] = "\n"
+
+_log = get_logger(__name__)
 
 
 class EnvFile:
@@ -91,8 +98,21 @@ class EnvFile:
     def _write(self, lines: list[str]) -> None:
         """Write the lines back, making the file readable by you alone first."""
         self._path.touch(mode=ENV_FILE_MODE)
-        self._path.chmod(ENV_FILE_MODE)
-        self._path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        self._make_private()
+        text = _NEWLINE.join(lines) + _NEWLINE
+        self._path.write_text(text, encoding="utf-8", newline=_NEWLINE)
+
+    def _make_private(self) -> None:
+        """Make the file readable by you alone, where the disk keeps such permissions.
+
+        A disk that keeps none (some shared or removable disks) refuses; the
+        file is still written, and the refusal is logged rather than stopping
+        the set-up half-way.
+        """
+        try:
+            self._path.chmod(ENV_FILE_MODE)
+        except (OSError, NotImplementedError) as error:
+            _log.warning("env_file_permissions_not_set", error_type=type(error).__name__)
 
 
 def _name_of(line: str) -> str | None:

@@ -5,8 +5,10 @@ neither secret nor personal, an Actions *variable*; ``shared/constants/github.py
 decides which. It first makes sure a private copy exists on GitHub (``github_copy``), since
 the settings are saved into it. With the GitHub CLI signed in, the step saves them all after one
 yes, handing each value to ``gh`` on its standard input, then offers once to delete
-the settings emptied in ``.env`` that GitHub still holds. Without it, the step
-lists the names and opens the page, and can copy each value to the clipboard.
+the settings emptied in ``.env`` that GitHub still holds, and last starts the
+first daily run (``first_run``). Without it, the step lists the names and opens
+the page, can copy each value to the clipboard, and says where to press 'Run
+workflow' by hand.
 
 The Claude subscription key from ``claude setup-token`` is asked for here and
 goes straight to GitHub: it is never written to ``.env`` or anywhere else.
@@ -19,6 +21,12 @@ from typing import Final
 from pydantic import SecretStr
 
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.first_run import (
+    FirstRun,
+    say_first_run_by_hand,
+    start_first_run,
+    workflow_page,
+)
 from tracker.services.setup.github_copy import find_or_create_copy
 from tracker.services.setup.mail_sources import saved_sources, summary_route
 from tracker.services.setup.models import StepName
@@ -33,7 +41,6 @@ from tracker.shared.constants.github import (
     REQUIRED_SECRETS,
     VARIABLE_SETTINGS,
     WORKFLOW_FIXED_SETTINGS,
-    WORKFLOW_PAGE,
 )
 from tracker.shared.constants.mailbox import DeliveryRoute, MailSource
 from tracker.shared.errors import SourceUnavailableError, ValidationFailedError
@@ -50,12 +57,17 @@ class GitHubStep:
     name = StepName.GITHUB
     title = "The settings on GitHub"
 
+    def __init__(self) -> None:
+        """Start with no first run: it is known once the step has run."""
+        #: How the first daily run was left; ``None`` until the step has run.
+        self.first_run: FirstRun | None = None
+
     async def is_done(self, ctx: SetupContext) -> bool:
         """Never skipped: GitHub cannot be asked what it holds, only told."""
         return False
 
     async def run(self, ctx: SetupContext) -> None:
-        """Collect the key, then save everything with gh or show how to by hand."""
+        """Collect the key, save everything with gh and start the first run, or show how to."""
         secrets, variables = split_settings(ctx)
         ctx.io.say("GitHub runs Threadline every day on your own copy of this project.")
         if summary_route(ctx) is not DeliveryRoute.SMTP:
@@ -68,9 +80,11 @@ class GitHubStep:
             f"in {repository} with the GitHub CLI now?",
             default=True,
         ):
-            _save_with_cli(ctx, repository, secrets, variables, token)
+            self.first_run = _save_with_cli(ctx, repository, secrets, variables, token)
             return
         _show_by_hand(ctx, repository, secrets, variables, token)
+        say_first_run_by_hand(ctx, repository)
+        self.first_run = FirstRun(started=False, page=workflow_page(repository))
 
 
 def split_settings(ctx: SetupContext) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -115,9 +129,9 @@ def _ask_token(ctx: SetupContext) -> SecretStr | None:
     """Ask for the Claude subscription key; it is kept in memory only."""
     io = ctx.io
     io.say("GitHub also needs a key to use your Claude subscription. To make it:")
-    io.say("  Open the Terminal app (a new window; on a Mac: ⌘ + N), run claude setup-token,")
-    io.say("  sign in in the browser, then copy the long key it prints back in that window")
-    io.say("  (it starts with sk-ant-). It lasts one year.")
+    io.say("  Open a new terminal window, run claude setup-token, sign in in the browser,")
+    io.say("  then copy the long key it prints back in that window (it starts with sk-ant-).")
+    io.say("  It lasts one year.")
     raw = io.ask_secret(
         f"Paste that key for {CLAUDE_TOKEN_SECRET} (it is not shown), or leave it empty to skip"
     )
@@ -134,8 +148,8 @@ def _save_with_cli(
     secrets: tuple[str, ...],
     variables: tuple[str, ...],
     token: SecretStr | None,
-) -> None:
-    """Save every value with the GitHub CLI, naming each one and showing none."""
+) -> FirstRun:
+    """Save every value with the GitHub CLI, naming each one and showing none, then start."""
     github = ctx.gateways.github
     for name in secrets:
         github.set_secret(repository, name, SecretStr(ctx.env.get(name) or ""))
@@ -147,9 +161,8 @@ def _save_with_cli(
         github.set_variable(repository, name, ctx.env.get(name) or "")
         ctx.io.say(f"  variable {name} saved")
     _remove_emptied(ctx, repository, secrets, variables)
-    ctx.io.say(
-        f"Done. Next, start the first run by hand: {WORKFLOW_PAGE.format(repository=repository)}"
-    )
+    ctx.io.say("Done. GitHub has everything it needs to run Threadline on your copy.")
+    return start_first_run(ctx, repository)
 
 
 def _remove_emptied(

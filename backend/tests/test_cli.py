@@ -6,8 +6,10 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
+from tracker.cli.commands.setup import parse_target
 from tracker.cli.discovery import command_module_names, register_commands
 from tracker.cli.main import build_cli, main
+from tracker.services.setup.models import StepGroup, StepName
 from tracker.shared.config import DEFAULT_PRODUCT_NAME, reset_settings_cache
 from tracker.shared.errors import ConfigurationError, ValidationFailedError
 
@@ -113,3 +115,36 @@ def test_another_failure_adds_no_fix_line(
     captured = capsys.readouterr()
     assert "validation_failed" in captured.err
     assert captured.out == ""
+
+
+# --- tracker setup: what it is asked to run ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        (None, StepGroup.CORE),
+        ("extras", StepGroup.EXTRAS),
+        ("linkedin", StepName.LINKEDIN),
+        ("github", StepName.GITHUB),
+    ],
+)
+def test_setup_reads_nothing_as_the_core_and_a_name_as_a_half_or_a_step(
+    typed: str | None, expected: StepName | StepGroup
+) -> None:
+    assert parse_target(typed) is expected
+
+
+def test_setup_refuses_an_unknown_step_before_anything_runs(runner: CliRunner) -> None:
+    result = runner.invoke(build_cli(), ["setup", "linkdin"])
+
+    assert result.exit_code == 2
+    assert "extras" in result.output
+    assert "linkedin" in result.output
+
+
+def test_setup_help_names_the_extras(runner: CliRunner) -> None:
+    result = runner.invoke(build_cli(), ["setup", "--help"])
+
+    assert result.exit_code == 0
+    assert "extras" in result.output

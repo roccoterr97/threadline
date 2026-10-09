@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import signal
 import socket
+import sys
 import threading
 from typing import Any
 
@@ -20,9 +21,22 @@ _PRESS_AFTER: float = 0.2
 _ANSWER_AFTER: float = 1.0
 
 
+def _press_ctrl_c() -> None:
+    """Send SIGINT to this process the way a terminal does.
+
+    On Windows ``os.kill`` with SIGINT ends the process outright, so the
+    signal is raised inside the process instead; Python still runs the
+    handler on the main thread, as it does for a real Ctrl-C.
+    """
+    if sys.platform == "win32":
+        signal.raise_signal(signal.SIGINT)
+        return
+    os.kill(os.getpid(), signal.SIGINT)
+
+
 def _press_ctrl_c_later() -> threading.Timer:
-    """Send SIGINT to this process the way a terminal does, from another thread."""
-    timer = threading.Timer(_PRESS_AFTER, os.kill, (os.getpid(), signal.SIGINT))
+    """Press Ctrl-C from another thread after a moment."""
+    timer = threading.Timer(_PRESS_AFTER, _press_ctrl_c)
     timer.start()
     return timer
 

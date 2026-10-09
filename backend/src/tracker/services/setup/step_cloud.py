@@ -43,7 +43,7 @@ class CloudStep:
             io.say("Skipped. To set it up later: uv run tracker setup cloud")
             return
         names = cloud_variable_names(ctx)
-        io.say("The routine runs in a Claude cloud environment (the guide, 'Alternative').")
+        io.say("The routine runs in a Claude cloud environment (the guide, part 8c).")
         io.say("Add these variables to it, one per line as NAME=value:")
         for name in names:
             io.say(f"  {name}")

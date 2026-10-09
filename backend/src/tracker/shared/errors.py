@@ -63,6 +63,45 @@ class SourceRequestRejectedError(SourceUnavailableError):
     code = "source_request_rejected"
 
 
+class SiteNameTakenError(SourceRequestRejectedError):
+    """Netlify refused a new site's name because another site already has it.
+
+    The set-up answers it by trying another name, so it is set apart from
+    every other refusal.
+    """
+
+    code = "site_name_taken"
+
+
+class DashboardPackageError(TrackerError):
+    """The prebuilt dashboard is not what it should be.
+
+    Its checksum does not match, it is too large, or it holds a file that
+    would land outside the site (an absolute path, ``..``, a link). Nothing
+    from it is published.
+    """
+
+    code = "dashboard_package_invalid"
+
+
+class DownloadTooLargeError(TrackerError):
+    """A download was larger than the most it may be, so it was stopped."""
+
+    code = "download_too_large"
+
+
+class DashboardBuildError(TrackerError):
+    """Building the dashboard on this computer with Node.js did not finish."""
+
+    code = "dashboard_build_failed"
+
+
+class DashboardDeployError(TrackerError):
+    """The host did not put the dashboard live: its deploy failed or never finished."""
+
+    code = "dashboard_deploy_failed"
+
+
 class SourceAuthError(TrackerError):
     """An external message source rejected the credentials we hold."""
 
@@ -101,6 +140,18 @@ class ValidationFailedError(TrackerError):
     """Data did not satisfy a rule the application guarantees."""
 
     code = "validation_failed"
+
+
+class WorkflowNotEnabledError(TrackerError):
+    """GitHub would not switch on Actions, or the Threadline workflow, in the owner's copy."""
+
+    code = "workflow_not_enabled"
+
+
+class WorkflowNotStartedError(TrackerError):
+    """GitHub did not start the Threadline workflow when asked to."""
+
+    code = "workflow_not_started"
 
 
 class WorkFileError(TrackerError):

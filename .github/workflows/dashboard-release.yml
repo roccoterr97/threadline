@@ -1,0 +1,85 @@
+# Builds the dashboard on every push to main and publishes it as two files of a rolling GitHub
+# Release named "latest": dashboard.zip (the built site, with Netlify's
+# _headers and _redirects, and no config.js) and dashboard.zip.sha256.
+# `tracker setup dashboard` downloads them, checks the checksum, adds the
+# owner's config.js and publishes the result on Netlify, so nobody needs
+# Node.js to publish their dashboard.
+#
+# It runs only in a public repository (the template, or a public fork): an
+# owner's private copy has nothing to publish, and the set-up never reads from it.
+name: Dashboard release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release at a time, newest last, so the files always come from one build.
+concurrency:
+  group: dashboard-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish dashboard.zip
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Creating the release, uploading its files and moving its tag.
+      contents: write
+    env:
+      RELEASE_TAG: latest
+      ARCHIVE: dashboard.zip
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+      # No Supabase settings on purpose: the page reads them from config.js.
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+          VITE_DEMO: 'false'
+        run: npm run build
+      - name: Check what is published
+        working-directory: frontend/dist
+        run: |
+          test -f index.html
+          test -f _headers
+          test -f _redirects
+          grep -q '<script src="/config.js"></script>' index.html
+          if test -e config.js; then
+            echo "::error::the build must not contain config.js"
+            exit 1
+          fi
+      - name: Pack
+        run: |
+          (cd frontend/dist && zip -q -r -X "$GITHUB_WORKSPACE/$ARCHIVE" .)
+          sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
+          cat "$ARCHIVE.sha256"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="The dashboard built from ${GITHUB_SHA}. Used by 'uv run tracker setup dashboard'."
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            # The tag rolls forward with every build: point it at this commit.
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$RELEASE_TAG" \
+              -f sha="$GITHUB_SHA" -F force=true > /dev/null
+            gh release edit "$RELEASE_TAG" --notes "$notes"
+          else
+            gh release create "$RELEASE_TAG" --target "$GITHUB_SHA" \
+              --title "Dashboard (latest build)" --notes "$notes" --latest=false
+          fi
+          gh release upload "$RELEASE_TAG" "$ARCHIVE" "$ARCHIVE.sha256" --clobber

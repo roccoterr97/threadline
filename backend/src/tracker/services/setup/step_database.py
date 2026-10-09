@@ -21,13 +21,14 @@ from tracker.services.setup import values
 from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
 from tracker.services.setup.models import StepName
 from tracker.services.setup.ports import SetupIO
+from tracker.services.setup.supabase_session import require_supabase_token
 from tracker.shared.constants.setup import (
     MIGRATION_PAUSE_SECONDS,
     MIGRATION_RETRY_WAIT_SECONDS,
     SUPABASE_SQL_EDITOR_PAGE,
-    SUPABASE_TOKENS_PAGE,
 )
 from tracker.shared.errors import (
+    SourceAuthError,
     SourceRequestRejectedError,
     SourceUnavailableError,
     ValidationFailedError,
@@ -55,10 +56,7 @@ class DatabaseStep:
         ctx.io.say(f"To apply: {', '.join(item.name for item in pending)}.")
         ref = values.project_ref(ctx.require("SUPABASE_URL", StepName.SUPABASE))
         remaining = pending
-        if ctx.io.confirm(
-            "Apply them automatically? You paste a Supabase access token once; it is not saved.",
-            default=True,
-        ):
+        if _apply_automatically_wanted(ctx):
             remaining = await _apply_automatically(ctx, ref, pending)
         if remaining:
             _guide_by_hand(ctx, ref, remaining)
@@ -104,6 +102,16 @@ def _may_not_have_run(name: str, report: StructureReport) -> bool:
     return after_a_gap or after_the_last_seen
 
 
+def _apply_automatically_wanted(ctx: SetupContext) -> bool:
+    """Apply with this run's token when there is one; otherwise ask first."""
+    if ctx.session.supabase_token is not None:
+        return True
+    return ctx.io.confirm(
+        "Apply them automatically? It needs a Supabase access token, used now and not saved.",
+        default=True,
+    )
+
+
 async def _apply_automatically(
     ctx: SetupContext, ref: str, pending: tuple[MigrationFile, ...]
 ) -> tuple[MigrationFile, ...]:
@@ -112,14 +120,13 @@ async def _apply_automatically(
     Returns:
         The files still to apply by hand; empty when all went through.
     """
-    ctx.io.say("Create a token on the page that opens: any name, the shortest expiry, and leave")
-    ctx.io.say("the access as offered (it must read and write the database's migrations).")
-    ctx.io.say("Delete the token on that page once this step is done.")
-    ctx.io.open_page(SUPABASE_TOKENS_PAGE)
-    token, applied = await ctx.ask_until_accepted(
-        lambda: ctx.io.ask_secret("Supabase access token (it stays hidden)"),
-        lambda raw: _read_applied(ctx, ref, raw),
-    )
+    token = await require_supabase_token(ctx)
+    try:
+        applied = await ctx.gateways.platform.applied_migrations(ref, token)
+    except SourceAuthError as error:
+        ctx.io.say(f"{error.message}: it may not apply the structure to this project.")
+        ctx.io.say("Carrying on by hand instead.")
+        return pending
     sent_before = False
     for index, item in enumerate(pending):
         if item.name in applied:
@@ -160,12 +167,6 @@ async def _apply_one(ctx: SetupContext, ref: str, token: SecretStr, item: Migrat
         ctx.io.say(f"Supabase could not apply {item.name} again: {error.message}.")
         return False
     return True
-
-
-async def _read_applied(ctx: SetupContext, ref: str, raw: str) -> tuple[SecretStr, frozenset[str]]:
-    """Check the token by reading the migrations Supabase has recorded."""
-    token = SecretStr(values.non_empty(raw, "the access token"))
-    return token, await ctx.gateways.platform.applied_migrations(ref, token)
 
 
 def _guide_by_hand(ctx: SetupContext, ref: str, remaining: tuple[MigrationFile, ...]) -> None:

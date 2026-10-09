@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Final
 
 from pydantic import SecretStr
@@ -21,13 +21,32 @@ from tracker.shared.errors import SourceAuthError, ValidationFailedError
 MAX_ATTEMPTS: Final[int] = 3
 
 
+@dataclass(slots=True)
+class SetupSession:
+    """What is kept in memory for one ``tracker setup`` run and never written anywhere.
+
+    Attributes:
+        supabase_token: The Supabase access token, once it has been accepted.
+    """
+
+    supabase_token: SecretStr | None = None
+
+
 @dataclass(frozen=True, slots=True)
 class SetupContext:
-    """Everything a step works with."""
+    """Everything a step works with.
+
+    Attributes:
+        io: The conversation.
+        env: The ``.env`` file.
+        gateways: The outside services.
+        session: What this run keeps in memory only; a fresh one each run.
+    """
 
     io: SetupIO
     env: EnvStore
     gateways: SetupGateways
+    session: SetupSession = field(default_factory=SetupSession)
 
     def write(self, name: str, value: str) -> bool:
         """Write one setting, asking first before changing a different value.
