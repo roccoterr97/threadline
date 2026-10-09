@@ -29,7 +29,7 @@ networking — or define your own categories. See
 
 ## Try the demo
 
-Live demo: <https://try-threadline.vercel.app>
+Live demo: <https://demo.threadlineapp.com>
 
 See the dashboard with made-up data before setting anything up. You need
 [Node.js](https://nodejs.org) 22 or newer; no accounts and no settings. The
@@ -342,6 +342,7 @@ GitHub, as described there.
 | `backend/` | The Python jobs and the `tracker` command-line tool |
 | `backend/tests/` | Unit tests; they never touch the network |
 | `frontend/` | The dashboard (Vite, React, TypeScript) |
+| `website/` | The public website: what Threadline is, the guided set-up, the way to your dashboard (Vite, React, TypeScript) |
 | `supabase/migrations/` | The database structure and its access rules, one file per change |
 | `.claude/` | The daily-run and assessment recipes, the assessor helper and the session's permissions |
 | `.github/workflows/` | The checks every change must pass, and `threadline-run.yml`, the daily run |

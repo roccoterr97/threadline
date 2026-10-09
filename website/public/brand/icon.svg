@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Threadline">
+  <rect width="64" height="64" rx="14" fill="#0D4ED6"/>
+  <g transform="translate(11.6 20.6) scale(0.1704)" fill="none" stroke="#FFFFFF" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(-159 -214)">
+      <path d="M159 214 H182 C222 214 228 281 268 281"/>
+      <path d="M159 348 H182 C222 348 228 281 268 281"/>
+      <path d="M159 281 H397"/>
+    </g>
+  </g>
+</svg>

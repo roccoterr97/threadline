@@ -284,7 +284,7 @@ jobs:
           claude_args: >-
             --max-turns 200
             --allowedTools "Bash(cd:*),Bash(uv run tracker:*),Bash(mkdir:*),Read,Edit(/work/**),Skill,Task,Agent"
-            --disallowedTools "Edit(/backend/**),Edit(/frontend/**),Edit(/supabase/**),Edit(/docs/**),Edit(/profile/**),Edit(/.claude/**),Edit(/.github/**),Edit(/.*),Edit(/*.md),Edit(/LICENSE),Edit(/install.sh),Edit(/install.ps1)"
+            --disallowedTools "Edit(/backend/**),Edit(/frontend/**),Edit(/website/**),Edit(/supabase/**),Edit(/docs/**),Edit(/profile/**),Edit(/.claude/**),Edit(/.github/**),Edit(/.*),Edit(/*.md),Edit(/LICENSE),Edit(/install.sh),Edit(/install.ps1)"
 
       # The action hides what Claude wrote, since it can quote your mail, and so
       # also hides why Claude stopped. When Claude stopped with an error, this

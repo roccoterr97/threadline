@@ -40,7 +40,7 @@
       "missing": [
         {
           "type": "host",
-          "value": "try-threadline.vercel.app"
+          "value": "demo.threadlineapp.com"
         }
       ],
       "headers": [

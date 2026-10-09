@@ -1,0 +1,395 @@
+@import 'tailwindcss';
+@import './theme/tokens.css';
+
+/*
+ * Maps the dashboard's design tokens onto Tailwind's colour scale, exactly as
+ * the dashboard does, so the website and the tool look like one product.
+ */
+@theme inline {
+  --color-bg: var(--tracker-bg);
+  --color-surface: var(--tracker-surface);
+  --color-surface-raised: var(--tracker-surface-raised);
+  --color-line: var(--tracker-border);
+  --color-line-strong: var(--tracker-border-strong);
+  --color-ink: var(--tracker-text);
+  --color-ink-muted: var(--tracker-text-muted);
+
+  --color-accent: var(--tracker-accent);
+  --color-accent-hover: var(--tracker-accent-hover);
+  --color-accent-fg: var(--tracker-accent-fg);
+  --color-focus: var(--tracker-focus);
+
+  --color-positive: var(--tracker-positive-text);
+  --color-positive-soft: var(--tracker-positive-soft);
+  --color-warn: var(--tracker-warn-text);
+  --color-warn-soft: var(--tracker-warn-soft);
+  --color-danger: var(--tracker-danger-text);
+  --color-danger-soft: var(--tracker-danger-soft);
+  --color-neutral: var(--tracker-neutral-text);
+  --color-neutral-soft: var(--tracker-neutral-soft);
+
+  --color-category-violet: var(--tracker-category-violet-text);
+  --color-category-violet-soft: var(--tracker-category-violet-soft);
+  --color-category-cyan: var(--tracker-category-cyan-text);
+  --color-category-cyan-soft: var(--tracker-category-cyan-soft);
+  --color-category-teal: var(--tracker-category-teal-text);
+  --color-category-teal-soft: var(--tracker-category-teal-soft);
+
+  --radius-token-sm: var(--tracker-radius-sm);
+  --radius-token-md: var(--tracker-radius-md);
+  --radius-token-lg: var(--tracker-radius-lg);
+
+  --shadow-card: var(--tracker-shadow-card);
+
+  /* One expressive face for headlines; the body stays the dashboard's system font. */
+  --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+ * The site's own tokens, on top of the dashboard's. The paper is a shade
+ * warmer than the dashboard's grey so the site reads as print; the brand
+ * colours are the ones measured from the logo. The dark theme keeps the
+ * dashboard's surfaces.
+ */
+:root {
+  --tracker-bg: #f7f7f4;
+  --tracker-border: #dcdcd5;
+  --tracker-border-strong: #b1b0a8;
+  --tracker-accent: #0d4ed6;
+  --tracker-accent-hover: #0a3fb0;
+  --tracker-focus: #0d4ed6;
+  --tracker-text: #0e141c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tracker-bg: #0e1117;
+    --tracker-border: #2e3746;
+    --tracker-border-strong: #475263;
+    --tracker-accent: #7c9bff;
+    --tracker-accent-hover: #9db4ff;
+    --tracker-focus: #7c9bff;
+    --tracker-text: #e8eaee;
+  }
+}
+
+/*
+ * The thread: the line that runs down the margin of the pages, the
+ * dashboard's timeline drawn large. The margin ("rail") holds section names
+ * and the thread's nodes; the column beside it holds the reading.
+ */
+:root {
+  --site-thread: color-mix(in oklab, var(--tracker-accent) 40%, var(--tracker-bg));
+  --site-thread-done: var(--tracker-accent);
+  --site-thread-width: 2px;
+  --site-node: 0.625rem;
+  --site-rail: clamp(12rem, 20vw, 22rem);
+}
+
+/*
+ * The type scale: one display size for the home page's line, one for page
+ * titles, one lead size for the sentences that carry an argument.
+ */
+@theme {
+  --text-display: clamp(2.75rem, 1.25rem + 3.4vw, 5.75rem);
+  --text-display--line-height: 1.02;
+  --text-display--letter-spacing: -0.035em;
+  --text-title: clamp(2.25rem, 1.75rem + 1.9vw, 3.25rem);
+  --text-title--line-height: 1.06;
+  --text-title--letter-spacing: -0.028em;
+  --text-lead: clamp(1.125rem, 1.05rem + 0.3vw, 1.25rem);
+  --text-lead--line-height: 1.55;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--tracker-bg);
+    color: var(--tracker-text);
+    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 1rem;
+    line-height: 1.6;
+    font-feature-settings: 'kern';
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    /* Nothing may scroll sideways at 375px. */
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+
+  p,
+  li,
+  dd {
+    text-wrap: pretty;
+  }
+
+  /* A section named in the address lands below the top edge, not under it. */
+  [id] {
+    scroll-margin-top: 1.5rem;
+  }
+
+  /* A visible focus ring on every keyboard-focused control. */
+  :focus-visible {
+    outline: 3px solid var(--tracker-focus);
+    outline-offset: 2px;
+    border-radius: var(--tracker-radius-sm);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * The one frame every page, the header and the footer share: it fills the
+   * screen, with side room that grows with it, up to a very wide screen.
+   */
+  .site-container {
+    width: 100%;
+    max-width: 112rem;
+    margin-inline: auto;
+    padding-inline: clamp(1.25rem, 4.5vw, 5rem);
+  }
+
+  /*
+   * Two columns from a tablet up: a margin for a name, then the column
+   * beside it (the footer). On a phone everything stacks in one column.
+   */
+  .margin-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .margin-grid > .rail {
+    min-width: 0;
+  }
+
+  @media (min-width: 48rem) {
+    .margin-grid {
+      grid-template-columns: var(--site-rail) minmax(0, 1fr);
+    }
+
+    .margin-grid > .rail {
+      padding-right: 2rem;
+    }
+
+    .margin-grid > .column {
+      grid-column: 2;
+    }
+  }
+
+  /*
+   * A dot on the thread. It is placed inside whatever it marks, then pulled
+   * left onto the line by --node-reach, set by the list it sits in.
+   */
+  .node {
+    position: relative;
+  }
+
+  .node::before {
+    content: '';
+    position: absolute;
+    /* Centred on the first line of whatever it marks. */
+    top: calc(0.5lh - var(--site-node) / 2);
+    left: calc(-1 * var(--node-reach) - var(--site-node) / 2 + var(--site-thread-width) / 2);
+    width: var(--site-node);
+    height: var(--site-node);
+    border-radius: 9999px;
+    background: var(--tracker-accent);
+    box-shadow: 0 0 0 4px var(--tracker-bg);
+  }
+
+  /* Small words in the margin: a section's name, a figure's number. */
+  .label {
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    font-variant-numeric: tabular-nums;
+    color: var(--tracker-text-muted);
+  }
+
+  .label-number {
+    color: var(--tracker-accent);
+    margin-right: 0.625rem;
+  }
+
+  /* A link inside running text: the underline is quiet until pointed at. */
+  .link {
+    color: var(--tracker-accent);
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.22em;
+    text-decoration-color: color-mix(in oklab, var(--tracker-accent) 35%, transparent);
+    transition: text-decoration-color 150ms ease;
+  }
+
+  .link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* A new page settles in rather than snapping. */
+  .page-enter {
+    animation: page-enter 280ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  @keyframes page-enter {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+}
+
+@layer components {
+  /* A short list of moments on its own small thread, such as the update's steps. */
+  .thread-list {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.5rem;
+    padding-left: 2rem;
+    counter-reset: thread;
+  }
+
+  .thread-list::before {
+    content: '';
+    position: absolute;
+    top: 0.75rem;
+    bottom: 0.75rem;
+    left: 0;
+    width: var(--site-thread-width);
+    background: var(--site-thread);
+  }
+
+  .thread-list > li {
+    --node-reach: 2rem;
+  }
+
+  /* The set-up's progress: the done part of the thread ends in a dot where the reader is. */
+  .progress-done {
+    position: relative;
+  }
+
+  .progress-done::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: var(--site-node);
+    height: var(--site-node);
+    border-radius: 9999px;
+    background: var(--tracker-accent);
+    box-shadow: 0 0 0 4px var(--tracker-bg);
+    transform: translate(50%, -50%);
+  }
+
+  /* Folds stacked one under the other share a rule instead of doubling it. */
+  .fold:has(+ .fold) {
+    margin-bottom: -1px;
+  }
+}
+
+@layer components {
+  /*
+   * The thread drawn across: on a wide screen one line runs the full width
+   * with a dot above each moment; on a phone it runs down the left side.
+   */
+  .thread-across {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2.75rem;
+    padding-left: 1.75rem;
+  }
+
+  .thread-across::before {
+    content: '';
+    position: absolute;
+    top: 0.6rem;
+    bottom: 0.6rem;
+    left: 0;
+    width: var(--site-thread-width);
+    background: var(--site-thread);
+  }
+
+  .thread-across > li {
+    position: relative;
+    min-width: 0;
+  }
+
+  .thread-across > li::before {
+    content: '';
+    position: absolute;
+    top: 0.6rem;
+    left: calc(-1.75rem - var(--site-node) / 2 + var(--site-thread-width) / 2);
+    width: var(--site-node);
+    height: var(--site-node);
+    border-radius: 9999px;
+    background: var(--tracker-accent);
+    box-shadow: 0 0 0 4px var(--tracker-bg);
+  }
+
+  @media (min-width: 64rem) {
+    .thread-across {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: clamp(2rem, 4vw, 5rem);
+      padding-left: 0;
+      padding-top: 2.75rem;
+    }
+
+    .thread-across::before {
+      top: 0;
+      right: 0;
+      bottom: auto;
+      width: auto;
+      height: var(--site-thread-width);
+    }
+
+    .thread-across > li::before {
+      top: calc(-2.75rem - var(--site-node) / 2 + var(--site-thread-width) / 2);
+      left: 0;
+    }
+  }
+
+  /* A line across the page with a dot at its start: where a new part of the page begins. */
+  .rule-node {
+    position: relative;
+    border-top: var(--site-thread-width) solid var(--site-thread);
+  }
+
+  .rule-node::before {
+    content: '';
+    position: absolute;
+    top: calc(-1 * var(--site-node) / 2 - var(--site-thread-width) / 2);
+    left: 0;
+    width: var(--site-node);
+    height: var(--site-node);
+    border-radius: 9999px;
+    background: var(--tracker-accent);
+    box-shadow: 0 0 0 4px var(--tracker-bg);
+  }
+}

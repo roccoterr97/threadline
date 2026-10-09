@@ -37,7 +37,7 @@ the same one your real dashboard uses. This makes a second, separate project.
 
 - **Project Name:** a name of your own, such as `my-threadline-demo` (this
   becomes the web address, `my-threadline-demo.vercel.app`, if nobody else has
-  taken it; `try-threadline.vercel.app` is the official demo).
+  taken it; `demo.threadlineapp.com` is the official demo).
 - **Root Directory:** click **Edit** and choose `frontend`. If Vercel says
   *"Multiple applications detected"*, click **Import single project** next to
   **frontend** (marked *Vite*) instead: that sets the folder for you.
@@ -77,7 +77,7 @@ the setup guide on GitHub.
 If you forked Threadline and publish your own demo, two places still point at
 the original project's demo and guide, so change them to yours: the "Live
 demo:" line of the README's "Try the demo" section (replace the official
-demo's address, `https://try-threadline.vercel.app`, with yours), and the demo
+demo's address, `https://demo.threadlineapp.com`, with yours), and the demo
 notice's "Set up your own" link, which is the
 `SETUP_GUIDE_URL` in `frontend/src/demo/DemoBanner.tsx`. Leave them as they are
 if you would rather keep pointing at the original.
@@ -92,7 +92,7 @@ if you would rather keep pointing at the original.
   reloading the page starts again.
 - **Search engines are asked to skip your demo**, like the real dashboard,
   because both share the same `vercel.json` rules. The one exception is the
-  official demo, `try-threadline.vercel.app`, which `frontend/vercel.json` lets
+  official demo, `demo.threadlineapp.com`, which `frontend/vercel.json` lets
   search engines list; your own demo keeps the rule unless you add its address
   there too. People can still open it from a link.
 - **Keep the two apart.** Never add `VITE_DEMO` to your real dashboard's

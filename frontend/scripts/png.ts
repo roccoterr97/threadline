@@ -52,6 +52,15 @@ export function segmentDistance([px, py]: Point, [ax, ay]: Point, [bx, by]: Poin
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
+/** Distance from a point to the nearest piece of a polyline (a run of joined segments). */
+export function polylineDistance(point: Point, polyline: readonly Point[]): number {
+  let nearest = Number.POSITIVE_INFINITY;
+  for (let index = 1; index < polyline.length; index += 1) {
+    nearest = Math.min(nearest, segmentDistance(point, polyline[index - 1]!, polyline[index]!));
+  }
+  return nearest;
+}
+
 /** How much of a one-pixel-wide sample a shape covers, from its signed distance in pixels. */
 export function coverage(distancePx: number): number {
   return Math.min(Math.max(0.5 - distancePx, 0), 1);

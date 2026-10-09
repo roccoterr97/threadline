@@ -32,14 +32,14 @@
   --tracker-surface-raised: #ffffff;
   --tracker-border: #d3d8e0;
   --tracker-border-strong: #aab2be;
-  --tracker-text: #14181f;
+  --tracker-text: #0e141c;
   --tracker-text-muted: #545e6c;
 
   /* Interactive */
-  --tracker-accent: #1f4fd8;
-  --tracker-accent-hover: #17409e;
+  --tracker-accent: #0d4ed6;
+  --tracker-accent-hover: #0a3fb0;
   --tracker-accent-fg: #ffffff;
-  --tracker-focus: #1f4fd8;
+  --tracker-focus: #0d4ed6;
 
   /* Meaning — always paired with a text label, never used as the only signal */
   --tracker-positive-text: #14603a;

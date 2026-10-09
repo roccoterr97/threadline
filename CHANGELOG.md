@@ -6,6 +6,12 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The official demo lives at <https://demo.threadlineapp.com>. The old
+  address, `try-threadline.vercel.app`, still opens it. `frontend/vercel.json`
+  now lets search engines list the new address instead of the old one.
+
 ## [0.9.0] - 2026-10-09
 
 The fixes from the first real set-up test on a new account, and LinkedIn with

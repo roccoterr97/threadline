@@ -34,6 +34,7 @@ WORK_RULE: Final[str] = "Edit(/work/**)"
 PROTECTED_RULES: Final[tuple[str, ...]] = (
     "Edit(/backend/**)",
     "Edit(/frontend/**)",
+    "Edit(/website/**)",
     "Edit(/supabase/**)",
     "Edit(/docs/**)",
     "Edit(/profile/**)",

@@ -1,16 +1,16 @@
 /**
  * Draws Threadline's home-screen icons as PNG files in `public/icons/`.
  *
- * The mark is the one the Logo component draws — a tick on a rounded square —
- * and its colours are read from the design tokens, so the icons follow the
- * tokens rather than keeping their own copy. It needs nothing beyond Node
- * itself (see `png.ts`).
+ * The mark is the brand's (see `logoMark.ts`): two threads joining one line,
+ * white on a rounded square in the accent colour. Both colours are read from
+ * the design tokens, so the icons follow the tokens rather than keeping their
+ * own copy. It needs nothing beyond Node itself (see `png.ts`).
  *
  * Run with `npm run icons` after changing the mark or the accent colour, and
  * commit the files it writes.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { MARK, tickDistance } from './logoMark.ts';
+import { MARK, markDistance } from './logoMark.ts';
 import {
   blend,
   CHANNEL_MAX,
@@ -47,7 +47,7 @@ const ICONS: readonly IconSpec[] = [
 ];
 
 /** One pixel's colour and opacity; `pixel` is in image pixels. */
-function shadePixel(pixel: Point, spec: IconSpec, colours: { accent: Rgb; tick: Rgb }): number[] {
+function shadePixel(pixel: Point, spec: IconSpec, colours: { accent: Rgb; mark: Rgb }): number[] {
   const unitsPerPx = MARK.box / spec.size;
   const point: Point = [pixel[0] * unitsPerPx, pixel[1] * unitsPerPx];
   const half = MARK.box / 2;
@@ -56,13 +56,13 @@ function shadePixel(pixel: Point, spec: IconSpec, colours: { accent: Rgb; tick: 
     spec.shape === 'full'
       ? 1
       : coverage(roundedRectDistance(centred, half, half, MARK.cornerRadius) / unitsPerPx);
-  const tick = coverage(tickDistance(point) / unitsPerPx);
-  return [...blend(colours.accent, colours.tick, tick), Math.round(background * CHANNEL_MAX)];
+  const mark = coverage(markDistance(point) / unitsPerPx);
+  return [...blend(colours.accent, colours.mark, mark), Math.round(background * CHANNEL_MAX)];
 }
 
 function main(): void {
   const css = readTokens();
-  const colours = { accent: readToken(css, 'tracker-accent'), tick: readToken(css, 'tracker-accent-fg') };
+  const colours = { accent: readToken(css, 'tracker-accent'), mark: readToken(css, 'tracker-accent-fg') };
   mkdirSync(ICONS_DIR, { recursive: true });
   for (const spec of ICONS) {
     const scanlines = drawScanlines(spec.size, spec.size, (pixel) => shadePixel(pixel, spec, colours));

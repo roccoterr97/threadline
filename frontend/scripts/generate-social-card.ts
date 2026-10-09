@@ -8,7 +8,7 @@
  * commit the file it writes. Only the demo build publishes it.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { MARK, tickDistance } from './logoMark.ts';
+import { MARK, markDistance } from './logoMark.ts';
 import {
   blend,
   CHANNEL_MAX,
@@ -54,14 +54,14 @@ const MARK_LEFT = 130;
 const MARK_TOP = 195;
 const MARK_SIZE = 240;
 
-/** The logo mark: an accent square with the tick on it. */
-function markLayers(accent: Rgb, tick: Rgb): Layer[] {
+/** The app icon: the mark's strokes on an accent rounded square. */
+function markLayers(accent: Rgb, mark: Rgb): Layer[] {
   const scale = MARK_SIZE / MARK.box;
   return [
     boxLayer(box(MARK_LEFT, MARK_TOP, MARK_SIZE, MARK_SIZE, MARK.cornerRadius * scale), accent),
     {
-      distance: ([x, y]) => tickDistance([(x - MARK_LEFT) / scale, (y - MARK_TOP) / scale]) * scale,
-      colour: tick,
+      distance: ([x, y]) => markDistance([(x - MARK_LEFT) / scale, (y - MARK_TOP) / scale]) * scale,
+      colour: mark,
     },
   ];
 }
