@@ -30,6 +30,8 @@ from tracker.services.setup.supabase_project import region_group_for
 from tracker.services.setup.supabase_session import TOKEN_PROMPT, require_supabase_token
 from tracker.shared.constants.setup import (
     DATABASE_PASSWORD_BYTES,
+    NEW_PROJECT_ANSWER_ATTEMPTS,
+    NEW_PROJECT_ANSWER_WAIT_SECONDS,
     PROJECT_READY_ATTEMPTS,
     PROJECT_READY_WAIT_SECONDS,
     SIGNUP_CHECK_WAIT_SECONDS,
@@ -37,6 +39,7 @@ from tracker.shared.constants.setup import (
     RegionGroup,
 )
 from tracker.shared.errors import (
+    DatabaseUnavailableError,
     SourceAuthError,
     SourceRequestRejectedError,
     SourceUnavailableError,
@@ -52,9 +55,13 @@ CREATE_NEW: list[str | bool] = [True, GOOD_TOKEN, "", ""]
 
 
 def _existing(
-    name: str, *, status: str = "ACTIVE_HEALTHY", org: str = ORGANIZATION.slug
+    name: str,
+    *,
+    status: str = "ACTIVE_HEALTHY",
+    org: str = ORGANIZATION.slug,
+    ref: str = PROJECT_REF,
 ) -> SupabaseProject:
-    return SupabaseProject(PROJECT_REF, name, org, status)
+    return SupabaseProject(ref, name, org, status)
 
 
 def _text_and_env(world: World) -> str:
@@ -149,7 +156,7 @@ async def test_an_existing_project_can_be_used_instead() -> None:
     assert world.env.values["SUPABASE_URL"] == PROJECT_URL
     assert world.platform.created == []
     assert world.waits == []
-    assert "Projects already there: old-tracker." in world.io.said
+    assert "  1. old-tracker (running)" in world.io.said
 
 
 async def test_declining_the_existing_projects_creates_a_named_one_where_chosen() -> None:
@@ -162,16 +169,81 @@ async def test_declining_the_existing_projects_creates_a_named_one_where_chosen(
     assert (request.name, request.region) == ("my-tracker", RegionGroup.AMERICAS)
 
 
-async def test_projects_of_other_organizations_or_paused_ones_are_not_offered() -> None:
+async def test_projects_of_other_organizations_are_not_offered() -> None:
+    world = make_world(list(CREATE_NEW))
+    world.platform.project_list = [_existing("elsewhere", org="someone-else")]
+
+    await SupabaseStep().run(world.context())
+
+    assert "elsewhere" not in world.io.text()
+    assert len(world.platform.created) == 1
+
+
+async def test_a_paused_project_is_named_with_how_to_restore_it_but_not_offered() -> None:
     world = make_world(list(CREATE_NEW))
     world.platform.project_list = [
-        _existing("elsewhere", org="someone-else"),
-        _existing("paused", status="INACTIVE"),
+        _existing("paused-one", status="INACTIVE"),
+        _existing("elsewhere", org="someone-else", status="INACTIVE"),
     ]
 
     await SupabaseStep().run(world.context())
 
+    assert "'paused-one' is paused. Restore it in Supabase" in world.io.text()
+    assert "run this step again, or create a new project" in world.io.text()
+    assert "elsewhere" not in world.io.text()
     assert "Projects already there" not in world.io.text()
+    assert len(world.platform.created) == 1
+
+
+async def test_a_paused_project_is_mentioned_beside_the_ones_that_can_be_used() -> None:
+    world = make_world([True, GOOD_TOKEN, True])
+    world.platform.project_list = [
+        _existing("old-tracker"),
+        _existing("paused-one", status="INACTIVE", ref="pausedprojectref"),
+    ]
+
+    await SupabaseStep().run(world.context())
+
+    assert "'paused-one' is paused." in world.io.text()
+    assert "  1. old-tracker (running)" in world.io.said
+    assert "paused-one (" not in world.io.text()
+    assert world.env.values["SUPABASE_URL"] == PROJECT_URL
+
+
+async def test_a_project_left_by_a_stopped_run_is_reused_by_just_pressing_enter() -> None:
+    world = make_world([True, GOOD_TOKEN, ""])
+    world.platform.project_list = [_existing("threadline", status="COMING_UP")]
+
+    await SupabaseStep().run(world.context())
+
+    assert world.platform.created == []
+    assert world.env.values["SUPABASE_URL"] == PROJECT_URL
+    assert "  1. threadline (still being set up)" in world.io.said
+    assert len(world.waits) == 2
+
+
+async def test_the_project_named_threadline_is_the_default_among_several() -> None:
+    world = make_world([True, GOOD_TOKEN, "", ""])
+    other_ref = "someotherprojectref"
+    world.platform.project_list = [
+        _existing("old-tracker", ref=other_ref),
+        _existing("threadline", status="COMING_UP"),
+    ]
+
+    await SupabaseStep().run(world.context())
+
+    assert world.platform.created == []
+    assert world.env.values["SUPABASE_URL"] == PROJECT_URL
+    assert "  1. old-tracker (running)" in world.io.said
+    assert "  2. threadline (still being set up)" in world.io.said
+
+
+async def test_a_project_with_another_name_is_not_chosen_by_just_pressing_enter() -> None:
+    world = make_world([True, GOOD_TOKEN, "", "", ""])
+    world.platform.project_list = [_existing("old-tracker")]
+
+    await SupabaseStep().run(world.context())
+
     assert len(world.platform.created) == 1
 
 
@@ -183,6 +255,57 @@ async def test_a_project_that_never_comes_up_stops_cleanly() -> None:
         await SupabaseStep().run(world.context())
 
     assert len(world.waits) == PROJECT_READY_ATTEMPTS
+    assert world.env.values == {}
+
+
+async def test_the_timeout_message_says_the_project_exists_and_must_not_be_created_again() -> None:
+    world = make_world(list(CREATE_NEW))
+    world.platform.statuses = ["COMING_UP"]
+
+    with pytest.raises(ValidationFailedError, match="already created.*do not create another"):
+        await SupabaseStep().run(world.context())
+
+
+async def test_the_wait_says_what_a_stop_leaves_behind() -> None:
+    world = make_world(list(CREATE_NEW))
+
+    await SupabaseStep().run(world.context())
+
+    assert "Ctrl-C" in world.io.text()
+    assert "pick it from the list" in world.io.text()
+
+
+async def test_a_create_request_lost_to_a_timeout_warns_that_a_project_may_exist() -> None:
+    world = make_world(list(CREATE_NEW))
+    world.platform.create_times_out = True
+
+    with pytest.raises(SourceUnavailableError):
+        await SupabaseStep().run(world.context())
+
+    assert "may already have been created" in world.io.text()
+    assert world.env.values == {}
+
+
+async def test_a_new_project_that_does_not_answer_yet_is_asked_again() -> None:
+    world = make_world(list(CREATE_NEW))
+    world.platform.unanswered_settings = 2
+    world.admin.unanswered_calls = 2
+
+    await SupabaseStep().run(world.context())
+
+    assert world.waits[2:] == [NEW_PROJECT_ANSWER_WAIT_SECONDS] * 4
+    assert world.env.values["SUPABASE_SERVICE_ROLE_KEY"] == GOOD_SECRET
+
+
+async def test_a_new_project_that_never_answers_stops_with_a_hint_to_run_again() -> None:
+    world = make_world(list(CREATE_NEW))
+    world.platform.unanswered_settings = 99
+
+    with pytest.raises(SourceUnavailableError):
+        await SupabaseStep().run(world.context())
+
+    assert world.waits[2:] == [NEW_PROJECT_ANSWER_WAIT_SECONDS] * (NEW_PROJECT_ANSWER_ATTEMPTS - 1)
+    assert "does not answer yet" in world.io.text()
     assert world.env.values == {}
 
 
@@ -212,6 +335,51 @@ async def test_a_refused_project_shows_supabases_reason() -> None:
         await SupabaseStep().run(world.context())
 
     assert world.env.values == {}
+
+
+# --- Running the step again ----------------------------------------------------
+
+
+async def test_running_the_step_again_keeps_the_project_before_asking_for_any_token() -> None:
+    world = make_world([True], configured_env())
+
+    await SupabaseStep().run(world.context())
+
+    assert world.io.secret_prompts == []
+    assert world.platform.organization_reads == 0
+    assert world.platform.created == []
+    assert world.env.values == configured_env()
+    assert PROJECT_REF in world.io.text()
+    assert "Kept the project" in world.io.text()
+
+
+async def test_the_saved_project_is_kept_just_by_pressing_enter() -> None:
+    world = make_world([""], configured_env())
+
+    await SupabaseStep().run(world.context())
+
+    assert world.platform.created == []
+    assert world.env.values == configured_env()
+
+
+async def test_choosing_another_project_replaces_the_saved_one_without_asking_twice() -> None:
+    world = make_world([False, True, GOOD_TOKEN, "", ""], configured_env())
+
+    await SupabaseStep().run(world.context())
+
+    assert world.env.values["SUPABASE_URL"] == NEW_PROJECT_URL
+    assert "Replace it?" not in world.io.text()
+    assert len(world.platform.created) == 1
+
+
+async def test_a_saved_address_that_is_not_a_project_is_replaced_not_kept() -> None:
+    env = configured_env() | {"SUPABASE_URL": "https://example.com"}
+    world = make_world([True, GOOD_TOKEN, "", ""], env)
+
+    await SupabaseStep().run(world.context())
+
+    assert "does not look like a Supabase project" in world.io.text()
+    assert world.env.values["SUPABASE_URL"] == NEW_PROJECT_URL
 
 
 # --- The keys ------------------------------------------------------------------
@@ -266,9 +434,12 @@ async def test_keys_that_supabase_then_refuses_are_not_saved() -> None:
         ("Australia/Sydney", RegionGroup.APAC),
         ("America/New_York", RegionGroup.AMERICAS),
         ("UTC", RegionGroup.AMERICAS),
+        (None, RegionGroup.AMERICAS),
     ],
 )
-async def test_the_region_offered_follows_the_time_zone(zone: str, group: RegionGroup) -> None:
+async def test_the_region_offered_follows_the_time_zone(
+    zone: str | None, group: RegionGroup
+) -> None:
     assert region_group_for(zone) is group
 
 
@@ -327,6 +498,27 @@ async def test_a_token_that_may_not_apply_the_structure_falls_back_to_the_editor
     assert "The database structure is in place." in world.io.said
 
 
+async def test_the_structure_check_asks_again_while_a_new_project_wakes_up() -> None:
+    world = make_world([], configured_env())
+    world.admin.unanswered_calls = 2
+
+    await DatabaseStep().run(world.context())
+
+    assert world.waits == [NEW_PROJECT_ANSWER_WAIT_SECONDS] * 2
+    assert "Every structure file is already applied." in world.io.said
+
+
+async def test_a_database_that_never_answers_stops_the_structure_check() -> None:
+    world = make_world([], configured_env())
+    world.admin.unanswered_calls = 99
+
+    with pytest.raises(DatabaseUnavailableError):
+        await DatabaseStep().run(world.context())
+
+    assert len(world.waits) == NEW_PROJECT_ANSWER_ATTEMPTS - 1
+    assert "does not answer yet" in world.io.text()
+
+
 # --- Sign-ups ------------------------------------------------------------------
 
 
@@ -352,8 +544,10 @@ async def test_the_switch_is_read_again_until_it_shows() -> None:
     assert world.waits == [SIGNUP_CHECK_WAIT_SECONDS, SIGNUP_CHECK_WAIT_SECONDS]
 
 
-@pytest.mark.parametrize("refusal", [SourceAuthError, SourceRequestRejectedError])
-async def test_a_refused_switch_falls_back_to_the_settings_page(refusal: type[Exception]) -> None:
+@pytest.mark.parametrize(
+    "refusal", [SourceAuthError, SourceRequestRejectedError, SourceUnavailableError]
+)
+async def test_a_failed_switch_falls_back_to_the_settings_page(refusal: type[Exception]) -> None:
     world = make_world([OWNER_EMAIL, True, GOOD_TOKEN], configured_env())
     world.platform.signups_off = [False]
     world.platform.auth_refusal = refusal

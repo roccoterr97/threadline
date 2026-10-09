@@ -28,13 +28,16 @@ from tracker.services.setup.first_run import (
     workflow_page,
 )
 from tracker.services.setup.github_copy import find_or_create_copy
+from tracker.services.setup.github_values import save_on_github
 from tracker.services.setup.mail_sources import saved_sources, summary_route
-from tracker.services.setup.models import StepName
+from tracker.services.setup.models import StepGroup, StepName
 from tracker.services.setup.step_cloud import (
     cloud_setting_names,
     cloud_variable_names,
     copy_values,
 )
+from tracker.services.setup.step_mailbox import MailboxStep
+from tracker.services.setup.workflow_schedule import offer_unsent_change
 from tracker.shared.constants.github import (
     ACTIONS_SECRETS_PAGE,
     CLAUDE_TOKEN_SECRET,
@@ -68,11 +71,13 @@ class GitHubStep:
 
     async def run(self, ctx: SetupContext) -> None:
         """Collect the key, save everything with gh and start the first run, or show how to."""
-        secrets, variables = split_settings(ctx)
+        split_settings(ctx)
         ctx.io.say("GitHub runs Threadline every day on your own copy of this project.")
-        if summary_route(ctx) is not DeliveryRoute.SMTP:
-            _say_github_cannot_send(ctx)
+        by_email = await _settle_summary_route(ctx)
+        secrets, variables = split_settings(ctx)
         repository = find_or_create_copy(ctx)
+        if repository is not None:
+            offer_unsent_change(ctx)
         ctx.io.say("It needs your settings: secret ones as 'secrets', the rest as 'variables'.")
         token = _ask_token(ctx)
         if repository is not None and ctx.io.confirm(
@@ -80,11 +85,13 @@ class GitHubStep:
             f"in {repository} with the GitHub CLI now?",
             default=True,
         ):
-            self.first_run = _save_with_cli(ctx, repository, secrets, variables, token)
+            self.first_run = _save_with_cli(ctx, repository, secrets, variables, token, by_email)
             return
         _show_by_hand(ctx, repository, secrets, variables, token)
         say_first_run_by_hand(ctx, repository)
-        self.first_run = FirstRun(started=False, page=workflow_page(repository))
+        self.first_run = FirstRun(
+            started=False, page=workflow_page(repository), summary_by_email=by_email
+        )
 
 
 def split_settings(ctx: SetupContext) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -111,6 +118,33 @@ def split_settings(ctx: SetupContext) -> tuple[tuple[str, ...], tuple[str, ...]]
     return secrets, variables
 
 
+async def _settle_summary_route(ctx: SetupContext) -> bool:
+    """Say whether GitHub can e-mail the summary, offering the mailbox that lets it.
+
+    Args:
+        ctx: The set-up's context.
+
+    Returns:
+        Whether the summary will be sent by e-mail from GitHub.
+    """
+    if summary_route(ctx) is DeliveryRoute.SMTP:
+        return True
+    _say_github_cannot_send(ctx)
+    if MailSource.IMAP in (saved_sources(ctx) or ()):
+        return False
+    if ctx.io.confirm(
+        "Connect a Gmail (or other) mailbox with an app password now, so the e-mail can come?",
+        default=True,
+    ):
+        await MailboxStep().run(ctx)
+    else:
+        ctx.io.say("Without one, no summary e-mail will arrive. To add one later, run")
+        ctx.io.say(
+            f"'uv run tracker setup {StepName.MAILBOX}', then 'uv run tracker setup github'."
+        )
+    return summary_route(ctx) is DeliveryRoute.SMTP
+
+
 def _say_github_cannot_send(ctx: SetupContext) -> None:
     """Warn that the run on GitHub will do everything but e-mail the summary."""
     io = ctx.io
@@ -119,10 +153,12 @@ def _say_github_cannot_send(ctx: SetupContext) -> None:
         io.say("  SUMMARY_DELIVERY is set to gmail_connector, which only a Claude cloud routine")
         io.say("  has. Remove that line from .env to send from your mailbox instead.")
     else:
-        io.say("  Outlook alone has no app password to send with. Connect a Gmail or other")
-        io.say("  mailbox too ('uv run tracker setup mailbox'), or use the alternative route")
-        io.say("  ('uv run tracker setup cloud', the end of the guide).")
+        io.say("  The morning e-mail needs a mailbox with an app password: Gmail, iCloud, Yahoo,")
+        io.say("  Fastmail or another standard (IMAP and SMTP) mailbox. Outlook alone has no app")
+        io.say("  password to send with.")
     io.say("  Everything else still runs, and the dashboard is updated every morning.")
+    io.say("  The other way to get the e-mail is the Claude cloud route:")
+    io.say(f"  'uv run tracker setup {StepGroup.EXTRAS}'.")
 
 
 def _ask_token(ctx: SetupContext) -> SecretStr | None:
@@ -133,11 +169,12 @@ def _ask_token(ctx: SetupContext) -> SecretStr | None:
     io.say("  then copy the long key it prints back in that window (it starts with sk-ant-).")
     io.say("  It lasts one year.")
     raw = io.ask_secret(
-        f"Paste that key for {CLAUDE_TOKEN_SECRET} (it is not shown), or leave it empty to skip"
+        f"Paste that key for {CLAUDE_TOKEN_SECRET} (it is not shown), or leave it empty "
+        "to keep the key GitHub already has, if any"
     )
     cleaned = "".join(raw.split())
     if not cleaned:
-        io.say(f"Skipped: add {CLAUDE_TOKEN_SECRET} on GitHub yourself before the first run.")
+        io.say(f"No new key: GitHub keeps the {CLAUDE_TOKEN_SECRET} it already has, if any.")
         return None
     return SecretStr(cleaned)
 
@@ -148,21 +185,30 @@ def _save_with_cli(
     secrets: tuple[str, ...],
     variables: tuple[str, ...],
     token: SecretStr | None,
+    summary_by_email: bool,
 ) -> FirstRun:
     """Save every value with the GitHub CLI, naming each one and showing none, then start."""
-    github = ctx.gateways.github
-    for name in secrets:
-        github.set_secret(repository, name, SecretStr(ctx.env.get(name) or ""))
-        ctx.io.say(f"  secret {name} saved")
-    if token is not None:
-        github.set_secret(repository, CLAUDE_TOKEN_SECRET, token)
-        ctx.io.say(f"  secret {CLAUDE_TOKEN_SECRET} saved (it was not written anywhere else)")
-    for name in variables:
-        github.set_variable(repository, name, ctx.env.get(name) or "")
-        ctx.io.say(f"  variable {name} saved")
+    save_on_github(ctx, repository, secrets, variables, token)
     _remove_emptied(ctx, repository, secrets, variables)
     ctx.io.say("Done. GitHub has everything it needs to run Threadline on your copy.")
-    return start_first_run(ctx, repository)
+    return start_first_run(
+        ctx,
+        repository,
+        summary_by_email=summary_by_email,
+        claude_key_on_github=_claude_key_on_github(ctx, repository, token),
+    )
+
+
+def _claude_key_on_github(
+    ctx: SetupContext, repository: str, token: SecretStr | None
+) -> bool | None:
+    """Whether GitHub holds the Claude key; ``None`` when it could not be asked."""
+    if token is not None:
+        return True
+    try:
+        return CLAUDE_TOKEN_SECRET in ctx.gateways.github.secret_names(repository)
+    except SourceUnavailableError:
+        return None
 
 
 def _remove_emptied(

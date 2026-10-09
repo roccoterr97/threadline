@@ -12,14 +12,24 @@
 # pasting the line again is safe and carries on where things stopped.
 #
 #   1. Installs Git if it is missing (with winget, Windows' own installer).
-#   2. Installs uv, the tool that runs Threadline, if it is missing.
-#   3. Installs the GitHub command-line tool (gh) if it is missing.
-#   4. Signs you in to GitHub in the browser if you are not signed in yet.
+#   2. Installs uv, the tool that runs Threadline, if it is missing. uv's own
+#      installer also adds uv to your user PATH, so that new PowerShell windows
+#      find it.
+#   3. Installs the GitHub command-line tool (gh) if it is missing, or updates
+#      it when it is too old (with winget).
+#   4. Signs you in to GitHub in the browser if you are not signed in yet, with
+#      the extra permission that saving the daily-run file needs. Then it runs
+#      "gh auth setup-git", which adds a line to your git settings so that git
+#      uses this GitHub sign-in for github.com. If git has no name or e-mail
+#      yet, it sets them from your GitHub account (GitHub's private no-reply
+#      address) and tells you; values you already set are never changed.
 #   5. Makes your own private copy of Threadline on GitHub (from the public
 #      template, as a private repository called "threadline"), waits until
 #      GitHub has filled it, and downloads it to the "threadline" folder in
 #      your user folder. A copy that already exists, on GitHub or in that
-#      folder, is reused and brought up to date.
+#      folder, is reused and brought up to date, after checking that it is
+#      private and yours. An earlier set-up in the "tracker" folder is offered
+#      instead of a second copy.
 #   6. Installs Threadline's parts and starts the guided set-up.
 #
 # How the keyboard is kept: "irm | iex" runs the downloaded text inside this
@@ -33,6 +43,8 @@
 & {
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 downloads far faster without its progress bar.
+$ProgressPreference = 'SilentlyContinue'
 # A program that ends with an error code is handled below by hand, never thrown.
 $PSNativeCommandUseErrorActionPreference = $false
 
@@ -43,13 +55,30 @@ $TemplateRepository = 'roccoterr97/threadline'
 $CopyName = 'threadline'
 $CopyFolder = Join-Path $HOME 'threadline'
 
+# Where an earlier version of the set-up put the copy.
+$OlderCopyFolder = Join-Path $HOME 'tracker'
+
+# The folder that finally holds the copy; Get-Copy may point it at the older one.
+$State = @{ Folder = $CopyFolder }
+
 # The official installer of uv, and where the GitHub tool is explained.
 $UvInstaller = 'https://astral.sh/uv/install.ps1'
 $GitHubCliPage = 'https://cli.github.com'
 
-# The winget names of the tools that may be missing.
+# The winget names of the tools that may be missing, and where to get them by hand.
 $GitPackage = 'Git.Git'
 $GitHubCliPackage = 'GitHub.cli'
+$GitPage = 'https://git-scm.com/download/win'
+$WingetPage = 'https://aka.ms/getwinget'
+
+# The oldest GitHub tool the set-up works with. It uses "gh variable",
+# "gh secret list --json", "gh workflow run" and "gh attestation verify
+# --source-ref", the last of which arrived in 2.68. Keep equal to
+# GITHUB_CLI_MINIMUM_VERSION in the backend.
+$GitHubCliMinimum = [version] '2.68'
+
+# The permission a GitHub sign-in needs to save the daily-run file (a workflow).
+$GitHubWorkflowScope = 'workflow'
 
 # A freshly made copy may take a moment to appear on GitHub.
 $CopyWaitAttempts = 10
@@ -91,15 +120,37 @@ function Invoke-Quietly([string] $Program, [string[]] $Arguments) {
     return $LASTEXITCODE
 }
 
-function Install-WithWinget([string] $Package, [string] $Label) {
+# Downloads a web address into a file; any failure is an error, never a half-written file.
+function Save-Download([string] $Address, [string] $Path) {
+    # Older Windows PowerShell does not ask for TLS 1.2 by itself.
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -UseBasicParsing -Uri $Address -OutFile $Path
+}
+
+# Runs winget (Windows' own installer) for one package and answers with its exit code.
+function Invoke-Winget([string] $Verb, [string] $Package, [string] $Label, [string] $ManualPage) {
     if (-not (Test-Program 'winget')) {
-        return $false
+        Stop-Install "Windows' installer (winget) is not on this computer, so $Label cannot be installed for you." @(
+            "Get 'App Installer' from the Microsoft Store ($WingetPage), then paste the line again.",
+            "Or install $Label by hand from $ManualPage, then paste the line again."
+        )
     }
     Note "Windows may ask you to allow the installation of $Label."
     # Out-Host shows winget's progress without making it this function's answer.
-    & winget install --id $Package --exact --source winget --accept-package-agreements --accept-source-agreements | Out-Host
+    & winget $Verb --id $Package --exact --source winget --accept-package-agreements --accept-source-agreements | Out-Host
+    $Code = $LASTEXITCODE
     Update-SessionPath
-    return $true
+    return $Code
+}
+
+function Stop-WingetFailed([string] $Label, [int] $Code, [string] $ManualPage) {
+    Stop-Install "The installation of $Label did not finish (code $Code)." @(
+        'The usual causes are that the Windows question "Do you want to allow this app',
+        'to make changes?" was closed or answered No (it needs administrator approval),',
+        'or that the internet connection dropped.',
+        'Paste the line again and click Yes when Windows asks.',
+        "If it keeps failing, install $Label by hand from $ManualPage, then paste the line again."
+    )
 }
 
 function Install-Git {
@@ -108,10 +159,11 @@ function Install-Git {
         return
     }
     Say 'Installing Git.'
-    if (-not (Install-WithWinget $GitPackage 'Git')) {
-        Stop-Install 'Git is not installed yet.' @(
-            'Install it from https://git-scm.com/download/win, then paste the line again.'
-        )
+    $Code = Invoke-Winget 'install' $GitPackage 'Git' $GitPage
+    # Winget also answers with an error code when Git is already there but this
+    # window cannot see it yet; Git being found after all is what counts.
+    if ($Code -ne 0 -and -not (Test-Program 'git')) {
+        Stop-WingetFailed 'Git' $Code $GitPage
     }
     if (-not (Test-Program 'git')) {
         Stop-Install 'Git was installed but cannot be found yet.' @(
@@ -126,10 +178,26 @@ function Install-Uv {
         return
     }
     Say 'Installing uv, the tool that runs Threadline.'
-    # uv's own documented line, in a separate PowerShell so that an "exit" in
-    # its installer cannot close this window. The bypass is for that one
+    # Saved first and run second, in a separate PowerShell so that an "exit" in
+    # uv's installer cannot close this window. The bypass is for that one
     # process only and changes no setting of this computer.
-    & powershell -NoProfile -ExecutionPolicy ByPass -Command "irm $UvInstaller | iex" | Out-Host
+    $UvScript = Join-Path ([IO.Path]::GetTempPath()) "threadline-uv-install-$PID.ps1"
+    try {
+        Save-Download $UvInstaller $UvScript
+    } catch {
+        Stop-Install 'Could not download uv.' @('Check your internet connection, then paste the line again.')
+    }
+    try {
+        & powershell -NoProfile -ExecutionPolicy ByPass -File $UvScript | Out-Host
+        $UvCode = $LASTEXITCODE
+    } finally {
+        Remove-Item $UvScript -ErrorAction SilentlyContinue
+    }
+    if ($UvCode -ne 0) {
+        Stop-Install "The uv installer did not finish (code $UvCode)." @(
+            'Read the lines above for the reason, then paste the line again.'
+        )
+    }
     # The installer adds uv to future windows; this one needs it now.
     $UvFolder = if ($env:UV_INSTALL_DIR) { $env:UV_INSTALL_DIR } else { Join-Path $HOME '.local\bin' }
     $env:Path = "$UvFolder;$env:Path"
@@ -141,36 +209,138 @@ function Install-Uv {
     }
 }
 
+# Answers with the installed GitHub tool's version, or $null when it cannot be read.
+function Get-GitHubCliVersion {
+    $ErrorActionPreference = 'Continue'
+    $Line = & gh --version 2> $null | Select-Object -First 1
+    if ("$Line" -match 'gh version (\d+\.\d+(\.\d+)?)') {
+        return [version] $Matches[1]
+    }
+    return $null
+}
+
+function Test-GitHubCliRecent {
+    $Version = Get-GitHubCliVersion
+    return ($null -ne $Version) -and ($Version -ge $GitHubCliMinimum)
+}
+
 function Install-GitHubCli {
-    if (Test-Program 'gh') {
+    $Installed = Test-Program 'gh'
+    if ($Installed -and (Test-GitHubCliRecent)) {
         Say 'The GitHub tool (gh) is installed.'
         return
     }
-    Say 'Installing the GitHub tool (gh).'
-    if (-not (Install-WithWinget $GitHubCliPackage 'the GitHub tool')) {
-        Stop-Install 'The GitHub tool could not be installed automatically.' @(
-            "Install it by hand from $GitHubCliPage, then paste the line again."
-        )
+    if ($Installed) {
+        Say 'Updating the GitHub tool (gh).'
+        Note "Version $(Get-GitHubCliVersion) is older than the $GitHubCliMinimum that Threadline needs."
+        $Verb = 'upgrade'
+    } else {
+        Say 'Installing the GitHub tool (gh).'
+        $Verb = 'install'
+    }
+    $Code = Invoke-Winget $Verb $GitHubCliPackage 'the GitHub tool' $GitHubCliPage
+    if ($Code -ne 0 -and ($Installed -or -not (Test-Program 'gh'))) {
+        Stop-WingetFailed 'the GitHub tool' $Code $GitHubCliPage
     }
     if (-not (Test-Program 'gh')) {
         Stop-Install 'The GitHub tool was installed but cannot be found yet.' @(
             'Close this window, open PowerShell again, and paste the line again.'
         )
     }
+    if (-not (Test-GitHubCliRecent)) {
+        Stop-Install "The GitHub tool this computer uses is still version $(Get-GitHubCliVersion)." @(
+            "Threadline needs $GitHubCliMinimum or newer. Install the newest from $GitHubCliPage,",
+            'close this window, open PowerShell again, and paste the line again.'
+        )
+    }
+}
+
+# Answers with the permissions of the GitHub sign-in as one text, or $null for a
+# kind of sign-in that does not list them.
+function Get-GitHubScopes {
+    $ErrorActionPreference = 'Continue'
+    $Lines = & gh api --include user 2> $null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+    foreach ($Line in $Lines) {
+        if ("$Line" -imatch '^x-oauth-scopes:\s*(.*)$') {
+            return $Matches[1].Trim()
+        }
+    }
+    return $null
+}
+
+# A sign-in made before this installer asked for the workflow permission cannot
+# save the daily-run file later, so it is topped up now.
+function Confirm-WorkflowPermission {
+    $Scopes = Get-GitHubScopes
+    if ($null -eq $Scopes) {
+        return
+    }
+    if (($Scopes -split '\s*,\s*') -contains $GitHubWorkflowScope) {
+        return
+    }
+    Say 'Your GitHub sign-in needs one more permission, to save the daily-run file.'
+    Note 'A browser window opens: follow what it says.'
+    & gh auth refresh --hostname github.com --scopes $GitHubWorkflowScope
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Install 'The extra GitHub permission was not added.' @(
+            "Run 'gh auth login --scopes $GitHubWorkflowScope' (if you set GH_TOKEN, give that token",
+            "the '$GitHubWorkflowScope' permission), then paste the line again."
+        )
+    }
+}
+
+# Git records a name and an e-mail address with every change, and the set-up
+# saves one change. A new computer has neither, so they are taken from the
+# GitHub account, using GitHub's private no-reply address. Values that are
+# already set are never touched.
+function Confirm-GitIdentity {
+    $ErrorActionPreference = 'Continue'
+    $GitName = "$(& git config user.name 2> $null)".Trim()
+    $GitEmail = "$(& git config user.email 2> $null)".Trim()
+    if ($GitName -and $GitEmail) {
+        return
+    }
+    $AccountJson = (& gh api user 2> $null) -join "`n"
+    $Account = if ($LASTEXITCODE -eq 0 -and $AccountJson) { $AccountJson | ConvertFrom-Json } else { $null }
+    if (-not $Account -or -not $Account.login -or -not $Account.id) {
+        Stop-Install 'Could not read your GitHub account.' @(
+            'Tell git who you are with these two lines (use your own name and e-mail), then paste the line again:',
+            '  git config --global user.name "Your Name"',
+            '  git config --global user.email you@example.com'
+        )
+    }
+    Say 'Git did not know your name or e-mail address, which it needs to save changes.'
+    if (-not $GitName) {
+        $NewName = if ($Account.name) { $Account.name } else { $Account.login }
+        & git config --global user.name $NewName
+        Note "Set your name to ""$NewName"" (from your GitHub account)."
+    }
+    if (-not $GitEmail) {
+        $NewEmail = "$($Account.id)+$($Account.login)@users.noreply.github.com"
+        & git config --global user.email $NewEmail
+        Note "Set your e-mail to $NewEmail, GitHub's private"
+        Note 'address for you; your real address stays hidden.'
+    }
+    Note 'Change either later with: git config --global user.name "New Name"'
 }
 
 function Connect-GitHub {
     if ((Invoke-Quietly 'gh' @('auth', 'status')) -eq 0) {
         Say 'You are signed in to GitHub.'
+        Confirm-WorkflowPermission
     } else {
         Say 'Signing you in to GitHub: a browser window opens, follow what it says.'
-        & gh auth login --hostname github.com --web --git-protocol https
+        & gh auth login --hostname github.com --web --git-protocol https --scopes $GitHubWorkflowScope
         if ($LASTEXITCODE -ne 0) {
             Stop-Install 'The GitHub sign-in did not finish.' @('Paste the line again to retry.')
         }
     }
     # Lets git download and upload your private copy with the same sign-in.
     & gh auth setup-git
+    Confirm-GitIdentity
 }
 
 # Answers with the copy's full name (you/threadline) when it exists on GitHub.
@@ -183,10 +353,55 @@ function Get-ExistingCopy {
     return $null
 }
 
+# Answers with what matters about the repository called "threadline" on this
+# GitHub account, or $null when there is none.
+function Get-CopyFacts {
+    $ErrorActionPreference = 'Continue'
+    $Json = (& gh repo view $CopyName --json nameWithOwner,isPrivate,viewerPermission,templateRepository 2> $null) -join "`n"
+    if ($LASTEXITCODE -ne 0 -or -not $Json) {
+        return $null
+    }
+    return $Json | ConvertFrom-Json
+}
+
 # Tells whether GitHub shows the project's files in the copy.
 function Test-CopyContent([string] $FullName) {
     $Path = "repos/$FullName/contents/backend/pyproject.toml"
     return (Invoke-Quietly 'gh' @('api', $Path, '--silent')) -eq 0
+}
+
+# A repository that already has the name must be this tool's own private copy,
+# or the set-up would put your mail summaries somewhere else. Answers $true when
+# a usable copy exists, $false when there is none, and stops on one that is unfit.
+function Test-ExistingCopy {
+    $Facts = Get-CopyFacts
+    if (-not $Facts) {
+        return $false
+    }
+    $Name = $Facts.nameWithOwner
+    if (-not $Facts.isPrivate) {
+        Stop-Install "$Name on GitHub is public." @(
+            'Your copy of Threadline must be private, because it will hold your job-search data.',
+            'Make it private (on GitHub: Settings, then Danger Zone, then Change visibility),',
+            'or rename it so a new copy can be made, then paste the line again.'
+        )
+    }
+    if ($Facts.viewerPermission -ne 'ADMIN') {
+        Stop-Install "You are not the owner of $Name (your access: $($Facts.viewerPermission))." @(
+            'The set-up needs to change its settings and secrets.',
+            'Rename or remove that repository, or sign in to GitHub as its owner, then paste the line again.'
+        )
+    }
+    $Template = $Facts.templateRepository
+    $TemplateName = if ($Template) { "$($Template.owner.login)/$($Template.name)" } else { '' }
+    if ($TemplateName -ne $TemplateRepository -and -not (Test-CopyContent $Name)) {
+        Stop-Install "$Name is not a copy of Threadline." @(
+            'A repository with the same name already exists on your GitHub account.',
+            'Rename it on GitHub (Settings, then Repository name), or delete it if you do not need it,',
+            'then paste the line again.'
+        )
+    }
+    return $true
 }
 
 # GitHub fills a copy made from the template in the background, so a clone
@@ -207,21 +422,32 @@ function Wait-ForCopy {
     }
 }
 
-function Get-Copy {
-    if (Test-Path (Join-Path $CopyFolder '.git')) {
-        Say "Your copy is already at $CopyFolder; bringing it up to date."
-        & git -C $CopyFolder pull --ff-only
-        if ($LASTEXITCODE -ne 0) {
-            Note 'It could not be updated; carrying on with what is there.'
-        }
+# Brings the copy in a folder up to date, when it is a git folder.
+function Update-Copy([string] $Folder) {
+    Say "Your copy is already at $Folder; bringing it up to date."
+    if (-not (Test-Path (Join-Path $Folder '.git'))) {
         return
     }
-    if (Test-Path $CopyFolder) {
-        Stop-Install "$CopyFolder exists but is not a copy of Threadline." @(
-            'Move or rename that folder, then paste the line again.'
-        )
+    & git -C $Folder pull --ff-only | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        Note 'It could not be updated; carrying on with what is there.'
     }
-    if (Get-ExistingCopy) {
+}
+
+# An earlier version of the set-up kept the copy in ~\tracker. Offers to carry
+# on with it rather than make a second copy that would start from nothing.
+function Test-OlderCopyWanted {
+    if (-not (Test-Path (Join-Path $OlderCopyFolder 'backend\pyproject.toml'))) {
+        return $false
+    }
+    Say "An earlier Threadline set-up is already on this computer, at $OlderCopyFolder."
+    Note 'Using it keeps the settings you saved there; a new copy starts from the beginning.'
+    $Answer = Read-Host '    Use the earlier set-up? [Y/n]'
+    return -not ("$Answer" -match '^\s*[nN]')
+}
+
+function Get-NewCopy {
+    if (Test-ExistingCopy) {
         Say "You already have a copy called '$CopyName' on GitHub; downloading it to $CopyFolder."
     } else {
         Say 'Making your private copy of Threadline on GitHub.'
@@ -238,15 +464,41 @@ function Get-Copy {
     }
 }
 
+# Settles which folder holds the copy (in $State.Folder) and brings it up to date.
+function Get-Copy {
+    if (Test-Path (Join-Path $CopyFolder '.git')) {
+        Update-Copy $CopyFolder
+        return
+    }
+    if (Test-Path $CopyFolder) {
+        Stop-Install "$CopyFolder exists but is not a copy of Threadline." @(
+            'Move or rename that folder, then paste the line again.'
+        )
+    }
+    if (Test-OlderCopyWanted) {
+        $State.Folder = $OlderCopyFolder
+        Update-Copy $OlderCopyFolder
+        return
+    }
+    Get-NewCopy
+}
+
 function Start-Setup {
-    Say "Installing Threadline's parts."
-    Set-Location (Join-Path $CopyFolder 'backend')
+    $Folder = $State.Folder
+    if (-not (Test-Path (Join-Path $Folder 'backend\pyproject.toml'))) {
+        Stop-Install "$Folder does not hold Threadline's files." @(
+            'Move or rename that folder, then paste the line again.'
+        )
+    }
+    Say "Installing Threadline's parts. The first time, this can download Python and take a few minutes."
+    Set-Location (Join-Path $Folder 'backend')
     & uv sync
     if ($LASTEXITCODE -ne 0) {
         Stop-Install "Threadline's parts could not be installed." @('Paste the line again to retry.')
     }
     Say 'Starting the guided set-up. From now on it asks you what it needs.'
-    Note "To come back later: open PowerShell, type 'cd ~\threadline\backend', then"
+    $Shown = $Folder.Replace($HOME, '~')
+    Note "To come back later: open PowerShell, type 'cd $Shown\backend', then"
     Note "'uv run tracker setup'."
     & uv run tracker setup
 }

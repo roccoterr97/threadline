@@ -1,12 +1,19 @@
 # Builds the dashboard on every push to main and publishes it as two files of a rolling GitHub
-# Release named "latest": dashboard.zip (the built site, with Netlify's
-# _headers and _redirects, and no config.js) and dashboard.zip.sha256.
-# `tracker setup dashboard` downloads them, checks the checksum, adds the
-# owner's config.js and publishes the result on Netlify, so nobody needs
-# Node.js to publish their dashboard.
+# Release named "latest": dashboard.zip (the built site, with no config.js) and
+# dashboard.zip.sha256. `tracker setup dashboard` downloads them, checks the checksum, adds the
+# owner's config.js and publishes the result on Netlify, so nobody needs Node.js to publish their
+# dashboard.
 #
 # It runs only in a public repository (the template, or a public fork): an
 # owner's private copy has nothing to publish, and the set-up never reads from it.
+#
+# Two jobs, so that no code from npm ever runs next to a token that can write:
+#   build    installs the npm packages and builds; it can only read the repository, and the
+#            checkout keeps no token on disk.
+#   publish  receives the zip, never installs or runs anything from the project, signs the
+#            zip's build provenance and is the only job allowed to write the release.
+#
+# Every action is pinned to a full commit; the comment names the release it is.
 name: Dashboard release
 
 on:
@@ -22,21 +29,23 @@ concurrency:
   group: dashboard-release
   cancel-in-progress: false
 
+env:
+  RELEASE_TAG: latest
+  ARCHIVE: dashboard.zip
+
 jobs:
-  release:
-    name: Build and publish dashboard.zip
+  build:
+    name: Build dashboard.zip
     if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      # Creating the release, uploading its files and moving its tag.
-      contents: write
-    env:
-      RELEASE_TAG: latest
-      ARCHIVE: dashboard.zip
+      contents: read
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
           cache: npm
@@ -52,7 +61,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ''
           VITE_DEMO: 'false'
         run: npm run build
-      - name: Check what is published
+      - name: Check what is built
         working-directory: frontend/dist
         run: |
           test -f index.html
@@ -63,11 +72,52 @@ jobs:
             echo "::error::the build must not contain config.js"
             exit 1
           fi
-      - name: Pack
+      # Tells the set-up which commit this is and the newest database file it expects, so it can
+      # warn an owner whose copy of Threadline is older. The set-up reads this file and does not
+      # publish it.
+      - name: Record what it was built from
         run: |
-          (cd frontend/dist && zip -q -r -X "$GITHUB_WORKSPACE/$ARCHIVE" .)
+          latest="$(basename -a supabase/migrations/*.sql | sort | tail -n 1)"
+          test -n "$latest"
+          printf '{"commit":"%s","latestMigration":"%s"}\n' "$GITHUB_SHA" "${latest%.sql}" \
+            > frontend/dist/build-info.json
+          cat frontend/dist/build-info.json
+      - name: Pack
+        run: (cd frontend/dist && zip -q -r -X "$GITHUB_WORKSPACE/$ARCHIVE" .)
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: dashboard
+          path: ${{ env.ARCHIVE }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # Creating the release, uploading its files and moving its tag.
+      contents: write
+      # Signing the build's provenance, and storing it.
+      id-token: write
+      attestations: write
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: dashboard
+      - name: Checksum
+        run: |
           sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
           cat "$ARCHIVE.sha256"
+      # Signs a statement "this workflow, on this commit, built this file". The set-up checks it
+      # with `gh attestation verify`, which the checksum alone cannot do: it only shows the
+      # download is whole, not who built it.
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ env.ARCHIVE }}
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}

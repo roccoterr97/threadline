@@ -14,7 +14,8 @@ calendar if you have one, throws away the noise, and groups what is left into
 one timeline per person. An AI step, run by Claude on your own subscription,
 then judges each person: the status, who is waiting on whom, the next action
 and when it is due. You see the result on a private dashboard, and a short
-summary e-mail reaches you every morning.
+summary e-mail reaches you every morning, when a mailbox that can send it is
+connected (for example Gmail with an app password).
 
 Threadline started as a job-search tool and is being generalised. You pick a
 preset — job search, sales outreach, fundraising, freelance clients or general
@@ -121,7 +122,7 @@ Outlook-only set-ups). The design is described in
 |------|---------------------|------|
 | A computer with macOS, Linux or Windows (10 or 11) | Running the set-up once. After that it can stay off | – |
 | A paid Claude plan (Pro, Max or Team) | The Claude Code session that runs everything and does the judging. The daily run uses part of your plan's usage limits | Your existing subscription; no separate API key |
-| [Claude Code](https://code.claude.com/docs/en/setup), installed (check with `claude --version`) | Making the key that lets GitHub use your plan (`claude setup-token`) | Included in your plan |
+| [Claude Code](https://code.claude.com/docs/en/setup), installed before the set-up asks for your key (check with `claude --version`) | Making the key that lets GitHub use your plan (`claude setup-token`) | Included in your plan |
 | A [GitHub](https://github.com) account | Your private copy of the code, and GitHub Actions, which starts the run every day. The installer adds the [GitHub CLI](https://cli.github.com) (`gh`), which signs you in, makes your copy and saves your settings | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
 | A [Supabase](https://supabase.com) account | The database and the dashboard sign-in. The set-up creates the project with one access token. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
 | A [Netlify](https://www.netlify.com) account | Publishing the dashboard | Free plan |
@@ -133,9 +134,11 @@ Outlook-only set-ups). The design is described in
 | *Only for the Claude cloud route:* a Gmail account connected to Claude | Sending the summary from a Claude cloud routine, when you read Outlook alone | Free |
 
 No other paid service is needed, unless you choose a paid mailbox such as
-Fastmail. Setting it up takes about 10 to 15 minutes of your own time if you
-already have the accounts, plus a few minutes to create any you lack. The first
-summary e-mail arrives about ten minutes after the set-up ends.
+Fastmail. Setting it up takes about 30 to 40 minutes of your own time if you
+already have GitHub, Supabase, Netlify and Claude Code. The first summary
+e-mail follows about ten minutes later, if you have a mailbox that can send it,
+for example Gmail with an app password. Creating those accounts yourself brings
+it to 50 to 70 minutes.
 
 ### LinkedIn: only in the EEA and Switzerland
 
@@ -157,9 +160,10 @@ accounts and click where it says. Keys go into a page in your browser, never
 into the chat. See [`docs/setup-with-claude.md`](./docs/setup-with-claude.md):
 it is one sentence to paste into the Claude app.
 
-**By hand:** create free GitHub, Supabase and Netlify accounts first, and
-install [Claude Code](https://code.claude.com/docs/en/setup). Then paste one
-line into a terminal.
+**By hand:** create free GitHub, Supabase and Netlify accounts first. Then
+paste one line into a terminal. You install
+[Claude Code](https://code.claude.com/docs/en/setup) a little later, just
+before the set-up asks for your Claude key (on Windows, after this line).
 
 On macOS or Linux:
 
@@ -178,14 +182,17 @@ What happens next:
 1. The installer adds uv and the GitHub CLI if they are missing (and Git, on
    Windows), signs you in to GitHub in the browser, makes your private copy
    called `threadline`, downloads it to `~/threadline`, and starts the guided
-   set-up. Pasting the line again carries on where it stopped.
+   set-up. The first time, it may also download Python itself, which can take a
+   few minutes and needs the internet. Pasting the line again carries on where
+   it stopped.
 2. The set-up runs 11 steps. With one Supabase access token it creates your
    project, builds the database, creates your dashboard login and switches
    sign-ups off. It then asks for your categories, time zone and mailbox,
    publishes the dashboard, and asks for the daily time.
 3. Last, it saves your settings and your Claude key on GitHub, starts the first
    run, and checks every connection. The first summary e-mail arrives about ten
-   minutes later, then every day at the time you chose.
+   minutes later, then every day at the time you chose (this needs a mailbox
+   with an app password; with Outlook alone the set-up tells you the options).
 4. LinkedIn, the dashboard's Refresh now button and the Claude cloud route are
    optional extras: `uv run tracker setup extras`, any time. Refresh now also
    switches on the on-time morning start: GitHub often starts its scheduled

@@ -15,6 +15,7 @@ from pydantic import SecretStr
 
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.github_values import offer_to_send
 from tracker.services.setup.models import StepName
 from tracker.shared.constants.setup import (
     LINKEDIN_DEFAULT_COMPANY,
@@ -145,8 +146,12 @@ async def _make_and_save_key(ctx: SetupContext) -> None:
         lambda: io.ask("Your LinkedIn profile address (https://www.linkedin.com/in/...)"),
         values.linkedin_profile,
     )
-    for name, value in ((TOKEN, token), (EXPIRES_ON, expires.isoformat()), (PROFILE, profile)):
-        ctx.write(name, value)
+    changed = [
+        name
+        for name, value in ((TOKEN, token), (EXPIRES_ON, expires.isoformat()), (PROFILE, profile))
+        if ctx.env.get(name) != value and ctx.write(name, value)
+    ]
+    offer_to_send(ctx, changed)
 
 
 async def _check_token(ctx: SetupContext, raw: str) -> str:

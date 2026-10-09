@@ -19,6 +19,12 @@ from tracker.shared.config import REPOSITORY_ROOT
 #: name through GitHub's API, so it must never change.
 WORKFLOW_FILE_NAME: Final[str] = "threadline-run.yml"
 
+#: The names a copy's default branch usually has, when git was not told which it is.
+DEFAULT_BRANCH_NAMES: Final[tuple[str, ...]] = ("main", "master")
+
+#: The command that switches the daily run on GitHub off, as the owner types it.
+DISABLE_WORKFLOW_COMMAND: Final[str] = f"gh workflow disable {WORKFLOW_FILE_NAME}"
+
 #: The workflow's title (its ``name:`` line), as GitHub's Actions tab lists it.
 WORKFLOW_DISPLAY_NAME: Final[str] = "Threadline run"
 
@@ -103,6 +109,41 @@ SCHEDULE_COMMIT_MESSAGE: Final[str] = "Set the daily Threadline time"
 
 #: Where the GitHub command-line tool is explained and downloaded, for every system.
 GITHUB_CLI_PAGE: Final[str] = "https://cli.github.com"
+
+#: What git prints, in some line, when it has no name and address to put on a commit.
+GIT_IDENTITY_MARKERS: Final[tuple[str, ...]] = (
+    "Author identity unknown",
+    "Please tell me who you are",
+    "unable to auto-detect email address",
+)
+
+#: How git words a push that GitHub refuses because the sign-in lacks the
+#: ``workflow`` permission, for an OAuth app or a personal access token alike.
+GIT_WORKFLOW_SCOPE_REFUSAL: Final[str] = (
+    r"refusing to allow .{1,60}? to create or update workflow .*?without .?workflow.? scope"
+)
+
+#: What the owner is told then: how to add the permission, and what to do after.
+GIT_WORKFLOW_SCOPE_MESSAGE: Final[str] = (
+    "GitHub refused the change because your sign-in may not change workflow files. "
+    "Run: gh auth refresh -h github.com -s workflow, then run this step again."
+)
+
+#: The two lines that give git a name and an address, as the owner types them.
+GIT_SET_NAME_COMMAND: Final[str] = 'git config --global user.name "Your Name"'
+GIT_SET_EMAIL_COMMAND: Final[str] = 'git config --global user.email "you@example.com"'
+
+#: The lines git starts with when it says what went wrong; the first of these is shown.
+GIT_ERROR_PREFIXES: Final[tuple[str, ...]] = ("fatal:", "error:")
+
+#: Longest stretch of what git said that is shown to the owner.
+GIT_SAID_MAX_CHARACTERS: Final[int] = 200
+
+#: The oldest GitHub CLI the set-up works with, as (major, minor): before it
+#: ``gh attestation verify`` has no ``--source-ref`` (added in 2.68.0, March
+#: 2025), which the dashboard check needs. ``install.sh`` and ``install.ps1``
+#: repeat this number; a test keeps the three equal.
+GITHUB_CLI_MINIMUM_VERSION: Final[tuple[int, int]] = (2, 68)
 
 #: The name offered for the owner's private copy when the set-up creates it.
 DEFAULT_COPY_NAME: Final[str] = "threadline"

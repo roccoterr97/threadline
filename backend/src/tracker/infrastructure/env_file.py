@@ -3,9 +3,11 @@
 Only the set-up writes to it. Lines it does not touch — comments, blank lines,
 other settings — stay exactly as they were. Every write leaves the file
 readable by you alone on macOS and Linux, even one that was readable by others
-before. Windows keeps a file in your user folder private to you by itself and
-ignores these permissions, so there they change nothing. Lines always end the
-same way, so a ``.env`` moved between computers reads the same everywhere.
+before. Windows ignores these permissions, so there they change nothing: the
+file is private only because it sits inside your user folder, which other
+ordinary accounts cannot open by default (an administrator can). Lines always
+end the same way, so a ``.env`` moved between computers reads the same
+everywhere.
 
 Values are read the way python-dotenv reads them for the settings: when a name
 appears twice, the last line wins, and quotes are removed only when the same

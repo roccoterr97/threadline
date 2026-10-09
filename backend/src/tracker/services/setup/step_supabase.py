@@ -15,6 +15,7 @@ from pydantic import SecretStr
 
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.fresh_project import ask_until_it_answers
 from tracker.services.setup.models import StepName
 from tracker.services.setup.supabase_project import find_or_create_project, read_keys
 from tracker.services.setup.supabase_session import require_supabase_token
@@ -23,6 +24,7 @@ from tracker.shared.constants.setup import (
     SUPABASE_HOST_SUFFIX,
     SUPABASE_PROJECTS_PAGE,
 )
+from tracker.shared.errors import ValidationFailedError
 
 URL: Final[str] = "SUPABASE_URL"
 PUBLISHABLE_KEY: Final[str] = "SUPABASE_ANON_KEY"
@@ -41,17 +43,49 @@ class SupabaseStep:
         return all(ctx.env.get(name) for name in (URL, PUBLISHABLE_KEY, SECRET_KEY))
 
     async def run(self, ctx: SetupContext) -> None:
-        """Find or create the project with the token, or take typed values; check, then save."""
+        """Keep the saved project, or find or create one with the token, or take typed values."""
         io = ctx.io
         io.say("Supabase is the database that keeps your people and conversations.")
+        replacing = await self.is_done(ctx)
+        if replacing and _keep_saved_project(ctx):
+            return
         io.say("You need a free Supabase account; the set-up creates the project in it.")
         if io.confirm("Create the project (or pick an existing one) for you?", default=True):
             url, publishable, secret = await _from_the_account(ctx)
         else:
             url, publishable, secret = await _typed_by_hand(ctx)
         for name, value in ((URL, url), (PUBLISHABLE_KEY, publishable), (SECRET_KEY, secret)):
-            ctx.write(name, value)
+            _save(ctx, name, value, replacing=replacing)
         io.say("Supabase accepted the address and both keys.")
+
+
+def _keep_saved_project(ctx: SetupContext) -> bool:
+    """Say which project is saved and keep it unless a different one is wanted.
+
+    Asked before any token is requested, so keeping the project costs nothing
+    and creates nothing.
+    """
+    saved = ctx.require(URL, StepName.SUPABASE)
+    try:
+        ref = values.project_ref(saved)
+    except ValidationFailedError:
+        ctx.io.say(f"The saved {URL} does not look like a Supabase project, so it is replaced.")
+        return False
+    ctx.io.say(f"Your .env already points to the Supabase project {ref}.")
+    if not ctx.io.confirm("Keep it?", default=True):
+        ctx.io.say("The old project stays in your Supabase account; only .env changes.")
+        return False
+    ctx.io.say("Kept the project; nothing was changed.")
+    return True
+
+
+def _save(ctx: SetupContext, name: str, value: str, *, replacing: bool) -> None:
+    """Save one value; replace a saved one without asking again when a change was chosen."""
+    if not replacing:
+        ctx.write(name, value)
+        return
+    ctx.env.set(name, value)
+    ctx.io.say(f"Saved {name} in .env.")
 
 
 def project_url(project_ref: str) -> str:
@@ -73,8 +107,12 @@ async def _from_the_account(ctx: SetupContext) -> tuple[str, str, str]:
     url = project_url(project.ref)
     publishable, secret = await read_keys(ctx, token, project.ref)
     ctx.io.say(f"Read the address and both keys of '{project.name}'. Neither key is shown.")
-    await _check_publishable(ctx, url, publishable)
-    await _check_secret(ctx, url, secret)
+    hint = (
+        f"It exists, so give it a minute, then run 'uv run tracker setup {StepName.SUPABASE}' "
+        "again and pick it from the list."
+    )
+    await ask_until_it_answers(ctx, lambda: _check_publishable(ctx, url, publishable), hint=hint)
+    await ask_until_it_answers(ctx, lambda: _check_secret(ctx, url, secret), hint=hint)
     return url, publishable, secret
 
 

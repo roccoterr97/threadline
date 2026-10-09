@@ -222,7 +222,9 @@ class SmtpLoginCheck:
         """Connect, encrypt and sign in to the SMTP server, then leave."""
         if self.verify is None:
             return skipped(
-                self.name, "sent through the Gmail connector of the Claude cloud routine"
+                self.name,
+                "sent only through the Gmail connector of the Claude cloud routine; "
+                "a run on GitHub cannot e-mail the summary",
             )
         await self.verify()
         return ok(

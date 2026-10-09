@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import io
+import json
 import zipfile
 
 import pytest
@@ -25,6 +27,7 @@ from tests.setup_world import (
 )
 from tracker.domain.supabase import AuthSettings
 from tracker.infrastructure.web_probe import WebPage
+from tracker.services.database_structure import KNOWN_MIGRATIONS
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.step_dashboard import DashboardStep
 from tracker.shared.constants.dashboard import (
@@ -32,13 +35,18 @@ from tracker.shared.constants.dashboard import (
     DEPLOY_POLL_ATTEMPTS,
     NETLIFY_SIGNUP_PAGE,
     NETLIFY_TOKENS_PAGE,
+    PROVENANCE_SOURCE_REF,
+    SIGNER_WORKFLOW,
     SITE_NAME_ATTEMPTS,
+    TEMPLATE_REPOSITORY,
 )
 from tracker.shared.errors import (
     DashboardDeployError,
     DashboardPackageError,
+    DashboardProvenanceError,
     SourceAuthError,
     SourceRequestRejectedError,
+    SourceUnavailableError,
     ValidationFailedError,
 )
 
@@ -110,7 +118,9 @@ async def test_the_published_files_are_the_release_plus_a_config_with_public_val
 
     files = _published_files(world)
     config = files.pop(CONFIG_FILE).decode()
-    assert files == BUILT_SITE
+    assert files.pop("_headers").startswith(b"/*\n  Content-Security-Policy: default-src 'self'")
+    assert files.pop("_redirects") == b"/* /index.html 200\n"
+    assert files == {name: body for name, body in BUILT_SITE.items() if not name.startswith("_")}
     assert PROJECT_URL in config
     assert GOOD_PUBLISHABLE in config
     assert GOOD_SECRET not in config
@@ -165,6 +175,19 @@ async def test_names_taken_every_time_stop_the_step() -> None:
         await DashboardStep().run(_context(world))
 
     assert len(world.netlify.created) == SITE_NAME_ATTEMPTS
+
+
+async def test_a_refusal_that_is_not_about_the_name_is_shown_and_not_retried() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.netlify.create_refusal = SourceRequestRejectedError(
+        "Netlify refused it (status 422: account_slug is not allowed)"
+    )
+
+    with pytest.raises(SourceRequestRejectedError, match="account_slug is not allowed"):
+        await DashboardStep().run(_context(world))
+
+    assert world.netlify.created == ["threadline-abc123"]
+    assert "NETLIFY_SITE_ID" not in world.env.values
 
 
 async def test_a_deploy_is_waited_for_until_it_is_ready() -> None:
@@ -263,6 +286,154 @@ async def test_a_bad_checksum_stops_before_any_token_is_asked() -> None:
     assert world.netlify.deployed == []
 
 
+async def test_the_download_must_carry_the_template_workflow_s_signed_provenance() -> None:
+    world = _world(FIRST_PUBLISH)
+
+    await DashboardStep().run(_context(world))
+
+    assert world.github.attested == [
+        (
+            world.downloads[ARCHIVE_URL],
+            TEMPLATE_REPOSITORY,
+            SIGNER_WORKFLOW,
+            PROVENANCE_SOURCE_REF,
+        )
+    ]
+    assert "Checked who built it" in world.io.text()
+
+
+async def test_a_download_whose_provenance_is_not_confirmed_publishes_nothing() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.github.attestation_ok = False
+
+    with pytest.raises(DashboardProvenanceError, match="Node.js"):
+        await DashboardStep().run(_context(world))
+
+    assert world.io.secret_prompts == []
+    assert world.netlify.deployed == []
+    assert "DASHBOARD_BASE_URL" not in world.env.values
+
+
+async def test_gh_that_is_not_signed_in_cannot_confirm_it_and_says_so() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.github.signed_in = False
+
+    with pytest.raises(DashboardProvenanceError, match="gh auth login"):
+        await DashboardStep().run(_context(world))
+
+    assert world.github.attested == []
+    assert world.netlify.deployed == []
+
+
+async def test_gh_that_is_not_installed_is_told_apart_from_one_not_signed_in() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.github.is_installed = False
+
+    with pytest.raises(DashboardProvenanceError) as raised:
+        await DashboardStep().run(_context(world))
+
+    assert raised.value.message == (
+        "The ready-made dashboard is checked with the GitHub CLI, which is not installed. "
+        "Install it from https://cli.github.com, sign in with 'gh auth login', and run this "
+        "step again."
+    )
+    assert world.github.attested == []
+    assert world.netlify.deployed == []
+
+
+async def test_a_dashboard_check_that_cannot_run_still_offers_the_local_build() -> None:
+    world = _world([True, False, True, True, GOOD_NETLIFY_TOKEN])
+    world.github.is_installed = False
+    world.local_build.present = True
+
+    await DashboardStep().run(_context(world))
+
+    assert "which is not installed" in world.io.text()
+    assert world.local_build.builds == 1
+
+
+async def test_a_bad_checksum_is_found_before_the_provenance_is_asked_for() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.downloads[CHECKSUM_URL] = b"0" * 64 + b"  dashboard.zip\n"
+
+    with pytest.raises(DashboardPackageError, match="does not match its checksum"):
+        await DashboardStep().run(_context(world))
+
+    assert world.github.attested == []
+
+
+async def test_an_unconfirmed_download_can_be_replaced_by_a_local_build() -> None:
+    world = _world([True, False, True, True, GOOD_NETLIFY_TOKEN])
+    world.github.attestation_ok = False
+    world.local_build.present = True
+    world.local_build.files = {**BUILT_SITE, "index.html": b"<!doctype html>local"}
+
+    await DashboardStep().run(_context(world))
+
+    assert world.local_build.builds == 1
+    assert _published_files(world)["index.html"] == b"<!doctype html>local"
+    assert "could not confirm" in world.io.text()
+
+
+async def test_an_unconfirmed_download_is_not_replaced_when_the_owner_declines() -> None:
+    world = _world([True, False, False])
+    world.github.attestation_ok = False
+    world.local_build.present = True
+
+    with pytest.raises(DashboardProvenanceError):
+        await DashboardStep().run(_context(world))
+
+    assert world.local_build.builds == 0
+    assert world.netlify.deployed == []
+
+
+async def test_a_local_build_needs_no_provenance() -> None:
+    world = _world([True, True, True, GOOD_NETLIFY_TOKEN])
+    world.local_build.present = True
+    world.github.attestation_ok = False
+
+    await DashboardStep().run(_context(world))
+
+    assert world.github.attested == []
+
+
+def _release_built_for(migration: str | None) -> dict[str, bytes]:
+    """The release downloads, with the build info the workflow writes."""
+    info = {"commit": "b" * 40, "latestMigration": migration}
+    return release_downloads({**BUILT_SITE, "build-info.json": json.dumps(info).encode()})
+
+
+async def test_a_dashboard_built_for_a_newer_database_warns_before_it_is_published() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.downloads = _release_built_for("9999_from_the_future")
+
+    await DashboardStep().run(_context(world))
+
+    text = world.io.text()
+    assert "expects a newer database" in text
+    assert "9999_from_the_future" in text
+    assert "update your copy of Threadline first" in text
+    assert "DASHBOARD_BASE_URL" in world.env.values
+    assert "build-info.json" not in _published_files(world)
+
+
+async def test_a_dashboard_built_for_the_database_you_have_says_nothing_about_it() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.downloads = _release_built_for(max(KNOWN_MIGRATIONS))
+
+    await DashboardStep().run(_context(world))
+
+    assert "newer database" not in world.io.text()
+
+
+async def test_a_release_with_no_build_info_is_published_without_a_database_warning() -> None:
+    world = _world(FIRST_PUBLISH)
+
+    await DashboardStep().run(_context(world))
+
+    assert "newer database" not in world.io.text()
+
+
 async def test_a_release_holding_a_path_outside_the_site_is_refused() -> None:
     world = _world(FIRST_PUBLISH)
     world.downloads = release_downloads({**BUILT_SITE, "../outside.js": b"x"})
@@ -289,6 +460,19 @@ async def test_a_secret_key_saved_as_the_public_one_never_reaches_the_page() -> 
         await DashboardStep().run(_context(world))
 
     assert world.netlify.deployed == []
+
+
+async def test_a_legacy_service_role_key_typed_as_the_public_one_never_reaches_the_page() -> None:
+    claims = base64.urlsafe_b64encode(b'{"role":"service_role"}').rstrip(b"=").decode()
+    legacy_service_key = f"eyJhbGciOiJIUzI1NiJ9.{claims}.signature"
+    env = configured_env() | {"SUPABASE_ANON_KEY": legacy_service_key}
+    world = _world(FIRST_PUBLISH, env)
+
+    with pytest.raises(ValidationFailedError, match="secret key"):
+        await DashboardStep().run(_context(world))
+
+    assert world.netlify.deployed == []
+    assert world.io.secret_prompts == []
 
 
 async def test_a_contributor_with_node_can_publish_a_local_build() -> None:
@@ -351,6 +535,52 @@ async def test_saying_no_to_both_stops_the_step_and_saves_nothing() -> None:
 # --- Supabase's sign-in addresses ------------------------------------------------
 
 
+async def test_the_redirect_addresses_already_on_the_list_are_kept_and_the_new_one_added() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.platform.redirect_list = ["http://localhost:5173/**", "https://old.vercel.app/**"]
+
+    await DashboardStep().run(_context(world))
+
+    assert world.platform.auth_changes == [
+        (
+            PROJECT_REF,
+            AuthSettings(
+                site_url=SITE,
+                redirect_urls=(
+                    "http://localhost:5173/**",
+                    "https://old.vercel.app/**",
+                    f"{SITE}/**",
+                ),
+            ),
+        )
+    ]
+    assert f"Added {SITE}/** to Supabase's redirect addresses." in world.io.said
+    assert "The ones you already had were left as they were." in world.io.said
+
+
+async def test_an_address_that_is_already_on_the_list_is_not_added_twice() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.platform.redirect_list = [f"{SITE}/**", "http://localhost:5173/**"]
+
+    await DashboardStep().run(_context(world))
+
+    [(_, settings)] = world.platform.auth_changes
+    assert settings.redirect_urls == (f"{SITE}/**", "http://localhost:5173/**")
+    assert f"Supabase's redirect addresses already hold {SITE}/**." in world.io.said
+
+
+async def test_a_list_that_cannot_be_read_is_not_overwritten() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.platform.redirect_list = ["http://localhost:5173/**"]
+    world.platform.auth_refusal = SourceUnavailableError
+
+    await DashboardStep().run(_context(world))
+
+    assert world.platform.auth_changes == []
+    assert world.platform.redirect_list == ["http://localhost:5173/**"]
+    assert f"  Redirect URLs: add {SITE}/**" in world.io.said
+
+
 async def test_run_alone_it_asks_for_the_supabase_token_once_and_sets_both_addresses() -> None:
     world = _world([*FIRST_PUBLISH, True, GOOD_TOKEN])
 
@@ -376,6 +606,17 @@ async def test_run_alone_without_a_token_the_two_values_are_typed_by_hand() -> N
 async def test_a_refusal_from_supabase_falls_back_to_typing_the_two_values() -> None:
     world = _world(FIRST_PUBLISH)
     world.platform.auth_refusal = SourceRequestRejectedError
+
+    await DashboardStep().run(_context(world))
+
+    assert "Supabase would not change the sign-in addresses" in world.io.text()
+    assert f"  Redirect URLs: add {SITE}/**" in world.io.said
+    assert world.env.values["DASHBOARD_BASE_URL"] == SITE
+
+
+async def test_an_unreachable_supabase_also_falls_back_to_typing_the_two_values() -> None:
+    world = _world(FIRST_PUBLISH)
+    world.platform.auth_refusal = SourceUnavailableError
 
     await DashboardStep().run(_context(world))
 

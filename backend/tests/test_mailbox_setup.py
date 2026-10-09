@@ -425,6 +425,7 @@ async def test_the_smtp_check_is_skipped_on_the_gmail_connector_route() -> None:
 
     assert result.status is CheckStatus.SKIPPED
     assert "Gmail connector" in result.detail
+    assert "a run on GitHub cannot e-mail the summary" in result.detail
 
 
 async def test_a_refused_sending_password_is_a_problem_with_the_fix() -> None:

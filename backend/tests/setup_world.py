@@ -94,6 +94,7 @@ def release_downloads(site: Mapping[str, bytes] | None = None) -> dict[str, byte
     checksum = f"{hashlib.sha256(archive).hexdigest()}  {ARCHIVE_NAME}\n".encode()
     return {ARCHIVE_URL: archive, CHECKSUM_URL: checksum}
 
+
 #: The key the set-up makes for the on-time morning start's timer.
 DAILY_START_KEY = "daily-start-key-0123456789abcdefghijklmnopqrstuv"
 
@@ -104,6 +105,7 @@ class ScriptedIO:
     def __init__(self, answers: list[str | bool] | None = None, *, clipboard: bool = True) -> None:
         self.answers: deque[str | bool] = deque(answers or [])
         self.said: list[str] = []
+        self.defaults: dict[str, str | None] = {}
         self.opened: list[str] = []
         self.copied: list[str] = []
         self.secret_prompts: list[str] = []
@@ -114,6 +116,7 @@ class ScriptedIO:
         self.said.append(text)
 
     def ask(self, prompt: str, *, default: str | None = None) -> str:
+        self.defaults[prompt] = default
         answer = self._next(prompt)
         if answer == "":
             return default or ""
@@ -194,6 +197,8 @@ class FakeAdmin:
     last_started_on: date | None = None
     #: Makes the next database call fail as an outage.
     daily_start_down: bool = False
+    #: How many of the next calls a project that is still waking up does not answer.
+    unanswered_calls: int = 0
 
     def has_columns(self, table: str, columns: str) -> bool:
         return self._marker_present(table, columns)
@@ -214,6 +219,7 @@ class FakeAdmin:
         return migration is not None and migration not in self.present
 
     def check_service_key(self) -> None:
+        self._answers()
         if not self.key_ok:
             message = "Supabase refused the secret key"
             raise SourceAuthError(message)
@@ -261,7 +267,14 @@ class FakeAdmin:
             message = "the database does not have the on-time morning start yet"
             raise DatabaseStructureMissingError(message)
 
+    def _answers(self) -> None:
+        if self.unanswered_calls > 0:
+            self.unanswered_calls -= 1
+            message = "Supabase did not answer"
+            raise DatabaseUnavailableError(message)
+
     def _marker_present(self, table: str, detail: str) -> bool:
+        self._answers()
         for name, marker in KNOWN_MIGRATIONS.items():
             if marker is not None and _describes(marker, table, detail):
                 return name in self.present
@@ -313,13 +326,25 @@ class FakePlatform:
     created_keys: list[tuple[ApiKeyKind, str]] = field(default_factory=list)
     auth_changes: list[tuple[str, AuthSettings]] = field(default_factory=list)
     auth_refusal: type[Exception] | None = None
+    #: The project's Redirect URLs before the set-up touches them.
+    redirect_list: list[str] = field(default_factory=list)
     #: What the public settings answer after sign-ups were switched off, in turn.
     signups_after_change: list[bool] = field(default_factory=lambda: [True])
     #: Whether a migration may be read and applied with the good token.
     migrations_allowed: bool = True
+    #: Whether the token may read the applied files but not run one (a 401 or 403 on the POST).
+    apply_forbidden: bool = False
     organization_reads: int = 0
+    #: How many of the next reads of the public settings a project still waking up misses.
+    unanswered_settings: int = 0
+    #: Whether creating a project is lost to a timeout after Supabase made it.
+    create_times_out: bool = False
 
     async def signups_disabled(self, project_url: str, publishable_key: SecretStr) -> bool:
+        if self.unanswered_settings > 0:
+            self.unanswered_settings -= 1
+            message = "Supabase could not be reached"
+            raise SourceUnavailableError(message)
         if publishable_key.get_secret_value() != GOOD_PUBLISHABLE:
             message = "Supabase did not accept the publishable key"
             raise SourceAuthError(message)
@@ -344,6 +369,9 @@ class FakePlatform:
             NEW_PROJECT_REF, request.name, request.organization_slug, "COMING_UP"
         )
         self.project_list.append(project)
+        if self.create_times_out:
+            message = "Supabase could not be reached"
+            raise SourceUnavailableError(message)
         return project
 
     async def project(self, token: SecretStr, project_ref: str) -> SupabaseProject:
@@ -368,14 +396,23 @@ class FakePlatform:
         value = GOOD_PUBLISHABLE if kind is ApiKeyKind.PUBLISHABLE else GOOD_SECRET
         return SecretStr(value)
 
-    async def configure_auth(
-        self, project_ref: str, token: SecretStr, settings: AuthSettings
-    ) -> None:
+    async def redirect_urls(self, project_ref: str, token: SecretStr) -> tuple[str, ...]:
+        self._refuse_auth(token)
+        return tuple(self.redirect_list)
+
+    def _refuse_auth(self, token: SecretStr) -> None:
         _require_good(token, "the access token for the auth settings")
         if self.auth_refusal is not None:
             message = "Supabase did not accept the access token for the auth settings"
             raise self.auth_refusal(message)
+
+    async def configure_auth(
+        self, project_ref: str, token: SecretStr, settings: AuthSettings
+    ) -> None:
+        self._refuse_auth(token)
         self.auth_changes.append((project_ref, settings))
+        if settings.redirect_urls is not None:
+            self.redirect_list = list(settings.redirect_urls)
         if settings.disable_signup:
             self.signups_off = list(self.signups_after_change)
 
@@ -396,6 +433,9 @@ class FakePlatform:
             self.rejections[name] -= 1
             message = "Supabase refused it (status 400: version already exists)"
             raise SourceRequestRejectedError(message)
+        if self.apply_forbidden:
+            message = "Supabase did not accept the access token"
+            raise SourceAuthError(message)
         self.applied.append(name)
         if self.admin is not None:
             self.admin.present.add(name)
@@ -547,9 +587,27 @@ class FakeGit:
     remotes: dict[str, str] = field(default_factory=dict)
     committed: list[tuple[str, str]] = field(default_factory=list)
     pushed: list[tuple[str, str]] = field(default_factory=list)
+    #: Whether the workflow file differs from the last commit, and whether a
+    #: commit that changed it is not on GitHub yet.
+    uncommitted: bool = False
+    unpushed: bool = False
+    #: Pushes of what was already committed.
+    plain_pushes: int = 0
+    #: What a commit or a push fails with, when set.
+    failure: str | None = None
 
     def origin_url(self) -> str | None:
         return self.origin
+
+    def has_uncommitted(self, path: str) -> bool:
+        return self.uncommitted
+
+    def has_unpushed(self, path: str) -> bool:
+        return self.unpushed
+
+    def push(self) -> None:
+        self._fail_if_asked()
+        self.plain_pushes += 1
 
     def rename_origin(self, new_name: str) -> None:
         assert self.origin is not None
@@ -557,10 +615,16 @@ class FakeGit:
         self.origin = None
 
     def commit(self, path: str, message: str) -> None:
+        self._fail_if_asked()
         self.committed.append((path, message))
 
     def commit_and_push(self, path: str, message: str) -> None:
+        self._fail_if_asked()
         self.pushed.append((path, message))
+
+    def _fail_if_asked(self) -> None:
+        if self.failure is not None:
+            raise SourceUnavailableError(self.failure)
 
 
 @dataclass
@@ -568,6 +632,7 @@ class FakeGitHub:
     """The GitHub CLI, keeping what it was given in memory."""
 
     signed_in: bool = True
+    is_installed: bool = True
     name: str | None = "you/threadline"
     private: bool = True
     admin: bool = True
@@ -581,9 +646,26 @@ class FakeGitHub:
     started: list[tuple[str, str]] = field(default_factory=list)
     enable_refused: bool = False
     start_refused: bool = False
+    #: Whether GitHub confirms a file's build provenance, and each file it was asked about.
+    attestation_ok: bool = True
+    attested: list[tuple[bytes, str, str, str]] = field(default_factory=list)
+    #: Repositories whose workflow was switched off, and whether GitHub refuses that.
+    disabled: list[str] = field(default_factory=list)
+    disable_refused: bool = False
+    #: Whether GitHub refuses to save a secret or a variable.
+    save_refused: bool = False
+
+    def installed(self) -> bool:
+        return self.is_installed
 
     def ready(self) -> bool:
-        return self.signed_in
+        return self.is_installed and self.signed_in
+
+    def verify_attestation(
+        self, archive: bytes, repository: str, signer_workflow: str, source_ref: str
+    ) -> bool:
+        self.attested.append((archive, repository, signer_workflow, source_ref))
+        return self.attestation_ok
 
     def repository(self) -> GitHubRepository | None:
         if self.name is None:
@@ -591,10 +673,17 @@ class FakeGitHub:
         return GitHubRepository(self.name, private=self.private, admin=self.admin)
 
     def set_secret(self, repository: str, name: str, value: SecretStr) -> None:
+        self._refuse_if_asked(name)
         self.secrets[name] = value.get_secret_value()
 
     def set_variable(self, repository: str, name: str, value: str) -> None:
+        self._refuse_if_asked(name)
         self.variables[name] = value
+
+    def _refuse_if_asked(self, name: str) -> None:
+        if self.save_refused:
+            message = f"the GitHub CLI could not save {name}"
+            raise SourceUnavailableError(message)
 
     def secret_names(self, repository: str) -> frozenset[str]:
         if not self.listable:
@@ -639,6 +728,12 @@ class FakeGitHub:
             raise WorkflowNotStartedError(message)
         self.started.append((repository, mode.value))
 
+    def disable_workflow(self, repository: str) -> None:
+        if self.disable_refused:
+            message = f"GitHub would not switch the daily run off - open the page of {repository}"
+            raise SourceUnavailableError(message)
+        self.disabled.append(repository)
+
 
 @dataclass
 class FakeGitHubApi:
@@ -664,6 +759,8 @@ class FakeNetlify:
     #: The states the deploy goes through, in turn; the last one repeats.
     states: list[str] = field(default_factory=lambda: ["ready"])
     error: str | None = None
+    #: Refuses every new site with this error, as Netlify does for a reason other than the name.
+    create_refusal: Exception | None = None
     created: list[str] = field(default_factory=list)
     deployed: list[tuple[str, bytes]] = field(default_factory=list)
     polls: int = 0
@@ -676,6 +773,8 @@ class FakeNetlify:
     async def create_site(self, token: SecretStr, name: str) -> NetlifySite:
         await self.check_token(token)
         self.created.append(name)
+        if self.create_refusal is not None:
+            raise self.create_refusal
         if name in self.taken:
             message = f"Netlify already has a site called {name}"
             raise SiteNameTakenError(message)
@@ -736,7 +835,7 @@ class World:
     git: FakeGit = field(default_factory=FakeGit)
     github: FakeGitHub = field(default_factory=FakeGitHub)
     waits: list[float] = field(default_factory=list)
-    local_zone: str = "Europe/Paris"
+    local_zone: str | None = "Europe/Paris"
     github_api: FakeGitHubApi = field(default_factory=FakeGitHubApi)
     #: What the "Refresh now" function answers each empty POST, in turn; the last repeats.
     function_statuses: list[int] = field(default_factory=lambda: [404])

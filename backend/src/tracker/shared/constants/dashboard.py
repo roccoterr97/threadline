@@ -26,6 +26,26 @@ RELEASE_TAG: Final[str] = "latest"
 ARCHIVE_NAME: Final[str] = "dashboard.zip"
 CHECKSUM_NAME: Final[str] = f"{ARCHIVE_NAME}.sha256"
 
+#: The only workflow whose signed build provenance the set-up accepts for the
+#: dashboard, as ``gh attestation verify --signer-workflow`` names it, and the
+#: only branch it may have run on.
+RELEASE_WORKFLOW_PATH: Final[str] = ".github/workflows/dashboard-release.yml"
+SIGNER_WORKFLOW: Final[str] = f"{TEMPLATE_REPOSITORY}/{RELEASE_WORKFLOW_PATH}"
+PROVENANCE_SOURCE_REF: Final[str] = "refs/heads/main"
+
+#: What the owner is told when the GitHub CLI that checks the download is missing.
+GITHUB_CLI_MISSING_FOR_DASHBOARD: Final[str] = (
+    "The ready-made dashboard is checked with the GitHub CLI, which is not installed. "
+    "Install it from https://cli.github.com, sign in with 'gh auth login', and run this "
+    "step again."
+)
+
+#: What the owner is told when that CLI is installed but not signed in.
+GITHUB_CLI_SIGNED_OUT_FOR_DASHBOARD: Final[str] = (
+    "The GitHub CLI is not signed in, so I cannot check who built the dashboard. "
+    "Run 'gh auth login', then run this step again - nothing was published."
+)
+
 #: Where a release's file is downloaded from; GitHub redirects to its storage.
 RELEASE_ASSET_URL: Final[str] = (
     f"https://github.com/{TEMPLATE_REPOSITORY}/releases/download/{RELEASE_TAG}/{{name}}"
@@ -49,6 +69,18 @@ INDEX_FILE: Final[str] = "index.html"
 #: loads before the dashboard, and the global it sets (``frontend/src/lib/runtimeConfig.ts``).
 CONFIG_FILE: Final[str] = "config.js"
 CONFIG_GLOBAL: Final[str] = "__THREADLINE_CONFIG__"
+
+#: The file the release workflow writes into the zip: the commit the dashboard
+#: was built from and the newest database file that commit holds. The set-up
+#: reads it and does not publish it.
+BUILD_INFO_FILE: Final[str] = "build-info.json"
+
+#: Netlify's two rule files. The set-up writes both itself from fixed copies and
+#: ignores any in the downloaded dashboard: the headers carry the content
+#: security policy that stops the page from sending a sign-in anywhere else.
+HEADERS_FILE: Final[str] = "_headers"
+REDIRECTS_FILE: Final[str] = "_redirects"
+HOSTING_FILES: Final[tuple[str, ...]] = (HEADERS_FILE, REDIRECTS_FILE)
 
 #: The fixed date written into every file of the archive the set-up makes, so
 #: the same files always make the same archive.
@@ -125,3 +157,7 @@ LOCAL_BUILD_ENVIRONMENT: Final[dict[str, str]] = {
 
 #: How Supabase's secret keys begin; one must never reach ``config.js``.
 SUPABASE_SECRET_KEY_PREFIX: Final[str] = "sb_secret_"
+
+#: The ``role`` claims of a legacy (JWT) key that must never reach ``config.js``:
+#: the service-role key and the database's own administrator.
+PRIVILEGED_KEY_ROLES: Final[frozenset[str]] = frozenset({"service_role", "supabase_admin"})

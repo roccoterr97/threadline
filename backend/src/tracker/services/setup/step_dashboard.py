@@ -21,7 +21,7 @@ from tracker.services.setup.supabase_session import require_supabase_token
 from tracker.shared.constants.setup import SUPABASE_URL_CONFIGURATION_PAGE
 from tracker.shared.errors import (
     SourceAuthError,
-    SourceRequestRejectedError,
+    SourceUnavailableError,
     ValidationFailedError,
 )
 
@@ -115,10 +115,11 @@ async def point_supabase_at(ctx: SetupContext, address: str) -> None:
 
     Supabase sends the owner back to its Site URL after a sign-in, and only to
     addresses on its Redirect URLs list. Both are set through Supabase's
-    Management API with the run's access token. The list is replaced, not
-    added to: the project belongs to one owner and one dashboard, so an older
-    address of that dashboard is rightly dropped. When Supabase refuses, or
-    the owner prefers not to use a token, the page opens with the two values.
+    Management API with the run's access token. The Site URL is replaced; the
+    list is read first and the dashboard's address is added to it, so an
+    address the owner already allows (a local one for testing, an older host)
+    stays. When Supabase refuses or cannot be reached, or the owner prefers
+    not to use a token, the page opens with the two values.
 
     Args:
         ctx: The conversation, the ``.env`` file and the services.
@@ -132,20 +133,34 @@ async def point_supabase_at(ctx: SetupContext, address: str) -> None:
 
 
 async def _pointed_through_the_api(ctx: SetupContext, ref: str, address: str) -> bool:
-    """Set the Site URL and Redirect URLs; ``False`` when that did not happen."""
+    """Set the Site URL and add the Redirect URL; ``False`` when that did not happen."""
     if ctx.session.supabase_token is None and not ctx.io.confirm(
         "Point Supabase's sign-in at it with a Supabase access token (used now, not saved)?",
         default=True,
     ):
         return False
-    settings = AuthSettings(site_url=address, redirect_urls=(f"{address}/**",))
+    entry = f"{address}/**"
     try:
         token = await require_supabase_token(ctx)
+        known = await ctx.gateways.platform.redirect_urls(ref, token)
+        urls = known if entry in known else (*known, entry)
+        settings = AuthSettings(site_url=address, redirect_urls=urls)
         await ctx.gateways.platform.configure_auth(ref, token, settings)
-    except (SourceAuthError, SourceRequestRejectedError) as error:
+    except (SourceAuthError, SourceUnavailableError) as error:
         ctx.io.say(f"Supabase would not change the sign-in addresses: {error.message}.")
         return False
+    _say_redirect_change(ctx, entry, known)
     return True
+
+
+def _say_redirect_change(ctx: SetupContext, entry: str, known: tuple[str, ...]) -> None:
+    """Tell which Redirect URL was added, or that it was already there."""
+    if entry in known:
+        ctx.io.say(f"Supabase's redirect addresses already hold {entry}.")
+        return
+    ctx.io.say(f"Added {entry} to Supabase's redirect addresses.")
+    if known:
+        ctx.io.say("The ones you already had were left as they were.")
 
 
 def _point_by_hand(ctx: SetupContext, ref: str, address: str) -> None:

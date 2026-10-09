@@ -311,10 +311,28 @@ something else, or more than three hours old), it still saves them and prints
 `verdicts saved, step not recorded · <reason> · code=…` instead of `step recorded`.
 
 **Rules before the AI** (`domain/relevance.py`, pure functions): a thread already
-marked noise stays noise; a thread the owner answered `yes` or `no` about is
+marked noise stays noise (see "Noise that comes back" below); a thread the owner answered `yes` or `no` about is
 settled; a person with no messages newer than their last assessment is skipped.
 Everything left goes to the assistant with the evidence the rules counted — did
 the owner ever reply, how many completed back-and-forths.
+
+**Noise that comes back** (`domain/noise_return.py`, applied by the collection
+writer through `services/collection/noise_return.py`): the owner's answers win
+over the assistant's, so the assistant's "noise" is not final. A new message
+*from the owner* in a thread the assistant dropped (noise, decided by `ai`)
+sends that thread back to `unsure` and its text is stored again; a new thread
+that the rules do not call noise, filed under a hidden person, does the same
+for the person. A new message from the other side alone changes nothing, so a
+newsletter in a dropped thread stays dropped. The data has no flag saying who
+hid a person, so the rules read it from what the assistant leaves behind: it
+marks every thread it knew of as noise decided by `ai`, whereas the dashboard's
+"Not relevant" button changes only `people.relevance` and leaves live threads.
+A hidden person comes back only when all their threads still on file are the
+assistant's noise (or none are left) and the owner has neither answered a
+relevance question about them nor corrected them. Those people go back to
+`unsure` before the new rows are stored, so the next export picks them up. The
+cost is one more read of the assistant per new thread from a sender it
+dropped, which it can drop again.
 
 **Policy after the AI** (`domain/assessment_policy.py`, pure functions, the
 moment passed in): `gone_quiet` is set by date, not by reading; a missing due

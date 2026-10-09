@@ -320,6 +320,31 @@ class SupabasePlatform:
         )
         _log.info("auth_configured", fields=sorted(body))
 
+    async def redirect_urls(self, project_ref: str, token: SecretStr) -> tuple[str, ...]:
+        """Read the addresses a login link may land on (the project's Redirect URLs).
+
+        Args:
+            project_ref: The project's identifier.
+            token: A personal access token.
+
+        Returns:
+            The addresses, in Supabase's order; empty when the list is empty.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceUnavailableError: If Supabase could not be reached or answered oddly.
+        """
+        response = await self._send(
+            "GET",
+            f"{_project_api(project_ref)}/config/auth",
+            _bearer(token),
+            what="the access token for the auth settings",
+        )
+        listed = _json_object(response).get("uri_allow_list")
+        if not isinstance(listed, str):
+            return ()
+        return tuple(address.strip() for address in listed.split(",") if address.strip())
+
     async def applied_migrations(self, project_ref: str, token: SecretStr) -> frozenset[str]:
         """List the names of the migrations Supabase has recorded as applied.
 

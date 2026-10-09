@@ -78,8 +78,12 @@ def test_the_computers_zone_is_read_from_the_localtime_link(tmp_path: Path) -> N
 def test_a_tz_setting_names_the_zone_in_any_case(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
 
-    assert detect_time_zone(missing, {"TZ": "nonsense"}, not_windows) == "UTC"
     assert detect_time_zone(missing, {"TZ": "asia/tokyo"}, not_windows) == "Asia/Tokyo"
+
+
+def test_a_zone_that_cannot_be_read_is_not_guessed(tmp_path: Path) -> None:
+    assert detect_time_zone(tmp_path / "missing", {"TZ": "nonsense"}, not_windows) is None
+    assert detect_time_zone(tmp_path / "missing", {}, not_windows) is None
 
 
 # --- .env ----------------------------------------------------------------------
@@ -168,9 +172,7 @@ def test_quotes_are_removed_only_when_one_kind_wraps_both_ends(
     "value",
     ["pa ss #word", "  edge spaces  ", '"wrapped"', "plain-value", "abcd efgh ijkl mnop"],
 )
-def test_a_written_value_is_read_back_unchanged_by_both_readers(
-    tmp_path: Path, value: str
-) -> None:
+def test_a_written_value_is_read_back_unchanged_by_both_readers(tmp_path: Path, value: str) -> None:
     path = tmp_path / ".env"
 
     EnvFile(path).set("NAME", value)

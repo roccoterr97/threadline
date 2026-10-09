@@ -96,9 +96,34 @@ PROJECT_READY_WAIT_SECONDS: Final[float] = 5.0
 #: Status Supabase reports once a project can be used.
 PROJECT_HEALTHY_STATUS: Final[str] = "ACTIVE_HEALTHY"
 
+#: Status of a project that was just created and is still being set up.
+PROJECT_STARTING_STATUS: Final[str] = "COMING_UP"
+
+#: Statuses of a project that is, or is about to be, usable. A project left
+#: behind by a run that stopped after creating it is in one of these.
+PROJECT_REUSABLE_STATUSES: Final[frozenset[str]] = frozenset(
+    {PROJECT_STARTING_STATUS, PROJECT_HEALTHY_STATUS}
+)
+
+#: How a project's status is shown in the list of existing projects.
+PROJECT_STATUS_LABELS: Final[dict[str, str]] = {
+    PROJECT_HEALTHY_STATUS: "running",
+    PROJECT_STARTING_STATUS: "still being set up",
+}
+
+#: How often a project that was just created is asked again when it does not
+#: answer yet (its address can lag a little behind the "healthy" status), and
+#: the seconds between two asks.
+NEW_PROJECT_ANSWER_ATTEMPTS: Final[int] = 6
+NEW_PROJECT_ANSWER_WAIT_SECONDS: Final[float] = 5.0
+
+#: Status of a paused project. A free project is paused after a week without
+#: use and can be restored from its page in the Supabase dashboard.
+PROJECT_PAUSED_STATUS: Final[str] = "INACTIVE"
+
 #: Statuses meaning a project will never come up on its own.
 PROJECT_FAILED_STATUSES: Final[frozenset[str]] = frozenset(
-    {"INIT_FAILED", "REMOVED", "RESTORE_FAILED", "PAUSE_FAILED", "INACTIVE"}
+    {"INIT_FAILED", "REMOVED", "RESTORE_FAILED", "PAUSE_FAILED", PROJECT_PAUSED_STATUS}
 )
 
 #: Names of the API keys the set-up creates when a project has none.

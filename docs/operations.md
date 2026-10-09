@@ -122,10 +122,12 @@ takes about five minutes.
    The set-up checks the key with LinkedIn before it saves anything, and asks
    before replacing the old values.
 3. Put the same two values where the daily run reads them, or it keeps using
-   the old key: run `uv run tracker setup github`, which saves
-   `LINKEDIN_ACCESS_TOKEN` and `LINKEDIN_TOKEN_EXPIRES_ON` on GitHub for you
-   (press Enter when it asks for the Claude key, to keep the one GitHub has,
-   and answer `n` when it offers to start a daily run).
+   the old key. The set-up offers this right after saving: answer yes to
+   `Send them to … on GitHub now?` and it saves `LINKEDIN_ACCESS_TOKEN` and
+   `LINKEDIN_TOKEN_EXPIRES_ON` on GitHub for you. If you answered no, run
+   `uv run tracker setup github` (press Enter when it asks for the Claude key,
+   to keep the one GitHub has, and answer `n` when it offers to start a daily
+   run).
    On the alternative route, update the two in the cloud environment at
    <https://claude.ai/code> instead; `uv run tracker setup cloud` puts each
    value on your clipboard in turn.

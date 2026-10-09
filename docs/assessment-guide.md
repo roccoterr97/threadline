@@ -238,6 +238,13 @@ falsely high one puts a wrong row in front of you every morning.
    read.
 4. **The AI's verdict**, for everything left.
 
+The AI's own "noise" is not final. When you write to someone it threw away, or
+that person starts a new conversation that is not obvious machine mail,
+Threadline puts them back to "unsure" so the AI reads them again. Another
+message from their side in a thread already thrown away does not do that. What
+you decided yourself (hiding someone on the dashboard, a `no`) is never undone
+this way.
+
 ---
 
 ## What the helper never does

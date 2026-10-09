@@ -180,6 +180,10 @@ class PlatformPort(Protocol):
         """Change a project's auth settings; only the fields that are set are sent."""
         ...
 
+    async def redirect_urls(self, project_ref: str, token: SecretStr) -> tuple[str, ...]:
+        """Read the addresses a login link may land on."""
+        ...
+
     async def applied_migrations(self, project_ref: str, token: SecretStr) -> frozenset[str]:
         """List the migrations Supabase has recorded as applied."""
         ...
@@ -258,12 +262,22 @@ class ChoiceStore(Protocol):
 class GitHubPort(Protocol):
     """The GitHub CLI: the repository and its Actions secrets and variables."""
 
+    def installed(self) -> bool:
+        """Tell whether the CLI is on this computer, signed in or not."""
+        ...
+
     def ready(self) -> bool:
         """Tell whether the CLI is installed and signed in."""
         ...
 
     def repository(self) -> GitHubRepository | None:
         """Describe the repository ``origin`` points at, or ``None`` when unknown."""
+        ...
+
+    def verify_attestation(
+        self, archive: bytes, repository: str, signer_workflow: str, source_ref: str
+    ) -> bool:
+        """Tell whether the file's signed build provenance names that workflow and ref."""
         ...
 
     def set_secret(self, repository: str, name: str, value: SecretStr) -> None:
@@ -302,6 +316,10 @@ class GitHubPort(Protocol):
         """Start one run of the Threadline workflow in a mode."""
         ...
 
+    def disable_workflow(self, repository: str) -> None:
+        """Switch the Threadline workflow off, so it stops starting on its schedule."""
+        ...
+
 
 class GitHubApiPort(Protocol):
     """GitHub's REST API, with a token the owner pastes."""
@@ -328,6 +346,18 @@ class GitPort(Protocol):
 
     def commit_and_push(self, path: str, message: str) -> None:
         """Add, commit and push one file."""
+        ...
+
+    def push(self) -> None:
+        """Push what is already committed."""
+        ...
+
+    def has_uncommitted(self, path: str) -> bool:
+        """Tell whether one file differs from the last commit."""
+        ...
+
+    def has_unpushed(self, path: str) -> bool:
+        """Tell whether a commit that changed one file is not on GitHub yet."""
         ...
 
 
@@ -397,9 +427,11 @@ class SetupGateways:
         clock: Today's date, for the LinkedIn expiry date.
         workflow: The GitHub Actions workflow file, which holds the daily time.
         git: Commits and pushes that file, when the owner says yes.
-        github: Saves the Actions secrets and variables with the GitHub CLI.
+        github: Saves the Actions secrets and variables with the GitHub CLI, and
+            checks the dashboard download's signed build provenance.
         sleep: Waits a number of seconds; tests replace it so they never wait.
-        local_time_zone: Names the time zone this computer is set to.
+        local_time_zone: Names the time zone this computer is set to, or ``None``
+            when it cannot tell.
         github_api: Reads the workflow with a token, without starting it.
         refresh_function: Reads the "Refresh now" function's files, entry point first.
         netlify: Netlify's API, which hosts the dashboard.
@@ -425,7 +457,7 @@ class SetupGateways:
     git: GitPort
     github: GitHubPort
     sleep: Callable[[float], Awaitable[None]]
-    local_time_zone: Callable[[], str]
+    local_time_zone: Callable[[], str | None]
     github_api: GitHubApiPort
     refresh_function: Callable[[], dict[str, bytes]]
     netlify: NetlifyPort

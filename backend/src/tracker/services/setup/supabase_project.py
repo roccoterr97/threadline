@@ -25,8 +25,11 @@ from tracker.shared.constants.setup import (
     DEFAULT_REGION_GROUP,
     PROJECT_FAILED_STATUSES,
     PROJECT_HEALTHY_STATUS,
+    PROJECT_PAUSED_STATUS,
     PROJECT_READY_ATTEMPTS,
     PROJECT_READY_WAIT_SECONDS,
+    PROJECT_REUSABLE_STATUSES,
+    PROJECT_STATUS_LABELS,
     PUBLISHABLE_KEY_NAME,
     PUBLISHABLE_KEY_PREFIX,
     REGION_GROUP_BY_ZONE_PREFIX,
@@ -65,7 +68,9 @@ async def find_or_create_project(ctx: SetupContext, token: SecretStr) -> Supabas
         SourceUnavailableError: If Supabase gave up on the project.
     """
     organization = await _choose_organization(ctx, token)
-    existing = await _usable_projects(ctx, token, organization)
+    projects = await _organization_projects(ctx, token, organization)
+    _mention_paused(ctx, projects)
+    existing = _usable(projects)
     project = _pick_existing(ctx, existing) if existing else None
     if project is None:
         project = await _create(ctx, token, organization)
@@ -91,15 +96,18 @@ async def read_keys(ctx: SetupContext, token: SecretStr, project_ref: str) -> tu
     return publishable, secret
 
 
-def region_group_for(zone: str) -> RegionGroup:
+def region_group_for(zone: str | None) -> RegionGroup:
     """Name the region group closest to a time zone.
 
     Args:
-        zone: A time-zone name such as ``Europe/Rome``.
+        zone: A time-zone name such as ``Europe/Rome``, or ``None`` when unknown.
 
     Returns:
-        The group, or the Americas when the zone says nothing about a place.
+        The group, or the Americas when the zone is unknown or says nothing
+        about a place.
     """
+    if zone is None:
+        return DEFAULT_REGION_GROUP
     for prefix, group in REGION_GROUP_BY_ZONE_PREFIX.items():
         if zone.startswith(prefix):
             return group
@@ -130,6 +138,8 @@ async def wait_until_ready(
     if project.status == PROJECT_HEALTHY_STATUS:
         return project
     ctx.io.say("Supabase is setting the project up; this takes one to three minutes.")
+    ctx.io.say("If you stop now (Ctrl-C), it keeps being set up: run this step again and")
+    ctx.io.say("pick it from the list instead of creating another.")
     for _ in range(PROJECT_READY_ATTEMPTS):
         await ctx.gateways.sleep(PROJECT_READY_WAIT_SECONDS)
         try:
@@ -148,8 +158,9 @@ async def wait_until_ready(
             raise SourceUnavailableError(message)
     minutes = int(PROJECT_READY_ATTEMPTS * PROJECT_READY_WAIT_SECONDS // 60)
     message = (
-        f"the project is still being set up after {minutes} minutes - run "
-        f"'uv run tracker setup {StepName.SUPABASE}' again in a while and pick it from the list"
+        f"the project '{project.name}' is still being set up after {minutes} minutes. It is "
+        f"already created, so do not create another: run 'uv run tracker setup "
+        f"{StepName.SUPABASE}' again in a while and pick it from the list"
     )
     raise ValidationFailedError(message)
 
@@ -171,30 +182,78 @@ async def _choose_organization(ctx: SetupContext, token: SecretStr) -> Organizat
     return organizations[number - 1]
 
 
-async def _usable_projects(
+async def _organization_projects(
     ctx: SetupContext, token: SecretStr, organization: Organization
 ) -> tuple[SupabaseProject, ...]:
-    """The organization's projects that can still come up."""
+    """Every project of the organization, whatever its status."""
     return tuple(
         project
         for project in await ctx.gateways.platform.projects(token)
         if project.organization_slug == organization.slug
-        and project.status not in PROJECT_FAILED_STATUSES
     )
+
+
+def _usable(projects: tuple[SupabaseProject, ...]) -> tuple[SupabaseProject, ...]:
+    """The projects that can still come up."""
+    return tuple(project for project in projects if project.status not in PROJECT_FAILED_STATUSES)
+
+
+def _mention_paused(ctx: SetupContext, projects: tuple[SupabaseProject, ...]) -> None:
+    """Name each paused project and how to bring it back; none is offered for use.
+
+    A paused free project is restored in the dashboard and takes a while to
+    come back, so the step does not pick it up directly.
+    """
+    for project in projects:
+        if project.status == PROJECT_PAUSED_STATUS:
+            ctx.io.say(
+                f"'{project.name}' is paused. Restore it in Supabase (open the project and "
+                "click 'Restore project'), then run this step again, or create a new project."
+            )
 
 
 def _pick_existing(
     ctx: SetupContext, projects: tuple[SupabaseProject, ...]
 ) -> SupabaseProject | None:
-    """Offer the existing projects; ``None`` when a new one is wanted."""
+    """Offer the existing projects; ``None`` when a new one is wanted.
+
+    A project named like the one this set-up creates, and not yet or already
+    running, is most likely left by a run that stopped, so it is the default
+    answer: pressing Enter must not create a second one.
+    """
     io = ctx.io
-    io.say(f"Projects already there: {', '.join(project.name for project in projects)}.")
-    if not io.confirm("Use one of them instead of creating a new project?", default=False):
+    left_over = _left_over_by_an_earlier_run(projects)
+    io.say("Projects already there:")
+    _show_numbered(ctx, [_described(project) for project in projects])
+    if left_over is not None:
+        io.say(f"'{left_over.name}' looks like the one an earlier run made.")
+    if not io.confirm(
+        "Use one of them instead of creating a new project?", default=left_over is not None
+    ):
         return None
     if len(projects) == 1:
         return projects[0]
-    number = _ask_for_one(ctx, [project.name for project in projects], "Which one? (number)")
-    return projects[number - 1]
+    default = projects.index(left_over) + 1 if left_over is not None else 1
+    return projects[_ask_number(ctx, len(projects), "Which one? (number)", default) - 1]
+
+
+def _left_over_by_an_earlier_run(projects: tuple[SupabaseProject, ...]) -> SupabaseProject | None:
+    """The first project with the set-up's own name that is running or starting."""
+    return next(
+        (
+            project
+            for project in projects
+            if project.name == SUPABASE_DEFAULT_PROJECT_NAME
+            and project.status in PROJECT_REUSABLE_STATUSES
+        ),
+        None,
+    )
+
+
+def _described(project: SupabaseProject) -> str:
+    """A project's name with its status in plain words."""
+    label = PROJECT_STATUS_LABELS.get(project.status, f"status {project.status}")
+    return f"{project.name} ({label})"
 
 
 async def _create(
@@ -211,7 +270,13 @@ async def _create(
     request = NewProject(
         organization_slug=organization.slug, name=name, region=region, database_password=password
     )
-    project = await ctx.gateways.platform.create_project(token, request)
+    try:
+        project = await ctx.gateways.platform.create_project(token, request)
+    except SourceUnavailableError:
+        io.say("Supabase did not confirm, so a project may already have been created.")
+        io.say("Look at your projects in Supabase and run this step again to pick it,")
+        io.say("instead of creating another.")
+        raise
     io.say(f"Created the project '{name}' ({project.ref}).")
     io.say("Its database password was generated and is not kept: Threadline never needs it.")
     io.say("If you ever do, reset it in the Supabase dashboard (Project Settings > Database).")
@@ -231,11 +296,21 @@ def _choose_region(ctx: SetupContext) -> RegionGroup:
 
 def _ask_for_one(ctx: SetupContext, names: list[str], prompt: str, *, default: int = 1) -> int:
     """Show a numbered list and ask for one number."""
+    _show_numbered(ctx, names)
+    return _ask_number(ctx, len(names), prompt, default)
+
+
+def _show_numbered(ctx: SetupContext, names: list[str]) -> None:
+    """Say each name with its number."""
     for number, name in enumerate(names, start=1):
         ctx.io.say(f"  {number}. {name}")
+
+
+def _ask_number(ctx: SetupContext, count: int, prompt: str, default: int) -> int:
+    """Ask for the number of one of ``count`` items already shown."""
     return ctx.ask_until_valid(
         lambda: ctx.io.ask(prompt, default=str(default)),
-        lambda raw: values.list_number(raw, len(names)),
+        lambda raw: values.list_number(raw, count),
     )
 
 

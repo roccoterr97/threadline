@@ -465,7 +465,9 @@ def test_several_own_interview_entries_read_the_people_on_record_once(
     collect(repositories, settings, clock, [_own_entry(company) for company in companies])
 
     reads = [table for table, operation in fake_client.executed if operation == "select"]
-    assert reads.count("people") == 1
+    # Once for everybody on record, once by the writer to see, for all three
+    # new meetings together, whether anyone hidden as noise has news.
+    assert reads.count("people") == 2
     assert reads.count("organisations") == 1
     # Once for everybody on record, once by the matcher to find the three by address.
     assert reads.count("person_identities") == 2

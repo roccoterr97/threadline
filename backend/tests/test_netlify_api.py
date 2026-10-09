@@ -16,6 +16,7 @@ from tracker.shared.errors import (
     SourceAuthError,
     SourceRequestRejectedError,
     SourceUnavailableError,
+    ValidationFailedError,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -93,6 +94,39 @@ async def test_a_taken_name_has_its_own_error() -> None:
         await api.create_site(TOKEN, "threadline-abc123")
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"errors": {"name": ["has already been taken"]}},
+        {"message": "Validation Failed", "errors": {"subdomain": ["must be unique"]}},
+    ],
+)
+async def test_a_refusal_about_the_name_is_a_taken_name(answer: dict[str, object]) -> None:
+    api = _api(lambda _: httpx.Response(422, json=answer), [])
+
+    with pytest.raises(SiteNameTakenError):
+        await api.create_site(TOKEN, "threadline-abc123")
+
+
+async def test_another_validation_failure_says_what_netlify_found_wrong() -> None:
+    answer = {"message": "Validation Failed", "errors": {"account_slug": ["is not allowed"]}}
+    api = _api(lambda _: httpx.Response(422, json=answer), [])
+
+    with pytest.raises(SourceRequestRejectedError, match="account_slug is not allowed") as raised:
+        await api.create_site(TOKEN, "threadline-abc123")
+
+    assert not isinstance(raised.value, SiteNameTakenError)
+
+
+async def test_a_422_with_no_reason_is_not_taken_for_a_name_clash() -> None:
+    api = _api(lambda _: httpx.Response(422, text="no"), [])
+
+    with pytest.raises(SourceRequestRejectedError, match="status 422") as raised:
+        await api.create_site(TOKEN, "threadline-abc123")
+
+    assert not isinstance(raised.value, SiteNameTakenError)
+
+
 async def test_a_saved_site_is_found_and_a_gone_one_is_none() -> None:
     def answer(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/sites/3970e0fe-site"):
@@ -103,6 +137,31 @@ async def test_a_saved_site_is_found_and_a_gone_one_is_none() -> None:
 
     assert (await api.find_site(TOKEN, "3970e0fe-site")) is not None
     assert (await api.find_site(TOKEN, "deleted-site")) is None
+
+
+@pytest.mark.parametrize(
+    "site_id",
+    ["../user", "a/b", "a?x=1", "", " ", "site id", "%2e%2e", "-leading-dash", "x" * 64],
+)
+async def test_a_site_identifier_that_is_not_one_never_reaches_the_address(site_id: str) -> None:
+    seen: list[httpx.Request] = []
+    api = _api(lambda _: httpx.Response(200, json=SITE_JSON), seen)
+
+    with pytest.raises(ValidationFailedError, match="NETLIFY_SITE_ID"):
+        await api.find_site(TOKEN, site_id)
+    with pytest.raises(ValidationFailedError, match="NETLIFY_SITE_ID"):
+        await api.deploy_zip(TOKEN, site_id, b"zip")
+
+    assert seen == []
+
+
+@pytest.mark.parametrize("site_id", ["3970e0fe-1c2d-4b5a-9e8f-0123456789ab", "threadline-abc123"])
+async def test_a_uuid_or_a_plain_site_name_is_a_site_identifier(site_id: str) -> None:
+    seen: list[httpx.Request] = []
+    api = _api(lambda _: httpx.Response(200, json=SITE_JSON), seen)
+
+    assert await api.find_site(TOKEN, site_id) is not None
+    assert seen[0].url.path.endswith(f"/sites/{site_id}")
 
 
 async def test_a_zip_is_sent_as_the_raw_body_of_a_new_deploy() -> None:

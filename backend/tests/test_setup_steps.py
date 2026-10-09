@@ -217,6 +217,34 @@ async def test_database_refused_twice_goes_by_hand_from_that_file() -> None:
     assert "Carrying on by hand from that file." in world.io.said
 
 
+async def test_database_token_that_can_read_but_not_write_goes_by_hand() -> None:
+    world = make_world([True, GOOD_TOKEN], configured_env())
+    world.admin.present = {"0001_schema", "0002_access_rules"}
+    world.platform.apply_forbidden = True
+    world.io.on_pause = lambda prompt: world.admin.present.update(KNOWN_MIGRATIONS)
+
+    await DatabaseStep().run(world.context())
+
+    assert world.platform.applied == []
+    assert "Supabase did not accept the access token" in world.io.text()
+    assert "Carrying on by hand from that file." in world.io.said
+    assert any(url.endswith(f"/project/{PROJECT_REF}/sql") for url in world.io.opened)
+    assert "The database structure is in place." in world.io.said
+
+
+async def test_database_token_refused_on_the_second_try_goes_by_hand_too() -> None:
+    world = make_world([True, GOOD_TOKEN], configured_env())
+    world.admin.present = {"0001_schema", "0002_access_rules"}
+    world.platform.rejections = {"0003_people_overview": 1}
+    world.platform.apply_forbidden = True
+    world.io.on_pause = lambda prompt: world.admin.present.update(KNOWN_MIGRATIONS)
+
+    await DatabaseStep().run(world.context())
+
+    assert "Carrying on by hand from that file." in world.io.said
+    assert "The database structure is in place." in world.io.said
+
+
 async def test_database_by_hand_asks_again_for_a_file_that_was_not_run() -> None:
     world = make_world([False], configured_env())
     world.admin.present = set(KNOWN_MIGRATIONS) - {"0006_meeting_time"}
@@ -558,6 +586,7 @@ async def test_linkedin_first_connection_opens_each_page_once_in_order() -> None
         GOOD_LINKEDIN,
         "2027-09-01",
         "https://www.linkedin.com/in/you",
+        False,
     ]
     world = make_world(answers)
 
@@ -574,7 +603,7 @@ async def test_linkedin_first_connection_opens_each_page_once_in_order() -> None
 
 
 async def test_linkedin_first_connection_names_each_stage_and_its_guide_part() -> None:
-    world = make_world([True, True, GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE])
+    world = make_world([True, True, GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE, False])
 
     await LinkedInStep().run(world.context())
 
@@ -597,7 +626,7 @@ async def test_linkedin_first_connection_names_each_stage_and_its_guide_part() -
 
 async def test_linkedin_renewal_goes_straight_to_the_key() -> None:
     # The new key and its date, then yes to replacing each saved value.
-    world = make_world([GOOD_LINKEDIN, "2027-09-24", True, True], _saved_linkedin())
+    world = make_world([GOOD_LINKEDIN, "2027-09-24", True, True, False], _saved_linkedin())
 
     await LinkedInStep().run(world.context())
 
@@ -622,6 +651,59 @@ async def test_linkedin_renewal_keeps_the_old_key_unless_you_agree() -> None:
     assert world.env.values == _saved_linkedin()
 
 
+async def test_new_linkedin_settings_are_sent_to_github_after_one_yes() -> None:
+    world = make_world([True, True, GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE, True])
+
+    await LinkedInStep().run(world.context())
+
+    assert world.github.secrets == {
+        "LINKEDIN_ACCESS_TOKEN": GOOD_LINKEDIN,
+        "OWNER_LINKEDIN_PROFILE_URL": _LINKEDIN_PROFILE,
+    }
+    assert world.github.variables == {"LINKEDIN_TOKEN_EXPIRES_ON": "2027-09-01"}
+    assert "  secret LINKEDIN_ACCESS_TOKEN saved" in world.io.said
+    assert GOOD_LINKEDIN not in world.io.text()
+
+
+async def test_declining_leaves_linkedin_off_github_and_names_the_command() -> None:
+    world = make_world([True, True, GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE, False])
+
+    await LinkedInStep().run(world.context())
+
+    assert world.github.secrets == {}
+    assert "To send them later, run: uv run tracker setup github" in world.io.said
+
+
+async def test_without_the_github_cli_the_command_is_named_and_nothing_is_asked() -> None:
+    world = make_world([True, True, GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE])
+    world.github.signed_in = False
+
+    await LinkedInStep().run(world.context())
+
+    assert world.github.secrets == {}
+    assert "To send them later, run: uv run tracker setup github" in world.io.said
+
+
+async def test_with_no_copy_on_github_linkedin_asks_nothing_about_sending() -> None:
+    world = make_world([True, True, GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE])
+    world.git.origin = None
+
+    await LinkedInStep().run(world.context())
+
+    assert world.github.secrets == {}
+    assert not world.io.answers
+
+
+async def test_a_refused_send_names_the_command_and_keeps_the_saved_settings() -> None:
+    world = make_world([True, True, GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE, True])
+    world.github.save_refused = True
+
+    await LinkedInStep().run(world.context())
+
+    assert world.env.values["LINKEDIN_ACCESS_TOKEN"] == GOOD_LINKEDIN
+    assert "To send them later, run: uv run tracker setup github" in " ".join(world.io.said)
+
+
 async def test_linkedin_product_not_available_ends_cleanly_and_saves_nothing() -> None:
     world = make_world([True, False])
     wizard = SetupWizard(world.context(), default_steps())
@@ -640,7 +722,14 @@ async def test_linkedin_product_not_available_ends_cleanly_and_saves_nothing() -
 
 
 async def test_linkedin_stores_a_date_typed_with_a_month_name_as_iso() -> None:
-    answers: list[str | bool] = [True, True, GOOD_LINKEDIN, "24 Sep 2027", _LINKEDIN_PROFILE]
+    answers: list[str | bool] = [
+        True,
+        True,
+        GOOD_LINKEDIN,
+        "24 Sep 2027",
+        _LINKEDIN_PROFILE,
+        False,
+    ]
     world = make_world(answers)
 
     await LinkedInStep().run(world.context())
@@ -656,6 +745,7 @@ async def test_linkedin_asks_again_after_a_date_with_slashes() -> None:
         "03/04/2027",
         "Sep 24, 2027",
         _LINKEDIN_PROFILE,
+        False,
     ]
     world = make_world(answers)
 
@@ -676,7 +766,15 @@ async def test_linkedin_refuses_a_past_expiry_date() -> None:
 
 
 async def test_linkedin_asks_again_after_a_refused_key() -> None:
-    answers: list[str | bool] = [True, True, "bad", GOOD_LINKEDIN, "2027-09-01", _LINKEDIN_PROFILE]
+    answers: list[str | bool] = [
+        True,
+        True,
+        "bad",
+        GOOD_LINKEDIN,
+        "2027-09-01",
+        _LINKEDIN_PROFILE,
+        False,
+    ]
     world = make_world(answers)
 
     await LinkedInStep().run(world.context())
@@ -762,7 +860,7 @@ async def test_dashboard_not_published_as_one_step_names_that_step() -> None:
 
 async def test_cloud_lists_names_and_hosts_but_never_values() -> None:
     env = configured_env() | {"LINKEDIN_ACCESS_TOKEN": GOOD_LINKEDIN, "APP_ENV": "development"}
-    world = make_world([True, True], env)
+    world = make_world([True, True, False], env)
 
     await CloudStep().run(world.context())
 
@@ -777,7 +875,7 @@ async def test_cloud_lists_names_and_hosts_but_never_values() -> None:
 
 
 async def test_cloud_without_a_clipboard_says_so() -> None:
-    world = make_world([True, True], configured_env(), clipboard=False)
+    world = make_world([True, True, False], configured_env(), clipboard=False)
 
     await CloudStep().run(world.context())
 
@@ -937,6 +1035,37 @@ async def test_a_saved_time_zone_in_the_wrong_case_is_put_right() -> None:
     assert world.env.values["OWNER_TIME_ZONE"] == "Asia/Tokyo"
 
 
+async def test_a_zone_the_computer_cannot_name_is_asked_with_no_default() -> None:
+    world = make_world(["Asia/Tokyo", False, ""], configured_env())
+    world.local_zone = None
+
+    await TimeZoneStep().run(world.context())
+
+    assert world.io.defaults["Your time zone"] is None
+    assert "I could not tell your time zone." in world.io.text()
+    assert "Europe/Paris or America/New_York" in world.io.text()
+    assert world.env.values["OWNER_TIME_ZONE"] == "Asia/Tokyo"
+
+
+async def test_an_empty_or_wrong_answer_is_asked_again_when_there_is_no_default() -> None:
+    world = make_world(["", "Paris", "america/new_york", False, ""], configured_env())
+    world.local_zone = None
+
+    await TimeZoneStep().run(world.context())
+
+    assert world.env.values["OWNER_TIME_ZONE"] == "America/New_York"
+    assert world.io.text().count("that is not a time-zone name") == 2
+
+
+async def test_a_known_zone_is_still_offered_as_the_default() -> None:
+    world = make_world(["", False, ""], configured_env())
+
+    await TimeZoneStep().run(world.context())
+
+    assert world.io.defaults["Your time zone"] == "Europe/Paris"
+    assert "I could not tell your time zone." not in world.io.text()
+
+
 async def test_a_saved_time_zone_is_offered_before_the_computers() -> None:
     world = make_world(["", False, ""], configured_env() | {"OWNER_TIME_ZONE": "Asia/Tokyo"})
 
@@ -944,6 +1073,70 @@ async def test_a_saved_time_zone_is_offered_before_the_computers() -> None:
 
     assert world.env.values["OWNER_TIME_ZONE"] == "Asia/Tokyo"
     assert not any(line.startswith("Saved OWNER_TIME_ZONE") for line in world.io.said)
+
+
+async def test_choosing_the_cloud_route_offers_to_switch_the_github_run_off() -> None:
+    world = make_world([True, False, True], configured_env())
+
+    await CloudStep().run(world.context())
+
+    assert world.github.disabled == ["you/threadline"]
+    assert "Switched off." in " ".join(world.io.said)
+
+
+async def test_a_no_leaves_the_github_run_on_and_says_how_to_stop_it_by_hand() -> None:
+    world = make_world([True, False, False], configured_env())
+
+    await CloudStep().run(world.context())
+
+    text = world.io.text()
+    assert world.github.disabled == []
+    assert "choose 'Disable workflow'" in text
+    assert "github.com/you/threadline/actions/workflows/threadline-run.yml" in text
+
+
+async def test_pressing_enter_leaves_the_github_run_on_until_the_routine_has_run() -> None:
+    world = make_world([True, False, ""], configured_env())
+
+    await CloudStep().run(world.context())
+
+    text = world.io.text()
+    assert world.github.disabled == []
+    assert (
+        "Once your Claude routine has run once and the e-mail arrived, switch the GitHub daily "
+        "run off so both don't run: 'gh workflow disable threadline-run.yml' (or answer yes "
+        "here if the routine already runs)."
+    ) in text
+    assert "Switched off." not in text
+
+
+async def test_without_the_github_cli_the_github_run_is_left_to_the_owner() -> None:
+    world = make_world([True, False], configured_env())
+    world.github.signed_in = False
+
+    await CloudStep().run(world.context())
+
+    assert world.github.disabled == []
+    assert "choose 'Disable workflow'" in world.io.text()
+
+
+async def test_a_github_run_that_will_not_switch_off_is_named_with_its_page() -> None:
+    world = make_world([True, False, True], configured_env())
+    world.github.disable_refused = True
+
+    await CloudStep().run(world.context())
+
+    assert "GitHub would not switch the daily run off" in world.io.text()
+
+
+async def test_with_no_copy_on_github_the_cloud_route_says_nothing_about_stopping_it() -> None:
+    world = make_world([True, False], configured_env())
+    world.git.origin = None
+
+    await CloudStep().run(world.context())
+
+    assert "Disable workflow" not in world.io.text()
+    assert world.github.disabled == []
 
 
 async def test_the_cloud_routine_is_the_alternative_and_skipped_by_default() -> None:

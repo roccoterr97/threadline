@@ -25,6 +25,7 @@ from tracker.services.setup.workflow_schedule import (
     WORKFLOW_PATH,
     Schedule,
     offer_push,
+    offer_unsent_change,
     read_schedule,
     show_changes,
     write_schedule,
@@ -52,6 +53,7 @@ class ScheduleStep:
         if after == before:
             ctx.io.say(f"The daily run already starts at {schedule.describe()}. Nothing to change.")
             save_schedule_in_database(ctx, schedule)
+            offer_unsent_change(ctx)
             return
         show_changes(ctx, before, after)
         workflow.write(after)

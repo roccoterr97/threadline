@@ -2,7 +2,8 @@
 
 The time zone decides what "today" is for due dates and the summary, and the
 daily run's time is read in it. The computer's own zone is offered, so keeping
-it is usually enough. The name is optional: it helps only when your
+it is usually enough; when the computer cannot name its zone, nothing is offered
+and the owner types it. The name is optional: it helps only when your
 addresses do not spell it (``jd123@`` rather than ``sam.rivera@``).
 
 A new zone is also written into the GitHub Actions workflow's ``timezone``
@@ -22,6 +23,7 @@ from tracker.services.setup.workflow_schedule import (
     WORKFLOW_PATH,
     Schedule,
     offer_push,
+    offer_unsent_change,
     read_schedule,
     show_changes,
     write_schedule,
@@ -31,6 +33,13 @@ from tracker.shared.time_zones import canonical_zone_name
 
 OWNER_TIME_ZONE: Final[str] = "OWNER_TIME_ZONE"
 OWNER_DISPLAY_NAME: Final[str] = "OWNER_DISPLAY_NAME"
+TIME_ZONE_PROMPT: Final[str] = "Your time zone"
+TIME_ZONE_OFFER_NOTICE: Final[str] = (
+    "The one this computer uses is offered; keep it unless it is wrong."
+)
+TIME_ZONE_UNKNOWN_NOTICE: Final[str] = (
+    "I could not tell your time zone. Type it, for example Europe/Paris or America/New_York."
+)
 
 
 class TimeZoneStep:
@@ -46,7 +55,7 @@ class TimeZoneStep:
     async def run(self, ctx: SetupContext) -> None:
         """Ask the zone, offering the computer's, then the optional name."""
         ctx.io.say("Dates are read in your time zone: what 'today' is, and when the daily")
-        ctx.io.say("run starts. The one this computer uses is offered; keep it unless it is wrong.")
+        ctx.io.say("run starts.")
         zone = ask_time_zone(ctx)
         _follow_in_workflow(ctx, zone)
         _ask_display_name(ctx)
@@ -63,8 +72,9 @@ def ask_time_zone(ctx: SetupContext) -> str:
     """
     saved = saved_time_zone(ctx)
     offered = saved or ctx.gateways.local_time_zone()
+    ctx.io.say(TIME_ZONE_UNKNOWN_NOTICE if offered is None else TIME_ZONE_OFFER_NOTICE)
     zone = ctx.ask_until_valid(
-        lambda: ctx.io.ask("Your time zone", default=offered), values.time_zone
+        lambda: ctx.io.ask(TIME_ZONE_PROMPT, default=offered), values.time_zone
     )
     if zone != saved:
         ctx.env.set(OWNER_TIME_ZONE, zone)
@@ -108,7 +118,10 @@ def _follow_in_workflow(ctx: SetupContext, zone: str) -> None:
     except FileNotFoundError:
         return
     current = read_schedule(before)
-    if current is None or current.zone == zone:
+    if current is None:
+        return
+    if current.zone == zone:
+        offer_unsent_change(ctx)
         return
     schedule = Schedule(current.at, zone)
     try:

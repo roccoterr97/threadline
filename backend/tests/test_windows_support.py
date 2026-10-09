@@ -6,6 +6,7 @@ so these tests give the same result on any computer.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -78,6 +79,29 @@ def test_a_windows_zone_name_becomes_the_standard_name(windows_name: str, expect
     assert zone_from_windows_name(windows_name) == expected
 
 
+@pytest.mark.parametrize(
+    ("windows_name", "expected"),
+    [
+        ("Aleutian Standard Time", "America/Adak"),
+        ("Yukon Standard Time", "America/Whitehorse"),
+        ("Sudan Standard Time", "Africa/Khartoum"),
+        ("Russia Time Zone 3", "Europe/Samara"),
+        ("Qyzylorda Standard Time", "Asia/Qyzylorda"),
+        ("Tonga Standard Time", "Pacific/Tongatapu"),
+        ("Dateline Standard Time", "Etc/GMT+12"),
+        ("UTC+12", "Etc/GMT-12"),
+    ],
+)
+def test_the_table_covers_the_zones_windows_added_later(windows_name: str, expected: str) -> None:
+    assert zone_from_windows_name(windows_name) == expected
+
+
+def test_the_table_has_a_name_for_every_zone_windows_offers() -> None:
+    # CLDR's windowsZones lists 139 Windows zones with a territory-001 entry
+    # (plus the retired Kamchatka name kept here).
+    assert len(WINDOWS_TO_IANA) >= 139
+
+
 def test_an_unknown_or_empty_windows_zone_name_has_no_standard_name() -> None:
     assert zone_from_windows_name("Mars Standard Time") is None
     assert zone_from_windows_name("") is None
@@ -102,9 +126,27 @@ def test_windows_is_asked_only_when_tz_and_the_link_say_nothing(tmp_path: Path) 
     assert asked == [True]
 
 
-def test_an_unknown_windows_zone_falls_back_to_utc(tmp_path: Path) -> None:
-    assert detect_time_zone(tmp_path / "missing", {}, lambda: "Mars Standard Time") == "UTC"
-    assert detect_time_zone(tmp_path / "missing", {}, lambda: "") == "UTC"
+def test_an_unknown_windows_zone_is_not_guessed(tmp_path: Path) -> None:
+    assert detect_time_zone(tmp_path / "missing", {}, lambda: "Mars Standard Time") is None
+    assert detect_time_zone(tmp_path / "missing", {}, lambda: "") is None
+
+
+def test_a_windows_zone_missing_from_the_table_is_logged_by_name(tmp_path: Path) -> None:
+    with capture_logs() as logs:
+        detect_time_zone(tmp_path / "missing", {}, lambda: "Mars Standard Time")
+        detect_time_zone(tmp_path / "missing", {}, lambda: "")
+
+    assert [(log["event"], log["windows_zone"]) for log in logs] == [
+        ("windows_zone_unknown", "Mars Standard Time")
+    ]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="tzutil exists only on Windows")
+def test_the_real_windows_zone_maps_to_a_known_standard_zone() -> None:
+    windows_name = read_windows_zone()
+
+    assert windows_name != ""
+    assert zone_from_windows_name(windows_name) is not None
 
 
 def test_tzutil_is_asked_for_the_zone(monkeypatch: pytest.MonkeyPatch) -> None:

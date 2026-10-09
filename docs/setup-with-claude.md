@@ -5,9 +5,13 @@ set-up for you. You create a few free accounts and click where it tells you;
 Claude does everything that happens in the terminal. Keys are typed by you
 into a page in your browser, never into the chat.
 
-It takes well under an hour, most of it creating the accounts. You need a Mac
-or a Linux computer and a paid Claude plan (Pro, Max or Team). On Windows, use
-the one-line install in [part 1 of the guide](setup-your-accounts.md#1-install-threadline-one-line)
+It takes about 30 to 40 minutes of your own time if you already have GitHub,
+Supabase and Netlify accounts. The first summary e-mail follows about ten
+minutes later, if you have a mailbox that can send it, for example Gmail with
+an app password. Creating the accounts as you go brings it to 50 to 70 minutes.
+You need a Mac or a Linux computer and a paid Claude plan (Pro, Max or Team).
+On Windows, use the one-line install in
+[part 1 of the guide](setup-your-accounts.md#1-install-threadline-one-line)
 instead: Claude can still answer your questions along the way.
 
 ## 1. Install the Claude app

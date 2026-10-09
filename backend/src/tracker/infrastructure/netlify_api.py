@@ -9,6 +9,7 @@ travels in the ``Authorization`` header only and is never logged.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any, Final
 
@@ -23,6 +24,7 @@ from tracker.shared.errors import (
     SourceAuthError,
     SourceRequestRejectedError,
     SourceUnavailableError,
+    ValidationFailedError,
 )
 from tracker.shared.http import request_with_retries
 from tracker.shared.logging import get_logger
@@ -33,8 +35,14 @@ _REFUSED_STATUSES: Final[frozenset[int]] = frozenset({401, 403})
 #: Netlify's answer for a site or deploy that does not exist (or is not yours).
 _NOT_FOUND_STATUS: Final[int] = 404
 
-#: Netlify's answer when a new site's name is already used by another site.
-_NAME_TAKEN_STATUS: Final[int] = 422
+#: Netlify's answer to a new site it finds invalid; it is a taken name only when
+#: the answer's ``errors`` are about the name.
+_VALIDATION_STATUS: Final[int] = 422
+_NAME_FIELDS: Final[frozenset[str]] = frozenset({"name", "subdomain"})
+
+#: What a site identifier is made of: Netlify's UUID, or a plain site name.
+#: Anything else (a slash, a dot, a query) would change the address it is put in.
+_SITE_ID: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]{0,62}")
 
 _ZIP_TYPE: Final[str] = "application/zip"
 _HTTPS_PREFIX: Final[str] = "https://"
@@ -102,7 +110,7 @@ class NetlifyApi:
             SourceUnavailableError: If the site could not be created.
         """
         response = await self._exchange("POST", "/sites", token, json_body={"name": name})
-        if response.status_code == _NAME_TAKEN_STATUS:
+        if response.status_code == _VALIDATION_STATUS and _is_about_the_name(response):
             _log.info("netlify_site_name_taken", name=name)
             message = f"Netlify already has a site called {name}"
             raise SiteNameTakenError(message)
@@ -114,10 +122,11 @@ class NetlifyApi:
         """Look a site up by its identifier; ``None`` when it is gone or not the token's.
 
         Raises:
+            ValidationFailedError: If ``site_id`` is not a site identifier.
             SourceAuthError: If Netlify refused the token.
             SourceUnavailableError: If Netlify could not be reached.
         """
-        response = await self._exchange("GET", f"/sites/{site_id}", token)
+        response = await self._exchange("GET", f"/sites/{_site_id(site_id)}", token)
         if response.status_code == _NOT_FOUND_STATUS:
             return None
         return _site(_json_object(_checked(response)))
@@ -126,10 +135,13 @@ class NetlifyApi:
         """Publish a zip of the whole site as the site's new production deploy.
 
         Raises:
+            ValidationFailedError: If ``site_id`` is not a site identifier.
             SourceAuthError: If Netlify refused the token.
             SourceUnavailableError: If the archive could not be handed over.
         """
-        response = await self._exchange("POST", f"/sites/{site_id}/deploys", token, content=archive)
+        response = await self._exchange(
+            "POST", f"/sites/{_site_id(site_id)}/deploys", token, content=archive
+        )
         deploy = _deploy(_json_object(_checked(response)))
         _log.info("netlify_deploy_started", site_id=site_id, deploy_id=deploy.id)
         return deploy
@@ -197,6 +209,17 @@ async def _request(
         raise SourceUnavailableError(message) from error
 
 
+def _site_id(value: str) -> str:
+    """Return a site identifier fit to be part of an address, or refuse it."""
+    if _SITE_ID.fullmatch(value) is None:
+        message = (
+            "NETLIFY_SITE_ID in .env is not a Netlify site identifier - copy the Project ID "
+            "from the site's settings page, or delete the line to make a new site"
+        )
+        raise ValidationFailedError(message)
+    return value
+
+
 def _checked(response: httpx.Response) -> httpx.Response:
     """Return a successful answer, or raise the typed error its status means.
 
@@ -219,16 +242,40 @@ def _checked(response: httpx.Response) -> httpx.Response:
     raise SourceUnavailableError(message)
 
 
-def _error_detail(response: httpx.Response) -> str:
-    """Read Netlify's explanation of a refusal as one short line, or ``""``."""
+def _is_about_the_name(response: httpx.Response) -> bool:
+    """Whether a 422 blames the site's name (``name`` or ``subdomain``), not something else."""
+    return not _NAME_FIELDS.isdisjoint(_field_errors(_payload(response)))
+
+
+def _payload(response: httpx.Response) -> dict[str, Any]:
+    """The answer as a JSON object, or an empty one when it is not."""
     try:
         payload: Any = response.json()
     except ValueError:
-        return ""
-    message = payload.get("message") if isinstance(payload, dict) else None
-    if not isinstance(message, str):
-        return ""
-    return _short(message)
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _field_errors(payload: dict[str, Any]) -> dict[str, str]:
+    """What Netlify says is wrong with each field, as ``{field: reasons}``."""
+    errors = payload.get("errors")
+    if not isinstance(errors, dict):
+        return {}
+    return {
+        str(field): ", ".join(str(reason) for reason in reasons)
+        if isinstance(reasons, list)
+        else str(reasons)
+        for field, reasons in errors.items()
+    }
+
+
+def _error_detail(response: httpx.Response) -> str:
+    """Read Netlify's explanation of a refusal as one short line, or ``""``."""
+    payload = _payload(response)
+    message = payload.get("message")
+    parts = [message] if isinstance(message, str) else []
+    parts.extend(f"{field} {reason}" for field, reason in _field_errors(payload).items())
+    return _short("; ".join(parts))
 
 
 def _short(text: str) -> str:

@@ -19,6 +19,7 @@ from tracker.services.database_structure import (
 )
 from tracker.services.setup import values
 from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
+from tracker.services.setup.fresh_project import ask_until_it_answers
 from tracker.services.setup.models import StepName
 from tracker.services.setup.ports import SetupIO
 from tracker.services.setup.supabase_session import require_supabase_token
@@ -49,7 +50,7 @@ class DatabaseStep:
         """Find what is missing, apply it, then check again."""
         files = ctx.gateways.migrations
         ctx.io.say("The database needs its tables before anything can be stored.")
-        pending = pending_files(files, inspect_structure(files, ctx.admin()))
+        pending = pending_files(files, await _inspect_when_it_answers(ctx))
         if not pending:
             ctx.io.say("Every structure file is already applied.")
             return
@@ -65,6 +66,16 @@ class DatabaseStep:
             message = f"still not applied: {', '.join(report.missing)}"
             raise ValidationFailedError(message)
         ctx.io.say("The database structure is in place.")
+
+
+async def _inspect_when_it_answers(ctx: SetupContext) -> StructureReport:
+    """Look at the structure; a project that was just created gets a few more tries."""
+
+    async def inspect() -> StructureReport:
+        return inspect_structure(ctx.gateways.migrations, ctx.admin())
+
+    hint = f"Give it a minute, then run 'uv run tracker setup {StepName.DATABASE}' again."
+    return await ask_until_it_answers(ctx, inspect, hint=hint)
 
 
 def pending_files(
@@ -124,7 +135,7 @@ async def _apply_automatically(
     try:
         applied = await ctx.gateways.platform.applied_migrations(ref, token)
     except SourceAuthError as error:
-        ctx.io.say(f"{error.message}: it may not apply the structure to this project.")
+        _say_token_may_not_apply(ctx, error)
         ctx.io.say("Carrying on by hand instead.")
         return pending
     sent_before = False
@@ -144,6 +155,9 @@ async def _apply_automatically(
 async def _apply_one(ctx: SetupContext, ref: str, token: SecretStr, item: MigrationFile) -> bool:
     """Send one file, and once more after a short wait if Supabase refused it.
 
+    A token that may read the applied files but not run one (Supabase answers
+    401 or 403) is not retried: it ends the automatic route at once.
+
     Returns:
         Whether the file is now applied.
     """
@@ -153,6 +167,9 @@ async def _apply_one(ctx: SetupContext, ref: str, token: SecretStr, item: Migrat
     except SourceRequestRejectedError as error:
         ctx.io.say(f"Supabase could not apply {item.name}: {error.message}.")
         ctx.io.say("Trying that file once more in a few seconds.")
+    except SourceAuthError as error:
+        _say_token_may_not_apply(ctx, error)
+        return False
     except SourceUnavailableError as error:
         ctx.io.say(f"Supabase could not apply {item.name}: {error.message}.")
         return False
@@ -163,10 +180,18 @@ async def _apply_one(ctx: SetupContext, ref: str, token: SecretStr, item: Migrat
         return True
     try:
         await platform.apply_migration(ref, token, item.name, item.sql())
+    except SourceAuthError as error:
+        _say_token_may_not_apply(ctx, error)
+        return False
     except SourceUnavailableError as error:
         ctx.io.say(f"Supabase could not apply {item.name} again: {error.message}.")
         return False
     return True
+
+
+def _say_token_may_not_apply(ctx: SetupContext, error: SourceAuthError) -> None:
+    """Explain that the token may read the project's files but not change its database."""
+    ctx.io.say(f"{error.message}: it may not change this project's database.")
 
 
 def _guide_by_hand(ctx: SetupContext, ref: str, remaining: tuple[MigrationFile, ...]) -> None:

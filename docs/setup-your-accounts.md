@@ -32,7 +32,7 @@ Do not skip a check. Each step builds on the one before it.
 |------|-----|------|
 | A computer with **macOS, Linux or Windows** (10 or 11) | to run the set-up once. After that it can stay off | – |
 | A paid Claude plan: **Pro, Max or Team** | runs the daily job on GitHub with your own subscription, with your computer off. The daily run uses part of your plan's usage limits, like any other use of Claude | your existing plan |
-| **Claude Code** installed on that computer | makes the key that lets GitHub use your Claude plan (`claude setup-token`). Install it from the official page, <https://code.claude.com/docs/en/setup>, and sign in once | included in your plan |
+| **Claude Code** installed on that computer | makes the key that lets GitHub use your Claude plan (`claude setup-token`). Install it from the official page, <https://code.claude.com/docs/en/setup>, and sign in once. It is needed only at part 6b | included in your plan |
 | A **GitHub** account | keeps your private copy of Threadline and runs it every day (GitHub Actions) | free (2,000 minutes a month for private copies at the time of writing; a month of runs uses about 150–300) |
 | A **Supabase** account | the database that keeps your people and conversations | free plan |
 | A **Netlify** account | publishes the dashboard so it opens on your phone | free plan |
@@ -44,32 +44,36 @@ Do not skip a check. Each step builds on the one before it.
 adds the tools Threadline uses. It needs a little help depending on your
 computer:
 
-- **Windows:** nothing extra. It installs Git and the GitHub tool with
-  **winget**, which comes with Windows 10 and 11.
+- **Windows:** nothing extra on most computers. It installs Git and the GitHub
+  tool with **winget**, Windows' own installer, which is part of the "App
+  Installer" that current Windows 10 and Windows 11 come with. Some Windows 10
+  editions (LTSC, Server, or an older build) do not have it. If the installer
+  says winget is missing, get **App Installer** from the Microsoft Store
+  (<https://aka.ms/getwinget>), or install Git from <https://git-scm.com/download/win>
+  and the GitHub tool from <https://cli.github.com>, then paste the line again.
 - **Mac:** Git must be installed. If it is not, the Mac offers to install it
-  (the "command line developer tools") the first time. To install the GitHub
-  tool by itself, the installer needs **Homebrew** (<https://brew.sh>). Without
-  Homebrew, install the GitHub tool from <https://cli.github.com> first.
+  (the "command line developer tools") the first time. Homebrew is not needed:
+  with Homebrew the installer uses it for the GitHub tool, and without it the
+  installer downloads GitHub's own build for your Mac into the `.local/bin`
+  folder in your home folder and checks it against GitHub's published checksums.
 - **Linux:** Git and curl must be installed. The installer adds the GitHub tool
-  with apt or dnf and may ask for your computer's password.
+  from GitHub's own apt or dnf package source (the one `cli.github.com`
+  describes), because the version your distribution offers is often too old,
+  and may ask for your computer's password. Without apt, dnf or the right to
+  install packages, it downloads GitHub's own build into `~/.local/bin` instead.
+
+The GitHub tool must be version 2.68 or newer. The installer checks the one you
+have and updates it if it is older.
 
 **Create the free accounts first.** Sign up at <https://github.com>,
 <https://supabase.com> and <https://www.netlify.com> before you start, if you
 do not have them yet. You can sign in to Supabase and Netlify with your GitHub
 account. The set-up asks for Supabase in its very first step.
 
-**Check Claude Code now.** Open a terminal (see part 1) and type:
-
-```bash
-claude --version
-```
-
-**✅ Check:** it prints a version number.
-
-**If not:** `command not found` (or "not recognized" on Windows) means Claude
-Code is not installed yet, or the terminal was not reopened after installing it.
-Follow the official install page above, close the terminal, open it again and
-retry. Then type `claude` once and sign in with your Claude plan.
+**Claude Code comes later.** You need it only at part 6b, to make the key that
+lets GitHub use your Claude plan, so install it any time before then (on
+Windows, after the install line in part 1: Claude Code's own installer may want
+Git, which that line adds). Part 6b has the check.
 
 **The sign-in e-mail limit.** You will sign in to the dashboard with a link that
 Supabase e-mails to you. Supabase's built-in e-mail only reaches the address
@@ -77,12 +81,15 @@ your Supabase account was registered with (or members of your Supabase
 organisation), unless you set up your own sending service ("custom SMTP"). Part 3
 explains what that means for you.
 
-**Time.** About 10 to 15 minutes of your own time if you already have the
-accounts, plus a few minutes to create each one you lack. Part of it is
-waiting: a new Supabase project takes one to three minutes to start. Making a
-Gmail app password takes longer if 2-Step Verification is not on yet. The
-first summary e-mail arrives about ten minutes after the set-up ends. You can
-stop at any point: the set-up carries on where you left off.
+**Time.** About 30 to 40 minutes of your own time if you already have GitHub,
+Supabase, Netlify and Claude Code. The first summary e-mail follows about ten
+minutes after the set-up ends, but only if you have a mailbox that can send it,
+for example Gmail with an app password; with Outlook alone the dashboard fills
+and no e-mail comes (part 8c has the Claude cloud route for that). Creating
+those accounts yourself brings it to 50 to 70 minutes. Part of it is waiting: a new Supabase project takes one to
+three minutes to start, and the first download of Python can take a few more.
+Making a Gmail app password takes longer if 2-Step Verification is not on yet.
+You can stop at any point: the set-up carries on where you left off.
 
 **What it costs.** No other paid service is needed. GitHub, Supabase, Netlify,
 Google, Microsoft and LinkedIn are all used on their free plans; the only
@@ -90,7 +97,10 @@ exception would be a paid mailbox you choose yourself, such as Fastmail.
 Free-plan limits change, so check the providers' pricing pages if in doubt.
 
 **Your keys.** The settings the set-up saves are kept in a file called `.env`
-in your Threadline folder, readable only by you. Some keys are never saved at
+in your Threadline folder. On a Mac or Linux only you can read it. On Windows
+the folder is inside your user folder, which other ordinary accounts on the
+computer cannot open by default (an administrator can); the file itself has no
+extra lock. Some keys are never saved at
 all: the set-up uses them and forgets them, and this guide says which. Never
 paste a key into a chat, an e-mail or a document.
 
@@ -123,6 +133,22 @@ GitHub, makes your own **private** copy of Threadline on GitHub (called
 `threadline`), downloads it to a `threadline` folder in your home folder, and
 starts the guided set-up.
 
+**What the install changes on your computer.** Besides those tools and the
+`threadline` folder, three things change, and the installer says so as it goes:
+
+- **uv's own installer adds uv to your PATH.** That is the list of places your
+  terminal looks for programs. On a Mac or Linux it adds a line to your shell's
+  start-up file (such as `.zshrc` or `.profile`); on Windows it adds uv's folder
+  to your user PATH. This is why a new terminal finds `uv`.
+- **`gh auth setup-git` lets git use your GitHub sign-in.** It adds a line to
+  your git settings so that git, when it talks to github.com, asks the GitHub
+  tool for your sign-in instead of asking for a password.
+- **Git's name and e-mail are filled in if they are empty.** Git records both
+  with every change. If you never set them, the installer sets them from your
+  GitHub account: your name, and GitHub's private address
+  (`number+yourname@users.noreply.github.com`), so your real address is not
+  shown. It tells you what it set, and it never changes values you already set.
+
 1. Open a terminal.
    - **Mac:** press ⌘ + Space, type `Terminal`, press Enter.
    - **Windows:** open the Start menu, type `PowerShell`, press Enter.
@@ -144,10 +170,13 @@ starts the guided set-up.
 3. If Windows asks whether to allow an installation, click **Yes**.
 4. When it says `Signing you in to GitHub`, the terminal shows a one-time code.
    Press Enter, and a GitHub page opens in your browser. Sign in, type the code,
-   and click **Authorize**. If the terminal asks whether to authenticate Git
-   with your GitHub credentials, answer yes.
+   and click **Authorize**. The page lists what it lets the GitHub tool do,
+   including "workflow": that one is needed to save the daily-run file later.
+   If the terminal asks whether to authenticate Git with your GitHub
+   credentials, answer yes.
 5. Wait. It makes your copy, downloads it and installs Threadline's parts. This
-   takes a minute or two.
+   takes a minute or two. The first time, installing the parts can also
+   download Python itself, which can take a few minutes more; that is normal.
 
 **✅ Check:** the terminal says `Starting the guided set-up`, then
 `Step 1 of 11: Your Supabase project`. Carry on with part 2.
@@ -158,9 +187,27 @@ pasting the line again is safe: it skips what is already done and carries on.
 - `Git is not installed yet` on a Mac: click **Install** in the window that
   offers the "command line developer tools", wait for it to finish, then paste
   the line again.
-- `The GitHub tool needs Homebrew`: install the GitHub tool from
-  <https://cli.github.com> (or Homebrew from <https://brew.sh>), then paste the
-  line again.
+- `Could not download uv` or `Could not download the GitHub tool`: the internet
+  connection dropped. Check it and paste the line again.
+- `The installation of Git did not finish (code …)` (or the GitHub tool) on
+  Windows: Windows' question "Do you want to allow this app to make changes?"
+  was closed or answered No, or the connection dropped. Paste the line again and
+  click **Yes**. If it keeps failing, install that tool by hand from the address
+  the message gives, then paste the line again.
+- `Windows' installer (winget) is not on this computer`: get **App Installer**
+  from the Microsoft Store (<https://aka.ms/getwinget>), then paste the line
+  again.
+- `The GitHub tool this computer uses is still version …`: the installer could
+  not replace an old GitHub tool. Install the newest from <https://cli.github.com>,
+  open a new terminal, and paste the line again.
+- `… on GitHub is public`, `You are not the owner of …`, or `… is not a copy of
+  Threadline`: your GitHub account already has a repository called `threadline`
+  that is not your own private copy. Rename it on GitHub (Settings, then
+  Repository name), or make it private if it is your copy, then paste the line
+  again.
+- `An earlier Threadline set-up is already on this computer`: you set up an
+  older version in `~/tracker`. Press Enter to carry on with it, or type `n` to
+  make a fresh copy in `~/threadline`.
 - `… was installed but cannot be found yet`: close the terminal, open a new
   one, and paste the line again.
 - `Your copy on GitHub is not ready yet`: wait a minute and paste the line
@@ -171,7 +218,8 @@ pasting the line again is safe: it skips what is already done and carries on.
 
 **Stopping and carrying on.** You can stop the set-up at any time with
 Ctrl + C. Everything it has saved stays saved. To carry on, paste the install
-line again, or type the two lines below.
+line again, or go to the `backend` folder as shown just below and type
+`uv run tracker setup`.
 
 **Where to type the commands.** Every `uv run tracker …` command in this guide
 is typed in a terminal, inside the `backend` folder of your copy. In every new
@@ -195,11 +243,11 @@ where this guide says "press Enter". The page is served to your computer only
 (its address starts with `http://127.0.0.1:`). The terminal still shows what is
 asked, never what you answer. A **Stop for now** link at the bottom ends the
 set-up cleanly; everything saved stays saved. `--browser` works with a single
-step and with the extras too, for example `uv run tracker setup database
---browser`.
+step and with the extras too, for example
+`uv run tracker setup database --browser`.
 
-**✅ Check:** the last line in the terminal, the one before your cursor, ends
-with `backend`.
+**✅ Check:** type `pwd` and press Enter. The folder it prints ends with
+`backend`.
 
 **If not:** `Failed to spawn: tracker` or `No such file or directory` means the
 terminal is in another folder: type `cd ~/threadline/backend` and try again.
@@ -248,11 +296,17 @@ switches off sign-ups. The token is kept in memory while the set-up runs and is
    the terminal. Nothing appears while you paste: that is on purpose.
 7. If you have several Supabase organisations, type the number of the one to
    use.
-8. If you already have projects, it asks `Use one of them instead of creating a
-   new project?`. Press Enter for no, to create a new one.
+8. If you already have projects, it lists them (`1. name (running)`, or
+   `(still being set up)`) and asks `Use one of them instead of creating a new
+   project?`. Press Enter for yes when a project named `threadline` is running
+   or starting (it is most likely the one an earlier try made), otherwise Enter
+   means no and creates a new one. Type the answer you want if the default is
+   not it.
 9. Press Enter to accept the name `threadline`, then press Enter to accept the
    region it offers (the one nearest your time zone), or type another number.
 10. Wait while Supabase starts the project. This takes one to three minutes.
+    Do not press Ctrl-C meanwhile: the project is already being created, and
+    stopping leaves it half set up. The set-up warns you of this.
 
 The project's database password is made up for you and not kept: Threadline
 never needs it. If you ever do, reset it in Supabase under **Project Settings →
@@ -272,9 +326,19 @@ Database**.
   many active projects as it allows. Run `uv run tracker setup supabase` again
   and answer yes to use an existing project, or pause a project you no longer
   use in Supabase first.
-- `the project is still being set up after 5 minutes`: run
-  `uv run tracker setup supabase` again in a while and pick the project from the
-  list.
+- `'name' is paused`: the set-up no longer skips a paused project quietly. Open
+  the project in Supabase and click **Restore project**, then run
+  `uv run tracker setup supabase` again, or let it create a new project.
+- `the project 'name' is still being set up after 5 minutes`: the project is
+  already created, so do not create another. Run `uv run tracker setup supabase`
+  again in a while and pick it from the list (Enter picks it).
+- `a project may already have been created`: the request to create it was lost
+  on the way. Run the step again and look at the list before creating anything.
+- `The project does not answer yet` (a new project that is silent after about
+  30 seconds): wait a minute and run `uv run tracker setup supabase` again.
+- Running `uv run tracker setup supabase` again when `.env` already holds a
+  complete project: it says `Your .env already points to the Supabase project
+  <ref>.` and asks `Keep it?` (Enter keeps it) before it asks for any token.
 
 **If you prefer** to create the project yourself, answer **n** at step 1. The
 set-up then opens your Supabase projects and asks for the project address, the
@@ -312,8 +376,8 @@ naming every file still missing (all of them on a new project). Then you see
 `Applied 0001_schema`, one line per file, and `The database structure is in
 place.`
 
-**If not:** if a file still fails, the set-up switches to the manual route by
-itself: it opens the **SQL Editor**, puts each file on your clipboard in turn,
+**If not:** if a file still fails, or Supabase refuses the token when a file is
+sent, the set-up switches to the manual route by itself: it opens the **SQL Editor**, puts each file on your clipboard in turn,
 and waits. For each file: click **+** for a new query, paste, click **Run**,
 wait for `Success. No rows returned`, and only then press Enter in the
 terminal. Pressing Enter is not enough on its own: the set-up checks that the
@@ -350,7 +414,8 @@ Preferences**.
 read it.` and then `Sign-ups are now switched off: nobody else can create a
 login.` (or `Sign-ups are switched off` if they already were).
 
-**If not:** if Supabase would not change the setting, the set-up opens the page
+**If not:** if Supabase would not change the setting (also after a Supabase server
+error or a timeout), the set-up opens the page
 **Authentication → Sign In / Providers**. Switch off **Allow new users to sign
 up**, click **Save**, and press Enter in the terminal. If the switch keeps
 coming back on, reload the page, switch it off again and click **Save** before
@@ -392,7 +457,9 @@ answered **n** by mistake, run `uv run tracker setup categories` again.
 ### 3c. Your time zone (`tracker setup timezone`)
 
 **What the set-up does for you:** it reads the time zone your computer uses and
-offers it, such as `Your time zone [Europe/Paris]:`. Your time zone decides what
+offers it, such as `Your time zone [Europe/Paris]:`. If it cannot tell (a Windows
+zone name it does not know, for example), it says "I could not tell your time
+zone", offers nothing and waits for you to type it. Your time zone decides what
 "today" is for due dates and the summary, and the daily run's time (part 6) is
 read in it. It is saved as `OWNER_TIME_ZONE` and later sent to GitHub with your
 other settings. When the zone differs from the one in the daily run's workflow
@@ -403,7 +470,8 @@ your copy on GitHub, as in part 6a.
 **What you do:**
 
 1. Press Enter to keep the zone offered, or type yours in the same form
-   (`America/New_York`, `Asia/Tokyo`, `UTC`). Capital letters do not matter:
+   (`America/New_York`, `Asia/Tokyo`, `UTC`). When no zone is offered you must
+   type one; an empty answer is asked again. Capital letters do not matter:
    `europe/rome` is accepted and saved as `Europe/Rome`.
 2. It then asks for your name as people write it (such as `Sam Rivera`). This
    is optional: it helps only when your e-mail address does not spell your name
@@ -703,13 +771,37 @@ as `https://threadline-xxxxxx.netlify.app`. It saves that address so the
 morning e-mail links to it, and points Supabase's sign-in link at it with the
 Supabase token from part 2. Netlify's free plan is enough.
 
+Three things happen behind the scenes that are good to know:
+
+- The GitHub command-line tool must be signed in for the ready-made dashboard,
+  because the set-up uses it to check who built the download. If it is not, the
+  step prints `Run 'gh auth login'`: do that, then run the step again.
+- Before publishing, the step checks that the download was built by this
+  project's own release workflow (GitHub keeps a signed record of that, called a
+  build attestation). If the check fails, **nothing is published**. When Node.js
+  22 or newer is installed, the step then offers to build the dashboard on your
+  computer instead; answer yes.
+- The dashboard's security settings (its security headers and its redirect
+  rule) come from the set-up itself and never from the download.
+
 **✅ Check:** on your phone, open the address, type your e-mail, and click the
 link in the e-mail Supabase sends. The dashboard opens (it is empty until the
 first run).
 
-**If not:** "Email address not authorized" means the address is not the one of
-your Supabase account (see part 3a). A link that opens `localhost` means the
+**If not:** Supabase's own message "Email address not authorized" means the
+address is not the one of your Supabase account (see part 3a). A link that opens `localhost` means the
 sign-in link was not connected: run `uv run tracker setup dashboard` again.
+Running it again keeps the sign-in addresses you already have in Supabase and
+adds the new one; it tells you which it did.
+
+If you set `NETLIFY_SITE_ID` in `.env` yourself, it must be a Netlify site ID or
+a plain site name, nothing else.
+
+If the step warns that the downloaded dashboard is **newer than your copy of
+Threadline**, the dashboard expects database changes your copy does not have
+yet, and it may show errors. The safe way out is to publish the dashboard from
+your own copy with a local build: run the step again and answer yes to the
+local-build question (this needs Node.js 22 or newer).
 
 **Not on Netlify?** If you answer **n** to `Publish it on Netlify now?`, the
 set-up asks whether you publish it somewhere else instead. Answer **y** and
@@ -746,6 +838,14 @@ other mailbox as well in part 4 (Threadline can read both), or use the
 [Claude cloud route](#8c-the-claude-cloud-route-tracker-setup-cloud), which
 sends through Claude's Gmail connector.
 
+The GitHub step checks this before it does anything. If no mailbox with an app
+password is connected, it says so plainly and offers to run the mailbox step
+right then (answer yes and connect Gmail, or another mailbox, as in part 4).
+If you still have none, the first run is **not** offered by default and nothing
+promises you an e-mail: the dashboard is updated every morning, but no summary
+e-mail arrives until you connect a mailbox (`uv run tracker setup mailbox`, then
+`uv run tracker setup github`) or switch to the cloud route.
+
 ### 6a. The daily time (`tracker setup schedule`)
 
 **What the set-up does for you:** it asks what time the run should start, reads
@@ -768,11 +868,19 @@ now on.`
 
 **If not:** if you answered **n**, run the `git` lines the set-up printed
 (they work from any folder of the project), or run
-`uv run tracker setup schedule` again and answer **y**. If the terminal answers
-*Please tell me who you are*, git does not know your name yet: run
-`git config --global user.name "Your Name"` and
-`git config --global user.email you@example.com` once, with your own name and
-address, then run the `git` lines again.
+`uv run tracker setup schedule` again and answer **y**: the set-up notices that
+GitHub does not have your time yet and offers the upload again, even though the
+file itself needs no change. If the set-up stops with `Stopped: git does not
+know who you are, so it cannot save the change`, git has no name to put on the
+change yet. Run these two lines once, with your own name and address:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+Then run `uv run tracker setup` again. Any other reason git gives is shown in
+the same line, after `git said:`.
 
 To use a different time zone later, run `uv run tracker setup timezone`: it
 moves the workflow's zone too, keeping the time.
@@ -783,6 +891,22 @@ The run on GitHub cannot read the `.env` file on your computer, so your
 settings go into your copy's **secrets** (hidden in every log) and
 **variables** (the harmless ones, such as your time zone). GitHub also needs a
 key that lets it use your Claude subscription.
+
+**Check Claude Code first.** The key is made by Claude Code, so open a terminal
+and type:
+
+```bash
+claude --version
+```
+
+**✅ Check:** it prints a version number.
+
+**If not:** `command not found` (or "not recognized" on Windows) means Claude
+Code is not installed yet, or the terminal was not reopened after installing it.
+Install it from the official page, <https://code.claude.com/docs/en/setup> (on
+Windows, the install line from part 1 must have run first, because it adds Git),
+close the terminal, open it again and retry. Then type `claude` once and sign in
+with your Claude plan.
 
 **What you do:**
 
@@ -797,7 +921,11 @@ key that lets it use your Claude subscription.
    prints a long key that starts with `sk-ant-` and lasts one year. Copy all of
    it.
 3. Paste it into the set-up in the first window (nothing shows while you
-   paste) and press Enter.
+   paste) and press Enter. Pressing Enter on an empty line keeps the key
+   GitHub already has, if any (useful when you run the step again). If GitHub
+   has no key, the set-up does not start the first run, because the run would
+   do nothing: it tells you to run `claude setup-token` and then
+   `uv run tracker setup github` again.
 4. When it asks `Save … secrets and … variables in … with the GitHub CLI now?`,
    press Enter for yes.
 
@@ -826,11 +954,19 @@ them.
 yet`, this folder is not linked to your own private copy. Paste the install
 line from part 1 again: it makes the copy and downloads it.
 
+If it stopped with `your GitHub CLI is too old`, the `gh` on your computer
+is from before 2.68 and lacks commands Threadline uses. Install the newest from
+<https://cli.github.com> (or run the install line from part 1 again), then run
+`uv run tracker setup github`. The set-up says this at the first use of `gh`,
+not at the end.
+
 ### 6c. The first run starts by itself
 
-Right after saving, the set-up asks `Start the first daily run on GitHub now?`.
-Press Enter for yes. It makes sure GitHub Actions and the workflow are switched
-on in your copy, then starts the run.
+Right after saving, and once it has seen that GitHub holds your Claude key, the
+set-up asks `Start the first daily run on GitHub now?`. Press Enter for yes. It
+makes sure GitHub Actions and the workflow are switched on in your copy, then
+starts the run. (When no summary e-mail can be sent from GitHub, the question
+says so and Enter means no. You may still answer yes to fill the dashboard.)
 
 **✅ Check:** you see `The first run has started.` with the address of the
 run's page, and `The summary e-mail arrives in about 10 minutes.`
@@ -886,8 +1022,9 @@ GitHub's timer allows; with Refresh now switched on (part 8b), exactly on time.
 
 ## 7. The final check
 
-The set-up ends by saying `Set-up done.`, when the first summary e-mail will
-arrive, the daily time, and how to add the extras. Then it checks every
+The set-up ends by saying `Set-up done.`, how the first run was left (and, when
+it was started and an e-mail can be sent, when the first summary e-mail will
+arrive), the daily time, and how to add the extras. Then it checks every
 connection once and prints one line for each.
 
 You can run the same check yourself at any time:
@@ -918,7 +1055,8 @@ something.
 ## 8. Extras (optional, later)
 
 Three extras can be added at any time. None of them is needed for the morning
-summary, though Refresh now also makes it arrive on time. To go through all three in order, each one skippable:
+summary, though Refresh now also makes it arrive on time. To go through all
+three in order, each one skippable:
 
 ```bash
 uv run tracker setup extras
@@ -1044,19 +1182,19 @@ made, or the wrong year. Type the day it **expires**.
 #### Send it to GitHub
 
 The daily run on GitHub only learns about LinkedIn once the new values are
-there. Run:
+there. Right after saving them, the set-up says so and asks `Send them to … on
+GitHub now?`: press Enter for yes. It saves just the LinkedIn settings, never
+shows a value, and does not ask for the Claude key again.
 
-```bash
-uv run tracker setup github
-```
-
-Press Enter when it asks for the Claude key (GitHub keeps the one it has), press
-Enter to save, and answer **n** when it offers to start a daily run, unless you
-want one now.
+If you answered **n**, or the GitHub tool is not signed in, it prints
+`To send them later, run: uv run tracker setup github`. Run that command, press
+Enter when it asks for the Claude key (GitHub keeps the one it has), press Enter
+to save, and answer **n** when it offers to start a daily run, unless you want
+one now.
 
 **✅ Check:** the list includes `secret LINKEDIN_ACCESS_TOKEN saved`.
 
-**If not:** run `uv run tracker setup github` again and read the line where it
+**If not:** run `uv run tracker setup github` and read the line where it
 stopped.
 
 **When the key expires.** Run `uv run tracker setup linkedin` again. A key is
@@ -1067,8 +1205,9 @@ The steps are in [Renew the LinkedIn key](operations.md#renew-the-linkedin-key).
 
 The dashboard's **Refresh now** button starts one extra, quick update whenever
 you want: it reads only what is new and sends no e-mail. This step switches it
-on, together with the **on-time morning start** described below. It puts a small helper called `refresh-now` into your Supabase project. You
-install nothing: the set-up does it through Supabase's and GitHub's websites.
+on, together with the **on-time morning start** described below. It puts a
+small helper called `refresh-now` into your Supabase project. You install
+nothing: the set-up does it through Supabase's and GitHub's websites.
 It needs two keys, each pasted once (nothing shows while you paste) and never
 saved on your computer.
 
@@ -1141,8 +1280,12 @@ Use this instead of the daily run on GitHub only if GitHub does not suit you,
 most often because you read **only Outlook**, whose mail programs cannot send
 with an app password. A Claude cloud routine sends the summary through Claude's
 Gmail connector, so you also need a Google account with Gmail. Do not run both
-routes: you would get two e-mails. To stop the GitHub run, see "Pause and
-resume" in [`operations.md`](operations.md#pause-and-resume).
+routes: you would get two e-mails. Once your Claude routine has run once and
+the e-mail arrived, switch the GitHub daily run off so both do not run:
+`gh workflow disable threadline-run.yml`. At the end of this part the set-up
+offers to do it for you, with the answer set to no; answer yes only if the
+routine already runs. To do it by hand, or to switch it on again, see "Pause
+and resume" in [`operations.md`](operations.md#pause-and-resume).
 
 Set `SUMMARY_DELIVERY=gmail_connector` in `.env` if you also read a Gmail or
 other IMAP mailbox: a Claude cloud session can most likely reach only web

@@ -6,6 +6,9 @@ path below that folder is the zone's name, such as ``Europe/Paris``. Windows has
 no such link: ``tzutil /g`` prints its own name for the zone instead, such as
 ``Romance Standard Time``, which a table turns into the standard name. Each
 source is simply tried in turn, so no check of which system this is is needed.
+
+When no source gives a zone this computer knows, nothing is guessed: a wrong
+guess offered as the default would shift the daily run's hour unnoticed.
 """
 
 from __future__ import annotations
@@ -24,16 +27,13 @@ from tracker.shared.constants.windows_time_zones import (
     WINDOWS_ZONE_TIMEOUT_SECONDS,
 )
 from tracker.shared.logging import get_logger
-from tracker.shared.time_zones import UTC_ZONE, canonical_zone_name
+from tracker.shared.time_zones import canonical_zone_name
 
 #: The link that names the computer's zone.
 LOCALTIME_LINK: Final[Path] = Path("/etc/localtime")
 
 #: The folder name the link points into.
 ZONEINFO_FOLDER: Final[str] = "zoneinfo"
-
-#: What is offered when the zone cannot be read.
-FALLBACK_ZONE: Final[str] = UTC_ZONE
 
 _log = get_logger(__name__)
 
@@ -69,7 +69,7 @@ def detect_time_zone(
     link: Path = LOCALTIME_LINK,
     environment: Mapping[str, str] | None = None,
     windows_zone: WindowsZoneReader = read_windows_zone,
-) -> str:
+) -> str | None:
     """Name the computer's time zone, such as ``Europe/Paris``.
 
     Args:
@@ -78,7 +78,8 @@ def detect_time_zone(
         windows_zone: Reads the Windows zone's name; replaced in tests.
 
     Returns:
-        The zone's name, or ``UTC`` when it cannot be read.
+        The zone's name, or ``None`` when it cannot be read or is not one this
+        computer knows.
     """
     environment = os.environ if environment is None else environment
     from_setting = environment.get("TZ", "").lstrip(":")
@@ -86,7 +87,19 @@ def detect_time_zone(
         known = canonical_zone_name(candidate)
         if known is not None:
             return known
-    return zone_from_windows_name(windows_zone()) or FALLBACK_ZONE
+    return _zone_from_windows(windows_zone())
+
+
+def _zone_from_windows(windows_name: str) -> str | None:
+    """Turn what Windows said into a zone, logging a name the table lacks.
+
+    An empty answer (no ``tzutil``, so not Windows) is not worth a log line; a
+    name the table lacks means a Windows zone newer than the table.
+    """
+    zone = zone_from_windows_name(windows_name)
+    if zone is None and windows_name.strip():
+        _log.warning("windows_zone_unknown", windows_zone=windows_name.strip())
+    return zone
 
 
 def zone_from_windows_name(windows_name: str) -> str | None:

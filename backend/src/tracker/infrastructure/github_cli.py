@@ -10,8 +10,10 @@ text is read and written as UTF-8 rather than in the system's own encoding.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,6 +25,16 @@ from tracker.shared.constants.github import (
     ACTIONS_PERMISSIONS_API_PATH,
     ALLOWED_ACTIONS_ALL,
     COPY_REMOTE,
+    DEFAULT_BRANCH_NAMES,
+    GIT_ERROR_PREFIXES,
+    GIT_IDENTITY_MARKERS,
+    GIT_SAID_MAX_CHARACTERS,
+    GIT_SET_EMAIL_COMMAND,
+    GIT_SET_NAME_COMMAND,
+    GIT_WORKFLOW_SCOPE_MESSAGE,
+    GIT_WORKFLOW_SCOPE_REFUSAL,
+    GITHUB_CLI_MINIMUM_VERSION,
+    GITHUB_CLI_PAGE,
     WORKFLOW_FILE_NAME,
     WORKFLOW_MODE_INPUT,
     WORKFLOW_PAGE,
@@ -39,6 +51,8 @@ from tracker.shared.logging import get_logger
 COMMAND_TIMEOUT_SECONDS: Final[float] = 60.0
 
 _GH: Final[str] = "gh"
+#: The name the file being verified is given in its temporary folder.
+_ATTESTED_FILE_NAME: Final[str] = "attested-file"
 _GIT: Final[str] = "git"
 
 #: How ``gh`` and ``git`` text is read and written, on every system; a byte
@@ -59,13 +73,33 @@ _ACTIONS_ENABLED_FIELD: Final[str] = "enabled"
 #: What ``gh api --jq .enabled`` prints when they may.
 _TRUE: Final[str] = "true"
 
+#: A web address's sign-in part (``https://user:token@host``), never shown.
+_ADDRESS_SIGN_IN: Final[re.Pattern[str]] = re.compile(r"(?<=://)[^/@\s]+@")
+#: Git's refusal of a push that changes a workflow without the ``workflow`` permission.
+_WORKFLOW_SCOPE_REFUSED: Final[re.Pattern[str]] = re.compile(
+    GIT_WORKFLOW_SCOPE_REFUSAL, re.IGNORECASE | re.DOTALL
+)
+
+#: git's range for what a branch has that the branch it tracks does not.
+_UPSTREAM_RANGE: Final[str] = "@{upstream}..HEAD"
+#: Where git keeps the name of the copy's default branch, once it knows it.
+_REMOTE_HEAD_REF: Final[str] = f"refs/remotes/{COPY_REMOTE}/HEAD"
+
+#: How ``gh --version`` states its version: ``gh version 2.68.0 (2025-03-05)``.
+_GH_VERSION: Final[re.Pattern[str]] = re.compile(r"gh version (\d+)\.(\d+)")
+
 _log = get_logger(__name__)
 
 #: Runs a command: (arguments, text for its standard input) -> (exit status, output).
 Runner = Callable[[Sequence[str], str | None], tuple[int, str]]
 
 
-def run_command(cwd: Path, which: Callable[[str], str | None] = shutil.which) -> Runner:
+def run_command(
+    cwd: Path,
+    which: Callable[[str], str | None] = shutil.which,
+    *,
+    merge_errors: bool = False,
+) -> Runner:
     """Build a runner that starts commands in one folder, with no shell.
 
     The program is looked up first, so ``gh`` also finds ``gh.exe`` on Windows.
@@ -73,6 +107,9 @@ def run_command(cwd: Path, which: Callable[[str], str | None] = shutil.which) ->
     Args:
         cwd: The folder commands run in: the repository.
         which: Finds a program on the machine; replaced in tests.
+        merge_errors: Whether what the program prints as errors is part of the
+            output. git says why it failed there; ``gh``'s output is read as
+            data, so its errors stay out of it.
 
     Returns:
         The runner.
@@ -95,7 +132,8 @@ def run_command(cwd: Path, which: Callable[[str], str | None] = shutil.which) ->
         except (OSError, subprocess.TimeoutExpired) as error:
             _log.warning("command_not_run", program=arguments[0], error_type=type(error).__name__)
             return 1, ""
-        return done.returncode, done.stdout
+        output = done.stdout + done.stderr if merge_errors else done.stdout
+        return done.returncode, output
 
     return run
 
@@ -154,13 +192,47 @@ class GitHubCli:
         """
         self._run = run
         self._which = which
+        self._version_checked = False
+
+    def installed(self) -> bool:
+        """Tell whether ``gh`` is on this computer, whether or not it is signed in."""
+        return self._which(_GH) is not None
 
     def ready(self) -> bool:
-        """Tell whether ``gh`` is installed and signed in."""
-        if self._which(_GH) is None:
+        """Tell whether ``gh`` is installed, new enough and signed in.
+
+        Raises:
+            SourceUnavailableError: If ``gh`` is older than Threadline needs; said
+                once, at the first use, rather than by a command failing late.
+        """
+        if not self.installed():
             return False
+        self._require_recent_version()
         status, _ = self._run([_GH, "auth", "status"], None)
         return status == 0
+
+    def _require_recent_version(self) -> None:
+        """Stop with where to get a newer ``gh`` when this one is too old.
+
+        A version ``gh`` does not state clearly is not held against it.
+        """
+        if self._version_checked:
+            return
+        self._version_checked = True
+        status, output = self._run([_GH, "--version"], None)
+        found = _GH_VERSION.search(output) if status == 0 else None
+        if found is None:
+            return
+        version = (int(found.group(1)), int(found.group(2)))
+        if version >= GITHUB_CLI_MINIMUM_VERSION:
+            return
+        minimum = ".".join(str(part) for part in GITHUB_CLI_MINIMUM_VERSION)
+        _log.warning("github_cli_too_old", version=found.group(0))
+        message = (
+            f"your GitHub CLI is too old ({found.group(0)}); Threadline needs {minimum} "
+            f"or newer - get the newest from {GITHUB_CLI_PAGE}"
+        )
+        raise SourceUnavailableError(message)
 
     def repository(self) -> GitHubRepository | None:
         """Describe the GitHub repository this folder belongs to.
@@ -173,6 +245,43 @@ class GitHubCli:
         if status != 0:
             return None
         return _parse_repository(output)
+
+    def verify_attestation(
+        self, archive: bytes, repository: str, signer_workflow: str, source_ref: str
+    ) -> bool:
+        """Check a file's signed build provenance with ``gh attestation verify``.
+
+        The file must have been built by one workflow of one repository, run on
+        one ref, on a GitHub-hosted runner; the attestation is fetched from
+        GitHub and its signature checked against the public Sigstore roots.
+
+        Args:
+            archive: The file's content, written to a temporary file for ``gh``.
+            repository: The repository that must have built it, as ``owner/name``.
+            signer_workflow: The workflow that must have signed it, as
+                ``owner/name/.github/workflows/file.yml``.
+            source_ref: The git ref the build must have run on, such as ``refs/heads/main``.
+
+        Returns:
+            ``True`` only when ``gh`` confirmed it; ``False`` when it could not
+            (no attestation, a different builder, a failed check, no network).
+        """
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / _ATTESTED_FILE_NAME
+            path.write_bytes(archive)
+            status, _ = self._run(
+                [
+                    _GH, "attestation", "verify", str(path),
+                    "--repo", repository,
+                    "--signer-workflow", signer_workflow,
+                    "--source-ref", source_ref,
+                    "--deny-self-hosted-runners",
+                ],
+                None,
+            )  # fmt: skip
+        if status != 0:
+            _log.warning("github_attestation_not_confirmed", repository=repository, status=status)
+        return status == 0
 
     def set_secret(self, repository: str, name: str, value: SecretStr) -> None:
         """Save one Actions secret; the value goes through standard input only.
@@ -298,6 +407,28 @@ class GitHubCli:
             raise WorkflowNotStartedError(message)
         _log.info("github_workflow_started", mode=mode.value)
 
+    def disable_workflow(self, repository: str) -> None:
+        """Switch the Threadline workflow off, so it stops starting on its schedule.
+
+        Args:
+            repository: The copy, as ``owner/name``.
+
+        Raises:
+            SourceUnavailableError: If GitHub refused.
+        """
+        status, _ = self._run(
+            [_GH, "workflow", "disable", WORKFLOW_FILE_NAME, "--repo", repository], None
+        )
+        if status != 0:
+            _log.warning("github_workflow_not_disabled", status=status)
+            message = (
+                f"GitHub would not switch the daily run off - open "
+                f"{WORKFLOW_PAGE.format(repository=repository)}, click the '...' menu at the "
+                "top right and choose 'Disable workflow'"
+            )
+            raise SourceUnavailableError(message)
+        _log.info("github_workflow_disabled")
+
     def _actions_enabled(self, repository: str) -> bool:
         """Read whether Actions may run in the repository; a failed read counts as no."""
         path = ACTIONS_PERMISSIONS_API_PATH.format(repository=repository)
@@ -354,13 +485,19 @@ class GitHubCli:
 class GitRepository:
     """Commits and pushes one file, only when the owner said yes."""
 
-    def __init__(self, run: Runner) -> None:
-        """Bind the helper to a command runner.
+    def __init__(self, run: Runner, run_for_errors: Runner | None = None) -> None:
+        """Bind the helper to command runners.
 
         Args:
-            run: Runs one command in the repository.
+            run: Runs one command in the repository; its output is what git
+                printed as its answer only, so a harmless warning on the error
+                channel never changes what a check reads.
+            run_for_errors: Runs a command whose failure is explained to the
+                owner, with what git printed as errors included in the output;
+                ``run`` when omitted.
         """
         self._run = run
+        self._run_for_errors = run_for_errors or run
 
     def origin_url(self) -> str | None:
         """Return where ``origin`` points, or ``None`` when there is no such link."""
@@ -400,15 +537,106 @@ class GitRepository:
             SourceUnavailableError: If one of the three did not work.
         """
         self.commit(path, message)
+        self.push()
+
+    def push(self) -> None:
+        """Run ``git push`` for what is already committed.
+
+        Raises:
+            SourceUnavailableError: If it did not work.
+        """
         self._git(["push"])
 
+    def has_uncommitted(self, path: str) -> bool:
+        """Tell whether one file differs from the last commit, or is new.
+
+        Args:
+            path: The file, relative to the repository.
+
+        Returns:
+            ``False`` also when git could not say.
+        """
+        status, output = self._run([_GIT, "status", "--porcelain", "--", path], None)
+        return status == 0 and bool(output.strip())
+
+    def has_unpushed(self, path: str) -> bool:
+        """Tell whether a commit that changed one file is not on GitHub yet.
+
+        Compared with the branch's upstream, else with the copy's default
+        branch on GitHub; when neither can be read there is nothing to
+        compare with, and the file is not called unsent, so a copy that was
+        never linked is not nagged about a push that could not happen.
+
+        Args:
+            path: The file, relative to the repository.
+        """
+        status, output = self._log(_UPSTREAM_RANGE, path)
+        if status == 0:
+            return bool(output.strip())
+        default_branch = self._default_branch()
+        if default_branch is None:
+            return False
+        status, output = self._log(f"{default_branch}..HEAD", path)
+        return status == 0 and bool(output.strip())
+
+    def _log(self, commits: str, path: str) -> tuple[int, str]:
+        """List the commits in a range that changed one file."""
+        return self._run([_GIT, "log", "--oneline", commits, "--", path], None)
+
+    def _default_branch(self) -> str | None:
+        """Name the copy's default branch as git knows it, such as ``origin/main``.
+
+        Returns:
+            The name git keeps, else the first usual name that exists; ``None``
+            when git knows none of them.
+        """
+        status, output = self._run([_GIT, "symbolic-ref", "--short", _REMOTE_HEAD_REF], None)
+        named = output.strip()
+        if status == 0 and named:
+            return named
+        for branch in DEFAULT_BRANCH_NAMES:
+            candidate = f"{COPY_REMOTE}/{branch}"
+            status, _ = self._run([_GIT, "rev-parse", "--verify", "--quiet", candidate], None)
+            if status == 0:
+                return candidate
+        return None
+
     def _git(self, arguments: list[str]) -> None:
-        """Run one git command, turning a failure into a plain error."""
-        status, _ = self._run([_GIT, *arguments], None)
-        if status != 0:
-            _log.warning("git_command_failed", command=arguments[0], status=status)
-            message = f"'git {arguments[0]}' did not work - run it yourself to see why"
+        """Run one git command, turning a failure into a plain error saying what git said."""
+        status, output = self._run_for_errors([_GIT, *arguments], None)
+        if status == 0:
+            return
+        _log.warning("git_command_failed", command=arguments[0], status=status)
+        if any(marker in output for marker in GIT_IDENTITY_MARKERS):
+            message = (
+                "git does not know who you are, so it cannot save the change - run these two "
+                f"lines once in a terminal, with your own name and address: {GIT_SET_NAME_COMMAND}"
+                f" and {GIT_SET_EMAIL_COMMAND} - then run the set-up again"
+            )
             raise SourceUnavailableError(message)
+        if _WORKFLOW_SCOPE_REFUSED.search(output):
+            raise SourceUnavailableError(GIT_WORKFLOW_SCOPE_MESSAGE)
+        said = _first_error_line(output)
+        detail = f" (git said: {said})" if said else ""
+        message = f"'git {arguments[0]}' did not work{detail} - run it yourself to see more"
+        raise SourceUnavailableError(message)
+
+
+def _first_error_line(output: str) -> str:
+    """The line git gives as the reason, with any web address's sign-in removed.
+
+    Args:
+        output: Everything the failed git command printed.
+
+    Returns:
+        The first ``fatal:`` or ``error:`` line, else the first line; empty when
+        git printed nothing. Cut short, since it is shown to the owner.
+    """
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    chosen = next((line for line in lines if line.startswith(GIT_ERROR_PREFIXES)), lines[0])
+    return _ADDRESS_SIGN_IN.sub("", chosen)[:GIT_SAID_MAX_CHARACTERS]
 
 
 class TextFile:

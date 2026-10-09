@@ -1,9 +1,10 @@
 """Publishing the dashboard on Netlify: the files, the key, the site, the deploy.
 
 The dashboard comes ready-made from the template's GitHub Release, checked
-against its SHA-256 (or, for a contributor with Node.js, is built here). Its
-``config.js`` holds the project address and the publishable key, nothing
-more. The owner pastes a Netlify personal access token, which one harmless
+against its SHA-256 and against the signed build provenance GitHub holds for
+it, which names the template's release workflow (or, for a contributor with
+Node.js, is built here). Its ``config.js`` holds the project address and the
+publishable key, nothing more. The owner pastes a Netlify personal access token, which one harmless
 read checks, which stays in memory for this run only and which is never
 written to ``.env``. The site is made once, under a random free name, and its
 identifier is kept in ``.env`` as ``NETLIFY_SITE_ID`` (not a secret), so
@@ -22,6 +23,8 @@ from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.dashboard_package import (
     BrowserSettings,
+    BuildInfo,
+    build_info,
     publishable_archive,
     read_archive,
     verify_checksum,
@@ -36,17 +39,27 @@ from tracker.shared.constants.dashboard import (
     DEPLOY_POLL_ATTEMPTS,
     DEPLOY_POLL_WAIT_SECONDS,
     DEPLOY_READY_STATE,
+    GITHUB_CLI_MISSING_FOR_DASHBOARD,
+    GITHUB_CLI_SIGNED_OUT_FOR_DASHBOARD,
     NETLIFY_SIGNUP_PAGE,
     NETLIFY_TOKEN_NAME,
     NETLIFY_TOKENS_PAGE,
     PAGE_OK_STATUS,
+    PROVENANCE_SOURCE_REF,
     RELEASE_ASSET_URL,
+    SIGNER_WORKFLOW,
     SITE_NAME_ATTEMPTS,
     SITE_NAME_PREFIX,
     SITE_PROBE_ATTEMPTS,
     SITE_PROBE_WAIT_SECONDS,
+    TEMPLATE_REPOSITORY,
 )
-from tracker.shared.errors import DashboardDeployError, SiteNameTakenError, ValidationFailedError
+from tracker.shared.errors import (
+    DashboardDeployError,
+    DashboardProvenanceError,
+    SiteNameTakenError,
+    ValidationFailedError,
+)
 from tracker.shared.logging import get_logger
 
 #: The ``.env`` setting naming the Netlify site; an identifier, not a secret.
@@ -90,13 +103,39 @@ async def _prepared_archive(ctx: SetupContext) -> bytes:
         "instead of downloading the ready-made one? (Only for testing your own changes.)",
         default=False,
     ):
-        ctx.io.say("Building the dashboard here (a few minutes the first time)...")
-        files = await asyncio.to_thread(builder.build)
+        files = await _built_files(ctx)
     else:
-        files = await _downloaded_files(ctx)
+        files = await _downloaded_or_built_files(ctx)
     archive = publishable_archive(files, settings)
     ctx.io.say("The dashboard is ready, with your project's address and its public key.")
     return archive
+
+
+async def _built_files(ctx: SetupContext) -> dict[str, bytes]:
+    """Build the dashboard on this computer with Node.js."""
+    ctx.io.say("Building the dashboard here (a few minutes the first time)...")
+    return await asyncio.to_thread(ctx.gateways.local_build.build)
+
+
+async def _downloaded_or_built_files(ctx: SetupContext) -> dict[str, bytes]:
+    """Download the ready-made dashboard; when its origin is unproven, offer to build it.
+
+    Raises:
+        DashboardProvenanceError: If GitHub cannot confirm who built the download
+            and the owner cannot or will not build it here.
+    """
+    try:
+        return await _downloaded_files(ctx)
+    except DashboardProvenanceError as error:
+        if not ctx.gateways.local_build.available():
+            raise
+        ctx.io.say(error.message)
+        if not ctx.io.confirm(
+            "Build the dashboard here with Node.js instead (nothing is downloaded)?",
+            default=True,
+        ):
+            raise
+        return await _built_files(ctx)
 
 
 def _browser_settings(ctx: SetupContext) -> BrowserSettings:
@@ -119,9 +158,60 @@ async def _downloaded_files(ctx: SetupContext) -> dict[str, bytes]:
     archive = await download(RELEASE_ASSET_URL.format(name=ARCHIVE_NAME), ARCHIVE_MAX_BYTES)
     checksum = await download(RELEASE_ASSET_URL.format(name=CHECKSUM_NAME), CHECKSUM_MAX_BYTES)
     verify_checksum(archive, checksum)
+    await _verify_provenance(ctx, archive)
     files = read_archive(archive)
+    _warn_if_database_is_older(ctx, build_info(files))
     _log.info("dashboard_downloaded", files=len(files), size=len(archive))
     return files
+
+
+def _warn_if_database_is_older(ctx: SetupContext, built: BuildInfo | None) -> None:
+    """Say so when the dashboard was built for database files this copy does not have yet.
+
+    The release is rolling, so it can be newer than the owner's copy of
+    Threadline. That is not an error: it is shown so the owner updates first.
+    """
+    own = [file.name for file in ctx.gateways.migrations]
+    if built is None or not own or built.latest_migration in own:
+        return
+    if built.latest_migration < max(own):
+        return
+    ctx.io.say(
+        f"Heads up: this dashboard expects a newer database than your copy of Threadline "
+        f"knows (it needs {built.latest_migration}; your copy has up to {max(own)})."
+    )
+    ctx.io.say(
+        "Better to update your copy of Threadline first (bring in the template's newest "
+        f"files), then run 'uv run tracker setup {StepName.DATABASE}' and this step again."
+    )
+
+
+async def _verify_provenance(ctx: SetupContext, archive: bytes) -> None:
+    """Ask GitHub to confirm the template's release workflow built exactly these bytes.
+
+    Raises:
+        DashboardProvenanceError: If the GitHub CLI cannot confirm it.
+    """
+    github = ctx.gateways.github
+    if not github.installed():
+        raise DashboardProvenanceError(GITHUB_CLI_MISSING_FOR_DASHBOARD)
+    if not github.ready():
+        raise DashboardProvenanceError(GITHUB_CLI_SIGNED_OUT_FOR_DASHBOARD)
+    confirmed = await asyncio.to_thread(
+        github.verify_attestation,
+        archive,
+        TEMPLATE_REPOSITORY,
+        SIGNER_WORKFLOW,
+        PROVENANCE_SOURCE_REF,
+    )
+    if not confirmed:
+        message = (
+            "GitHub could not confirm that the dashboard was built by Threadline's own "
+            "release workflow, so it was not published. Try again in a minute; if you have "
+            "Node.js 22 or newer, you can build the dashboard on this computer instead."
+        )
+        raise DashboardProvenanceError(message)
+    ctx.io.say("Checked who built it: GitHub confirms Threadline's release workflow made it.")
 
 
 async def _netlify_token(ctx: SetupContext) -> SecretStr:

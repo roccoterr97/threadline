@@ -20,6 +20,16 @@ interface VercelConfig {
   headers: VercelHeaderRule[];
 }
 
+/**
+ * The copies the set-up publishes: it never trusts the `_headers` and `_redirects`
+ * inside the downloaded dashboard, so it writes its own from these two files.
+ */
+const SETUP_COPIES = '../../../backend/src/tracker/services/setup/netlify_site/';
+
+function setupCopy(name: string): string {
+  return readFileSync(new URL(`${SETUP_COPIES}${name}`, import.meta.url), 'utf8');
+}
+
 const vercel = JSON.parse(
   readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'),
 ) as VercelConfig;
@@ -62,5 +72,18 @@ describe("Netlify's files", () => {
 
   it('rewrite every other address to the dashboard', () => {
     expect(netlifyRedirectsFile()).toBe('/* /index.html 200\n');
+  });
+});
+
+describe("the set-up's own copies of Netlify's files", () => {
+  const update =
+    'update backend/src/tracker/services/setup/netlify_site/ from hostingRules.ts';
+
+  it(`_headers match what the build writes (${update})`, () => {
+    expect(setupCopy('_headers')).toBe(netlifyHeadersFile());
+  });
+
+  it(`_redirects match what the build writes (${update})`, () => {
+    expect(setupCopy('_redirects')).toBe(netlifyRedirectsFile());
   });
 });

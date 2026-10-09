@@ -43,6 +43,11 @@ All notable changes to this project are recorded here. The format follows
 - `.github/workflows/dashboard-release.yml`: every push to `main` of the
   public template builds the dashboard once and publishes
   `dashboard.zip` and `dashboard.zip.sha256` on the rolling `latest` release.
+- CI now checks the installers without running them: `shellcheck install.sh` on
+  Linux, and a PowerShell syntax check of `install.ps1` on Windows (in both
+  PowerShell 7 and Windows PowerShell 5.1). Tests run `sh -n` on the installer
+  and check its GitHub tool version comparison, and a Windows-only test checks
+  that the computer's real `tzutil` answer maps to a known time zone.
 
 ### Changed
 
@@ -96,6 +101,68 @@ All notable changes to this project are recorded here. The format follows
 
 ### Fixed
 
+- A harmless warning from git no longer makes the set-up think the workflow
+  file has unsaved changes, and a copy with nothing on GitHub to compare with
+  is no longer nagged to push. The set-up reads git's answer only for these
+  checks, and uses what git printed as errors only to explain a failure. When
+  the branch tracks nothing, it compares with the copy's default branch on
+  GitHub.
+- The Claude cloud route no longer offers to switch the GitHub daily run off
+  as a default yes before the routine exists. The answer now defaults to no,
+  and the step says to switch it off with
+  `gh workflow disable threadline-run.yml` once the routine has run once and
+  its e-mail arrived (or to answer yes if it already runs).
+- The dashboard step tells a missing GitHub CLI apart from one that is not
+  signed in. Missing, it says where to install it
+  (<https://cli.github.com>), to sign in with `gh auth login` and to run the
+  step again; the local build is still offered when Node.js 22 or newer is
+  there.
+- Setting up with Claude Code (`/setup`) now signs GitHub in with the
+  `workflow` permission, and tops it up when you were already signed in
+  without it. A push GitHub refuses for lacking that permission is explained
+  in one plain line with the command that adds it
+  (`gh auth refresh -h github.com -s workflow`), instead of git's raw message.
+- The time-zone step no longer offers a guess when the computer's zone cannot
+  be read (for example a Windows zone name newer than the table, which was
+  offered as `UTC` and silently moved the daily run's hour). It now says "I could
+  not tell your time zone", offers no default and asks you to type one such as
+  `Europe/Paris`, checking it as before. The Supabase region offer still falls
+  back to the Americas.
+- `tracker doctor` and a failed command say only "run 'uv run tracker setup'"
+  on a computer; the "add the missing secrets" half is said on GitHub alone
+  (`GITHUB_ACTIONS=true`), where it applies.
+- A GitHub CLI older than 2.68 (before `gh attestation verify --source-ref`,
+  which the dashboard check uses) now stops the set-up at the first use of `gh`, naming the version
+  and <https://cli.github.com>, instead of failing at the last step.
+- LinkedIn added or renewed with `tracker setup linkedin` (or `extras`) now
+  reaches the daily run: right after saving, the set-up offers to send just
+  those settings to GitHub, and otherwise prints `uv run tracker setup github`.
+  Before, they stayed in `.env` and the run on GitHub never used them.
+- The set-up no longer promises a summary e-mail it cannot send, or starts a
+  first run that would do nothing. When GitHub has no mailbox with an app
+  password to send from (Outlook alone), the GitHub step says so plainly,
+  offers to connect a Gmail or other mailbox right then, and otherwise offers
+  the first run with a default of no; the closing words then promise only the
+  dashboard and name the two ways to get the e-mail. Without the Claude key on
+  GitHub (an empty answer keeps the key already there, if any) the first run is
+  not started and the step says to run `claude setup-token` and then
+  `uv run tracker setup github`. Choosing the cloud route in the extras offers
+  to switch the GitHub daily run off (`gh workflow disable`), so both routes do
+  not run.
+- A new daily time or time zone no longer stays on your computer when the
+  upload to GitHub stops. The set-up now says what git said (its first error
+  line, never a web address's sign-in), and when git has no name to put on the
+  change it prints the two `git config --global` lines to run. Running the
+  schedule, time zone or GitHub step again offers the upload whenever your
+  computer has a daily time that GitHub does not, not only when the text just
+  changed, so GitHub no longer silently keeps the old time.
+- Someone the AI dropped as "not part of your search" now comes back when it
+  matters. If you write to them, or they start a new conversation that is not
+  obvious machine mail, they go back to "unsure" and the AI reads them again.
+  Before, they stayed hidden for good. More mail from their side in a thread
+  already dropped (another newsletter) does not bring it back, and what you
+  decided yourself (hiding someone, a "no", a "yes", a correction) is never
+  undone.
 - Sending the summary no longer stops with an unexplained crash. An app
   password with a hidden character in it (such as a space pasted from a web
   page) is now reported as a refused app password, for sending and for
@@ -202,6 +269,156 @@ All notable changes to this project are recorded here. The format follows
   where it applies.
 - The demo's first line says the ZIP download is enough, so nobody makes a
   GitHub account just to look at it.
+- Running `tracker setup supabase` again after it stopped no longer makes a
+  second project by accident. A project left behind (stopped with Ctrl-C, timed
+  out, or created but not answering yet) is listed with its status, "running"
+  or "still being set up", and pressing Enter now reuses the one named
+  `threadline`. The messages for a stop, a timeout and a lost create request
+  say that the project may already exist and to pick it from the list. The
+  first checks on a project that was just created, and the database structure
+  check, are repeated for about half a minute before they count as failed.
+- `tracker setup database` no longer stops when your Supabase token can read
+  but not change the database (Supabase answers "not allowed" when a file is
+  sent). It says so and carries on with the hand-guided SQL editor, as it
+  already did when the token could not even read.
+- Running `tracker setup supabase` on its own when your `.env` already holds
+  a project now says which project that is and keeps it by default, before
+  asking for any token. Before, Enter went on to create a new project that was
+  then thrown away because the saved one was kept. Answer no to switch
+  projects; the new one replaces the saved one without a second question.
+- `tracker setup supabase` no longer hides a paused project. Supabase pauses a
+  free project after a week without use; the step now says "'name' is paused",
+  how to restore it (open the project, click "Restore project", then run the
+  step again) or that you can create a new one. A paused project is still not
+  picked directly, because it takes a while to come back.
+- `tracker setup login` no longer stops when Supabase has a server error or
+  times out while switching sign-ups off; it falls back to the hand-guided
+  settings page, as it already did when Supabase refused the change.
+- The one-line installers download the uv installer to a file and check that the
+  download worked before running it, so a failed download says "Could not
+  download uv" instead of giving unrelated advice. The Windows installer does
+  the same instead of piping the download into PowerShell.
+- The macOS and Linux installer no longer installs a GitHub tool that is too old
+  for the set-up. It checks the version it finds (2.68 or newer is needed) and
+  updates an older one. On Linux it uses GitHub's own apt or dnf package source
+  instead of the distribution's older package, and downloads the release into
+  `~/.local/bin` when no package manager can be used. A Mac without Homebrew no
+  longer stops at the GitHub tool: the installer downloads the right build for
+  the Mac, checks it against the release's checksums and uses it.
+- The Windows installer reads winget's exit code. A failed installation of Git
+  or the GitHub tool now says "the installation of X did not finish (code N)"
+  with the usual causes (the Windows approval was declined, or the network
+  dropped) instead of "close this window". Without winget it says where to get
+  "App Installer". An existing GitHub tool older than 2.68 is updated with
+  winget.
+- The one-line installers set up git for a new computer. When git has no name or
+  e-mail yet, they set them from the GitHub account (the name, and GitHub's
+  private `ID+login@users.noreply.github.com` address), say plainly what was
+  set, and never change values that already exist. Before, the set-up stopped
+  later with a vague message when it saved the daily-run time zone. The sign-in
+  also asks for the `workflow` permission that saving that file needs, and a
+  sign-in made without it is topped up with `gh auth refresh`.
+- The one-line installers no longer reuse just any repository called `threadline`
+  on your GitHub account. It must be private, you must be its admin, and it must
+  have been made from the Threadline template (or contain `backend/pyproject.toml`).
+  Otherwise the installer stops and names the cause and what to do, such as
+  renaming the other repository.
+- Running the one-line installer again after an earlier set-up no longer makes
+  a second copy. If `~/tracker` (where an earlier version put the copy) holds
+  Threadline and `~/threadline` does not exist, the installer says so and asks
+  whether to use it (the default is yes). It also checks that the folder holds
+  the `backend` part before going in, instead of failing on a missing folder.
+- The Windows time-zone table is complete: all 140 zones Windows 10 and 11 offer
+  (after the Unicode CLDR `windowsZones` table) instead of about 85, so zones
+  such as Aleutian, Yukon, Sudan, Qyzylorda, Tonga and the "UTC-11 .. UTC+13"
+  ones are no longer offered as `UTC`. When a Windows zone is still not in the
+  table, its name is now logged (`windows_zone_unknown`) so the gap can be
+  found.
+- Publishing a dashboard you built yourself on Windows no longer fails with
+  "npm not found": the build's programs are now looked up before they are
+  started, so `npm.cmd` is found.
+- The dashboard step no longer tells you a Netlify site name is taken when
+  Netlify refused the new site for another reason (a limit, a bad field):
+  only a refusal that blames the name makes it try another, and any other
+  refusal is shown with Netlify's own words.
+- When Supabase cannot be reached while the dashboard step sets its sign-in
+  addresses, the step now shows the two values to type by hand instead of
+  stopping after the dashboard was already published.
+- Publishing the dashboard no longer wipes the other addresses on Supabase's
+  Redirect URLs list (such as `http://localhost:5173/**` or an older host):
+  the list is read first, the new dashboard address is added if it is
+  missing, and the set-up says which address it added. The Site URL is still
+  pointed at the new dashboard.
+- The set-up now checks, right before uploading, that the dashboard holds
+  its page, `config.js`, `_headers` and `_redirects`, and stops with a clear
+  message if its own security-header files are missing or empty, instead of
+  publishing a dashboard without them.
+- The ready-made dashboard now carries a small `build-info.json` (the commit
+  it was built from and the newest database file it expects), and `tracker
+  setup dashboard` warns, in plain words, when the dashboard is newer than
+  your copy of Threadline so you update your copy and database first. The
+  file is read and not published.
+
+### Security
+
+- A hand-edited `NETLIFY_SITE_ID` in `.env` can no longer change which
+  Netlify address the set-up calls: only a Netlify site identifier (a UUID
+  or a plain site name) is accepted, anything else stops the step with a
+  message saying what to fix.
+- The dashboard step now also refuses an old-style (legacy) Supabase key
+  that is really the service-role key when it is typed or saved where the
+  public key belongs, so it can never be written into the published
+  `config.js`.
+- `tracker setup dashboard` no longer trusts the `_headers` and `_redirects`
+  files inside the downloaded dashboard: it writes its own copies (the
+  content security policy and the single-page fallback), so a tampered
+  download cannot loosen what the page may load or where it may send a sign-
+  in. A dashboard test fails if those copies drift from the rules the
+  dashboard is built with.
+- The workflow that builds the ready-made dashboard is split in two: a build
+  job that installs the npm packages with read-only access and no GitHub
+  token left on disk, and a separate publish job that can write the release
+  but never installs or runs anything from the project. Every action it uses
+  is pinned to a full commit.
+- The ready-made dashboard is now checked for who built it, not only for
+  damage: the release workflow signs a build-provenance statement for
+  `dashboard.zip`, and `tracker setup dashboard` runs `gh attestation
+  verify` (pinned to Threadline's own release workflow, the `main` branch
+  and GitHub-hosted runners) before anything is published. If GitHub cannot
+  confirm it, nothing is published and, when Node.js 22 or newer is
+  installed, you are offered a local build instead. The SHA-256 check stays.
+
+### Documentation
+
+- The set-up guide, the README and the Claude set-up page no longer promise the
+  morning summary e-mail without a condition: it needs a mailbox that can send
+  it, such as Gmail with an app password.
+- The guide and the README, rewritten around the one-line install and the
+  single Supabase token, now say honestly how long it takes: about 30 to 40
+  minutes of your own time if you already have GitHub, Supabase, Netlify and
+  Claude Code, the first summary e-mail about ten minutes later, and 50 to 70
+  minutes if you create the accounts too (the Claude route says the same).
+  Claude Code is checked where it is first needed (part 6b), with the Windows
+  order (install line first) said there; the first `uv sync` may download
+  Python; the Claude set-up recipe opens the set-up page with `open`,
+  `xdg-open` or `start` when it did not open itself, waits for the copy to
+  finish filling before it makes the clone's backend, and says the terminal
+  prints the `Stopped:` line too. Smaller fixes: the folder check works in
+  PowerShell (`pwd`), "the two lines below" points at what it means, two broken
+  line wraps, "Email address not authorized" is named as Supabase's message,
+  and the GitHub part describes the git-name message, the missing mailbox for
+  the e-mail, the Claude key check, LinkedIn's send to GitHub, the old `gh`
+  stop, and the cloud route's offer to switch the GitHub run off.
+
+- The install part of the guide now says what the one-line install changes: uv's
+  installer adds uv to your PATH, `gh auth setup-git` lets git use your GitHub
+  sign-in, and an empty git name and e-mail are filled in from your GitHub
+  account. The installers' opening comments say the same. The guide also no
+  longer says winget comes with every Windows 10 and 11 (it names App Installer
+  as the way to get it), says the first run may download Python, and lists the
+  new messages the installers can stop with.
+- The `.env` privacy claim on Windows is now accurate: the file is private
+  because it sits inside your user folder, not because of file permissions.
 
 ## [0.5.0] - 2026-10-08
 

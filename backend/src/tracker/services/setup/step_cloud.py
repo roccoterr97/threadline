@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.first_run import workflow_page
+from tracker.services.setup.github_copy import linked_copy
 from tracker.services.setup.mail_sources import saved_sources
 from tracker.services.setup.models import StepName
 from tracker.shared.config import Settings
+from tracker.shared.constants.github import DISABLE_WORKFLOW_COMMAND
 from tracker.shared.constants.mailbox import IMAP_PRESETS, ImapProvider, MailSource
 from tracker.shared.constants.setup import (
     CLAUDE_CODE_PAGE,
@@ -19,6 +22,7 @@ from tracker.shared.constants.setup import (
     CLOUD_OUTLOOK_HOST,
     LOCAL_ONLY_SETTINGS,
 )
+from tracker.shared.errors import SourceUnavailableError
 
 
 class CloudStep:
@@ -54,6 +58,40 @@ class CloudStep:
         io.open_page(CLAUDE_CODE_PAGE)
         if io.confirm("Copy each value to the clipboard, one at a time?", default=True):
             copy_values(ctx, {name: ctx.env.get(name) or "" for name in names})
+        _offer_to_stop_github(ctx)
+
+
+def _offer_to_stop_github(ctx: SetupContext) -> None:
+    """Offer to switch the daily run on GitHub off, so both routes do not run.
+
+    Nothing is said when this folder has no copy on GitHub: then there is no
+    daily run there to stop.
+    """
+    io = ctx.io
+    copy = linked_copy(ctx)
+    if copy is None:
+        return
+    page = workflow_page(copy.name)
+    io.say("Your copy on GitHub also runs Threadline every day, so with the routine")
+    io.say("running too, everything would be done twice.")
+    io.say(
+        "Once your Claude routine has run once and the e-mail arrived, switch the GitHub daily "
+        f"run off so both don't run: '{DISABLE_WORKFLOW_COMMAND}' (or answer yes here if the "
+        "routine already runs)."
+    )
+    if not copy.confirmed or not io.confirm(
+        "Switch off the daily run on GitHub now?", default=False
+    ):
+        io.say(f"Or on the web: open {page}, click the '...' menu at the")
+        io.say("top right and choose 'Disable workflow'.")
+        return
+    try:
+        ctx.gateways.github.disable_workflow(copy.name)
+    except SourceUnavailableError as error:
+        io.say(f"{error.message}.")
+        return
+    io.say("Switched off. To switch it on again, open the page below and click 'Enable workflow':")
+    io.say(page)
 
 
 def cloud_setting_names() -> tuple[str, ...]:

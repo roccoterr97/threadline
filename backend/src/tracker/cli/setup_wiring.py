@@ -74,7 +74,9 @@ def build_context(
         migrations=list_migration_files(MIGRATIONS_DIRECTORY),
         clock=clock,
         workflow=TextFile(WORKFLOW_FILE),
-        git=GitRepository(run_command(REPOSITORY_ROOT)),
+        git=GitRepository(
+            run_command(REPOSITORY_ROOT), run_command(REPOSITORY_ROOT, merge_errors=True)
+        ),
         github=GitHubCli(run_command(REPOSITORY_ROOT)),
         sleep=asyncio.sleep,
         local_time_zone=detect_time_zone,

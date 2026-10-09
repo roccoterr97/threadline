@@ -96,6 +96,16 @@ class DashboardPackageError(TrackerError):
     code = "dashboard_package_invalid"
 
 
+class DashboardProvenanceError(DashboardPackageError):
+    """GitHub could not confirm that the template's own workflow built the dashboard.
+
+    The checksum only proves the download is whole; the signed build
+    provenance proves who built it. Nothing from the download is published.
+    """
+
+    code = "dashboard_provenance_unconfirmed"
+
+
 class DownloadTooLargeError(TrackerError):
     """A download was larger than the most it may be, so it was stopped."""
 

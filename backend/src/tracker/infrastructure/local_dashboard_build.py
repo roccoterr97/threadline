@@ -39,26 +39,33 @@ ProgramRunner = Callable[[Sequence[str], Path, Mapping[str, str], float], tuple[
 
 
 def run_program(
-    arguments: Sequence[str], cwd: Path, extra_env: Mapping[str, str], timeout: float
+    arguments: Sequence[str],
+    cwd: Path,
+    extra_env: Mapping[str, str],
+    timeout: float,
+    which: Callable[[str], str | None] = shutil.which,
 ) -> tuple[int, str]:
     """Run one program with no shell and return its exit status and output.
 
     The program inherits this process's environment (it needs ``PATH`` and
-    npm's own settings) with ``extra_env`` laid over it.
+    npm's own settings) with ``extra_env`` laid over it. It is looked up
+    first, because without a shell Windows finds ``npm.cmd`` only by its full path.
 
     Args:
         arguments: The program and its arguments.
         cwd: The folder it runs in.
         extra_env: Settings added for it alone.
         timeout: Seconds it may take.
+        which: Finds a program on the machine; replaced in tests.
 
     Returns:
         The exit status (1 when it could not be started or took too long) and
         what it printed.
     """
+    program = which(arguments[0]) or arguments[0]
     try:
         done = subprocess.run(
-            list(arguments),
+            [program, *arguments[1:]],
             cwd=cwd,
             env={**os.environ, **extra_env},
             capture_output=True,

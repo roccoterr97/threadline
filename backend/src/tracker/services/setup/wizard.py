@@ -14,6 +14,7 @@ from typing import Final
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import FirstRun, workflow_page
 from tracker.services.setup.models import Step, StepGroup, StepName
+from tracker.services.setup.ports import SetupIO
 from tracker.services.setup.step_categories import CategoriesStep
 from tracker.services.setup.step_cloud import CloudStep
 from tracker.services.setup.step_dashboard import DashboardStep
@@ -171,19 +172,46 @@ def _say_finish_line(ctx: SetupContext, first_run: FirstRun | None) -> None:
     """Say what happens now: the first run, the daily time, and how to add the extras."""
     io = ctx.io
     schedule = read_schedule(ctx.gateways.workflow.read())
+    run = first_run if first_run is not None else FirstRun(started=False, page=workflow_page(None))
     io.say("")
     io.say("Set-up done.")
-    if first_run is not None and first_run.started:
-        io.say("The first run is going on GitHub, so the first summary e-mail reaches you in")
-        io.say(f"about {FIRST_SUMMARY_MINUTES} minutes.")
+    _say_first_run(io, run)
+    when = f"every day at {schedule.describe()}" if schedule is not None else "every day"
+    if schedule is None:
+        when += f", at the time set by {_COMMAND} {StepName.SCHEDULE}"
+    if run.summary_by_email:
+        io.say(f"After that it comes {when}.")
     else:
-        page = first_run.page if first_run is not None else workflow_page(None)
-        io.say(f"Start the first run at {page}:")
-        io.say(f"the summary e-mail follows about {FIRST_SUMMARY_MINUTES} minutes later.")
-    if schedule is not None:
-        io.say(f"After that it comes every day at {schedule.describe()}.")
-    else:
-        io.say(f"After that it comes every day, at the time set by {_COMMAND} {StepName.SCHEDULE}.")
+        io.say(f"After that the dashboard is updated {when}.")
+        _say_no_email(io)
     io.say("Extras you can add any time: LinkedIn (EEA and Switzerland only), the dashboard's")
     io.say("Refresh now button, which also makes the daily run start on time, and the Claude")
     io.say(f"cloud route: {_COMMAND} {StepGroup.EXTRAS}")
+
+
+def _say_first_run(io: SetupIO, run: FirstRun) -> None:
+    """Say how the first run was left, promising an e-mail only when one can come."""
+    if run.started and run.summary_by_email:
+        io.say("The first run is going on GitHub, so the first summary e-mail reaches you in")
+        io.say(f"about {FIRST_SUMMARY_MINUTES} minutes.")
+    elif run.started:
+        io.say("The first run is going on GitHub, so your dashboard fills in about")
+        io.say(f"{FIRST_SUMMARY_MINUTES} minutes.")
+    elif run.needs_claude_key:
+        io.say("The first run is not started yet: GitHub still needs your Claude key.")
+        io.say("Run 'claude setup-token' in a new terminal window, then run")
+        io.say(f"'{_COMMAND} {StepName.GITHUB}' and paste the key.")
+    elif run.summary_by_email:
+        io.say(f"Start the first run at {run.page}:")
+        io.say(f"the summary e-mail follows about {FIRST_SUMMARY_MINUTES} minutes later.")
+    else:
+        io.say(f"Start the first run at {run.page}:")
+        io.say(f"the dashboard fills about {FIRST_SUMMARY_MINUTES} minutes later.")
+
+
+def _say_no_email(io: SetupIO) -> None:
+    """Say plainly that no summary e-mail will come, and the two ways to get one."""
+    io.say("No summary e-mail will come yet: GitHub sends it only from a mailbox with an app")
+    io.say(f"password. Add one with '{_COMMAND} {StepName.MAILBOX}' and then")
+    io.say(f"'{_COMMAND} {StepName.GITHUB}', or use the Claude cloud route:")
+    io.say(f"{_COMMAND} {StepGroup.EXTRAS}")

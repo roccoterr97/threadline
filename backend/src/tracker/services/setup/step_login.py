@@ -20,7 +20,6 @@ from tracker.shared.constants.setup import (
 )
 from tracker.shared.errors import (
     SourceAuthError,
-    SourceRequestRejectedError,
     SourceUnavailableError,
     ValidationFailedError,
 )
@@ -91,7 +90,11 @@ async def _switch_off_signups(ctx: SetupContext) -> None:
 
 
 async def _switched_off_through_the_api(ctx: SetupContext) -> bool:
-    """Ask Supabase to refuse new sign-ups; ``False`` when it would not."""
+    """Ask Supabase to refuse new sign-ups; ``False`` when it would not or could not.
+
+    A refused token, a refused request and an outage (a server error, a timeout)
+    all end in the same place: the hand-guided settings page.
+    """
     if ctx.session.supabase_token is None and not ctx.io.confirm(
         "Switch them off with a Supabase access token (used now, not saved)?", default=True
     ):
@@ -100,7 +103,7 @@ async def _switched_off_through_the_api(ctx: SetupContext) -> bool:
     try:
         token = await require_supabase_token(ctx)
         await ctx.gateways.platform.configure_auth(ref, token, AuthSettings(disable_signup=True))
-    except (SourceAuthError, SourceRequestRejectedError) as error:
+    except (SourceAuthError, SourceUnavailableError) as error:
         ctx.io.say(f"Supabase would not change the setting: {error.message}.")
         return False
     return True

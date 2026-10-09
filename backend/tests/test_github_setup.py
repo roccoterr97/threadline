@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import time
@@ -19,7 +20,13 @@ from tests.setup_world import (
     configured_env,
     make_world,
 )
-from tracker.infrastructure.github_cli import GitHubCli, GitHubRepository, GitRepository, TextFile
+from tracker.infrastructure.github_cli import (
+    GitHubCli,
+    GitHubRepository,
+    GitRepository,
+    TextFile,
+    run_command,
+)
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import FirstRun
 from tracker.services.setup.models import StepName
@@ -404,13 +411,51 @@ async def test_declining_gh_opens_the_repositorys_own_page() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_skipped_key_is_left_for_the_page() -> None:
-    world = make_world(["", True, False], github_env())
+async def test_an_empty_answer_keeps_the_key_github_already_has() -> None:
+    world = make_world(["", True, ""], github_env())
+    world.github.secrets[CLAUDE_TOKEN_SECRET] = CLAUDE_KEY
+    step = GitHubStep()
 
-    await GitHubStep().run(world.context())
+    await step.run(world.context())
+
+    assert world.github.secrets[CLAUDE_TOKEN_SECRET] == CLAUDE_KEY
+    assert (
+        "or leave it empty to keep the key GitHub already has, if any"
+        in (world.io.secret_prompts[0])
+    )
+    assert world.github.started == [("you/threadline", "daily")]
+    assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
+
+
+@pytest.mark.asyncio
+async def test_without_the_claude_key_on_github_the_first_run_is_not_started() -> None:
+    world = make_world(["", True], github_env())
+    step = GitHubStep()
+
+    await step.run(world.context())
 
     assert CLAUDE_TOKEN_SECRET not in world.github.secrets
-    assert "add CLAUDE_CODE_OAUTH_TOKEN on GitHub yourself" in world.io.text()
+    assert world.github.started == []
+    assert world.github.enabled == []
+    assert step.first_run == FirstRun(started=False, page=WORKFLOW_PAGE, needs_claude_key=True)
+    shown = world.io.text()
+    assert "GitHub does not have CLAUDE_CODE_OAUTH_TOKEN yet" in shown
+    assert "'claude setup-token'" in shown
+    assert "'uv run tracker setup github'" in shown
+
+
+@pytest.mark.asyncio
+async def test_a_key_github_cannot_be_asked_about_also_holds_the_first_run_back() -> None:
+    world = make_world(["", True], github_env())
+    world.github.listable = False
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.started == []
+    assert step.first_run is not None
+    assert step.first_run.needs_claude_key
+    assert "could not be asked whether it has" in " ".join(world.io.said)
 
 
 @pytest.mark.asyncio
@@ -433,18 +478,68 @@ async def test_the_claude_key_instruction_says_where_and_what_it_looks_like() ->
     assert "sk-ant-" in shown
 
 
+def outlook_only_env() -> dict[str, str]:
+    """A finished set-up that reads Outlook alone, so GitHub has no way to send the e-mail."""
+    return github_env() | {"MAIL_SOURCES": "outlook", "IMAP_PROVIDER": "", "IMAP_USERNAME": ""}
+
+
 @pytest.mark.asyncio
 async def test_with_outlook_alone_the_step_says_github_cannot_send_the_summary() -> None:
-    env = github_env() | {"MAIL_SOURCES": "outlook", "IMAP_PROVIDER": "", "IMAP_USERNAME": ""}
-    world = make_world(["", True, False], env)
+    world = make_world([False, CLAUDE_KEY, True, False], outlook_only_env())
 
     await GitHubStep().run(world.context())
 
     shown = world.io.text()
     assert "the run on GitHub cannot e-mail you the morning summary" in shown
-    assert "Outlook alone has no app password to send with" in shown
-    assert "'uv run tracker setup cloud'" in shown
+    assert "needs a mailbox with an app password" in shown
+    assert "Outlook alone has no app" in shown
+    assert "'uv run tracker setup extras'" in shown
     assert "the dashboard is updated every morning" in shown
+
+
+@pytest.mark.asyncio
+async def test_with_outlook_alone_the_mailbox_step_is_offered_and_makes_the_e_mail_possible() -> (
+    None
+):
+    answers = [True, "gmail", OWNER_EMAIL, "wxyz wxyz wxyz wxyz", True, CLAUDE_KEY, True, ""]
+    world = make_world(answers, outlook_only_env())
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.env.values["MAIL_SOURCES"] == "outlook,imap"
+    assert world.github.variables["MAIL_SOURCES"] == "outlook,imap"
+    assert world.github.started == [("you/threadline", "daily")]
+    assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
+    assert "The summary e-mail arrives in about 10 minutes." in world.io.said
+
+
+@pytest.mark.asyncio
+async def test_with_no_way_to_send_the_first_run_defaults_to_no_and_promises_no_e_mail() -> None:
+    world = make_world([False, CLAUDE_KEY, True, ""], outlook_only_env())
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.started == []
+    assert step.first_run == FirstRun(started=False, page=WORKFLOW_PAGE, summary_by_email=False)
+    shown = world.io.text()
+    assert "Without one, no summary e-mail will arrive" in shown
+    assert "'uv run tracker setup mailbox', then 'uv run tracker setup github'" in shown
+
+
+@pytest.mark.asyncio
+async def test_starting_the_first_run_anyway_says_no_e_mail_will_come() -> None:
+    world = make_world([False, CLAUDE_KEY, True, True], outlook_only_env())
+    step = GitHubStep()
+
+    await step.run(world.context())
+
+    assert world.github.started == [("you/threadline", "daily")]
+    assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE, summary_by_email=False)
+    shown = world.io.text()
+    assert "No summary e-mail" in shown
+    assert "arrives in about" not in shown
 
 
 @pytest.mark.asyncio
@@ -457,6 +552,7 @@ async def test_with_the_gmail_connector_chosen_the_step_says_github_cannot_send(
     assert "the run on GitHub cannot e-mail you the morning summary" in shown
     assert "SUMMARY_DELIVERY is set to gmail_connector" in shown
     assert "Outlook alone" not in shown
+    assert "Connect a Gmail" not in " ".join(world.io.said)
 
 
 @pytest.mark.asyncio
@@ -561,6 +657,102 @@ async def test_without_a_copy_the_schedule_is_committed_but_never_pushed() -> No
     assert world.git.committed == [(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)]
     assert world.git.pushed == []
     assert "nothing to push to" in world.io.text()
+
+
+# --- A time that is saved here but not on GitHub yet -------------------------------
+
+
+def _unsent_env() -> dict[str, str]:
+    """A set-up whose saved zone matches the workflow, so no line needs changing."""
+    return github_env() | {"OWNER_TIME_ZONE": "UTC"}
+
+
+@pytest.mark.asyncio
+async def test_a_time_saved_here_but_not_committed_is_offered_again_on_a_rerun() -> None:
+    world = make_world(["", True], _unsent_env())
+    world.git.uncommitted = True
+
+    await ScheduleStep().run(world.context())
+
+    assert "Nothing to change" in world.io.text()
+    assert "GitHub does not have this time yet" in world.io.text()
+    assert world.git.pushed == [(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)]
+
+
+@pytest.mark.asyncio
+async def test_a_time_committed_but_not_pushed_is_pushed_without_a_new_commit() -> None:
+    world = make_world(["", True], _unsent_env())
+    world.git.unpushed = True
+
+    await ScheduleStep().run(world.context())
+
+    assert world.git.plain_pushes == 1
+    assert world.git.pushed == []
+    assert world.git.committed == []
+
+
+@pytest.mark.asyncio
+async def test_a_time_already_on_github_asks_nothing_on_a_rerun() -> None:
+    world = make_world([""], _unsent_env())
+
+    await ScheduleStep().run(world.context())
+
+    assert "Nothing to change" in world.io.text()
+    assert world.git.pushed == []
+    assert world.git.plain_pushes == 0
+
+
+@pytest.mark.asyncio
+async def test_a_declined_push_of_a_saved_time_prints_the_lines_to_run() -> None:
+    world = make_world(["", False], _unsent_env())
+    world.git.unpushed = True
+
+    await ScheduleStep().run(world.context())
+
+    assert world.git.plain_pushes == 0
+    assert "  git push" in world.io.said
+
+
+@pytest.mark.asyncio
+async def test_without_a_copy_an_unpushed_commit_is_not_offered() -> None:
+    world = make_world([""], _unsent_env())
+    world.git.origin = None
+    world.git.unpushed = True
+
+    await ScheduleStep().run(world.context())
+
+    assert world.git.plain_pushes == 0
+    assert world.git.committed == []
+
+
+@pytest.mark.asyncio
+async def test_the_time_zone_step_offers_a_zone_saved_here_but_not_on_github(
+    tmp_path: Path,
+) -> None:
+    workflow = tmp_path / "threadline-run.yml"
+    workflow.write_text(
+        write_schedule(
+            WORKFLOW_FILE.read_text(encoding="utf-8"), Schedule(time(7, 0), "Europe/Rome")
+        ),
+        encoding="utf-8",
+    )
+    world = make_world(["", "", True], github_env())
+    world.git.uncommitted = True
+
+    await TimeZoneStep().run(time_zone_context(world, workflow))
+
+    assert world.git.pushed == [(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)]
+
+
+@pytest.mark.asyncio
+async def test_the_github_step_sends_a_time_that_never_reached_the_copy() -> None:
+    world = make_world([True, CLAUDE_KEY, True, False], _unsent_env())
+    world.git.unpushed = True
+
+    await GitHubStep().run(world.context())
+
+    assert world.git.plain_pushes == 1
+    assert world.github.secrets[CLAUDE_TOKEN_SECRET] == CLAUDE_KEY
 
 
 # --- A new time zone moves the workflow's timezone line too ----------------------
@@ -691,6 +883,38 @@ async def test_a_first_run_not_started_is_named_with_its_page_at_the_end() -> No
 
 
 @pytest.mark.asyncio
+async def test_the_closing_words_promise_no_e_mail_when_none_can_come() -> None:
+    world = make_world([False, CLAUDE_KEY, True, ""], outlook_only_env())
+    world.workflow.text = write_schedule(world.workflow.text, Schedule(time(7, 30), "Europe/Rome"))
+
+    assert await SetupWizard(world.context(), [GitHubStep()]).run_core()
+
+    said = world.io.said
+    ending = said[said.index("Set-up done.") :]
+    text = "\n".join(ending)
+    assert f"Start the first run at {WORKFLOW_PAGE}:" in ending
+    assert "the dashboard fills about 10 minutes later." in ending
+    assert "After that the dashboard is updated every day at 07:30 (Europe/Rome)." in ending
+    assert "No summary e-mail will come yet" in text
+    assert "summary e-mail follows" not in text
+    assert "comes every day" not in text
+
+
+@pytest.mark.asyncio
+async def test_the_closing_words_name_the_missing_claude_key() -> None:
+    world = _finishing_world(["", True])
+
+    assert await SetupWizard(world.context(), [GitHubStep()]).run_core()
+
+    said = world.io.said
+    ending = said[said.index("Set-up done.") :]
+    assert "The first run is not started yet: GitHub still needs your Claude key." in ending
+    assert "'uv run tracker setup github' and paste the key." in ending
+    assert "After that it comes every day at 07:30 (Europe/Rome)." in ending
+    assert not any("e-mail reaches you" in line for line in ending)
+
+
+@pytest.mark.asyncio
 async def test_a_core_set_up_that_stopped_has_no_closing_words() -> None:
     world = make_world([False], github_env())
     world.git.origin = None
@@ -783,6 +1007,23 @@ def test_a_workflow_gh_would_not_enable_is_a_plain_error_naming_the_page() -> No
         cli.enable_workflow("you/threadline")
 
 
+def test_gh_switches_the_workflow_off_by_its_file_name() -> None:
+    cli, run = _gh()
+
+    cli.disable_workflow("you/threadline")
+
+    assert [call[0] for call in run.calls] == [
+        ["gh", "workflow", "disable", "threadline-run.yml", "--repo", "you/threadline"]
+    ]
+
+
+def test_a_workflow_gh_would_not_disable_is_a_plain_error_naming_the_page() -> None:
+    cli, _ = _gh({"workflow disable": (1, "")})
+
+    with pytest.raises(SourceUnavailableError, match="choose 'Disable workflow'"):
+        cli.disable_workflow("you/threadline")
+
+
 def test_gh_starts_the_workflow_with_the_mode_as_its_input() -> None:
     cli, run = _gh()
 
@@ -840,6 +1081,48 @@ def test_gh_that_is_not_installed_is_not_ready() -> None:
 
     assert not GitHubCli(run, which=lambda _: None).ready()
     assert run.calls == []
+
+
+def _version_of(text: str) -> Answering:
+    return Answering({"--version": (0, text), "auth status": (0, "")})
+
+
+def test_an_old_gh_stops_the_set_up_early_with_where_to_get_a_new_one() -> None:
+    run = _version_of("gh version 2.40.1 (2023-12-13)\nhttps://github.com/cli/cli/releases\n")
+
+    with pytest.raises(SourceUnavailableError) as raised:
+        GitHubCli(run, which=lambda _: "/usr/bin/gh").ready()
+
+    message = str(raised.value)
+    assert "2.40" in message
+    assert "2.68" in message
+    assert "https://cli.github.com" in message
+
+
+def test_a_new_enough_gh_is_ready_and_asked_its_version_only_once() -> None:
+    run = _version_of("gh version 2.68.0 (2025-03-05)\n")
+    cli = GitHubCli(run, which=lambda _: "/usr/bin/gh")
+
+    assert cli.ready()
+    assert cli.ready()
+
+    versions = [call[0] for call in run.calls if call[0][1:] == ["--version"]]
+    assert versions == [["gh", "--version"]]
+
+
+@pytest.mark.parametrize("said", ["", "something unexpected", "gh version dev"])
+def test_a_version_gh_does_not_state_clearly_is_not_held_against_it(said: str) -> None:
+    assert GitHubCli(_version_of(said), which=lambda _: "/usr/bin/gh").ready()
+
+
+def test_a_newer_major_version_passes_whatever_its_minor_number() -> None:
+    assert GitHubCli(_version_of("gh version 3.0.0\n"), which=lambda _: "/usr/bin/gh").ready()
+
+
+def test_gh_says_whether_it_is_installed_apart_from_being_signed_in() -> None:
+    assert GitHubCli(Recorder(), which=lambda _: "/usr/bin/gh").installed()
+    assert not GitHubCli(Recorder(), which=lambda _: None).installed()
+    assert GitHubCli(Recorder(status=1), which=lambda _: "/usr/bin/gh").installed()
 
 
 def test_gh_that_is_not_signed_in_is_not_ready() -> None:
@@ -935,3 +1218,199 @@ def test_git_can_commit_without_pushing_and_rename_origin() -> None:
         ["git", "commit", "-m"],
         ["git", "remote", "rename"],
     ]
+
+
+def test_a_failed_git_command_shows_the_first_error_line() -> None:
+    run = Answering({"add --": (128, "hint: ignore me\nfatal: not a git repository\nmore\n")})
+
+    with pytest.raises(SourceUnavailableError) as raised:
+        GitRepository(run).commit_and_push(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)
+
+    assert "'git add' did not work (git said: fatal: not a git repository)" in str(raised.value)
+
+
+def test_a_web_address_in_what_git_said_loses_its_sign_in() -> None:
+    said = "fatal: unable to access 'https://you:ghp_sekret@github.com/you/x.git/': nope\n"
+    run = Answering({"push": (128, said)})
+
+    with pytest.raises(SourceUnavailableError) as raised:
+        GitRepository(run).push()
+
+    assert "ghp_sekret" not in str(raised.value)
+    assert "github.com/you/x.git" in str(raised.value)
+
+
+@pytest.mark.parametrize(
+    "rejection",
+    [
+        " ! [remote rejected] main -> main (refusing to allow an OAuth App to create or update "
+        "workflow `.github/workflows/threadline-run.yml` without `workflow` scope)",
+        " ! [remote rejected] main -> main (refusing to allow a Personal Access Token to create "
+        "or update workflow `.github/workflows/threadline-run.yml` without `workflow` scope)",
+        " ! [remote rejected] main -> main (refusing to allow an OAuth App to create or update "
+        "workflow `.github/workflows/threadline-run.yml` without workflow scope)",
+    ],
+)
+def test_a_push_refused_for_the_workflow_permission_says_how_to_add_it(rejection: str) -> None:
+    said = f"To https://github.com/you/x.git\n{rejection}\nerror: failed to push some refs\n"
+    run = Answering({"push": (1, said)})
+
+    with pytest.raises(SourceUnavailableError) as raised:
+        GitRepository(run).push()
+
+    assert str(raised.value) == (
+        "GitHub refused the change because your sign-in may not change workflow files. "
+        "Run: gh auth refresh -h github.com -s workflow, then run this step again."
+    )
+
+
+def test_another_refused_push_still_shows_what_git_said() -> None:
+    said = " ! [remote rejected] main -> main (protected branch hook declined)\nerror: failed\n"
+    run = Answering({"push": (1, said)})
+
+    with pytest.raises(SourceUnavailableError, match="git said: error: failed"):
+        GitRepository(run).push()
+
+
+def test_git_without_a_name_gets_the_two_lines_that_give_it_one() -> None:
+    said = (
+        "Author identity unknown\n\n*** Please tell me who you are.\n\nRun\n\n"
+        '  git config --global user.email "you@example.com"\n'
+        "fatal: unable to auto-detect email address\n"
+    )
+    run = Answering({"commit -m": (128, said)})
+
+    with pytest.raises(SourceUnavailableError) as raised:
+        GitRepository(run).commit(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)
+
+    message = str(raised.value)
+    assert 'git config --global user.name "Your Name"' in message
+    assert 'git config --global user.email "you@example.com"' in message
+    assert "did not work" not in message
+
+
+def test_git_says_what_differs_in_one_file() -> None:
+    changed = Answering({"status --porcelain": (0, " M .github/workflows/threadline-run.yml\n")})
+    clean = Answering({})
+
+    assert GitRepository(changed).has_uncommitted(WORKFLOW_PATH)
+    assert not GitRepository(clean).has_uncommitted(WORKFLOW_PATH)
+
+
+def test_a_commit_that_is_not_on_github_is_found_by_comparing_with_the_upstream() -> None:
+    ahead = Answering({"log --oneline": (0, "abc123 Set the daily Threadline time\n")})
+
+    assert GitRepository(ahead).has_unpushed(WORKFLOW_PATH)
+    assert ahead.calls[0][0][:4] == ["git", "log", "--oneline", "@{upstream}..HEAD"]
+    assert not GitRepository(Answering({})).has_unpushed(WORKFLOW_PATH)
+
+
+NO_UPSTREAM = (128, "fatal: no upstream configured for branch 'main'\n")
+AHEAD = "abc123 Set the daily Threadline time\n"
+UPSTREAM_LOG = "log --oneline @{upstream}..HEAD"
+DEFAULT_BRANCH_LOG = "log --oneline origin/main..HEAD"
+
+
+class GitAnswers(Recorder):
+    """A git runner answering by the start of the command, e.g. a log with one range."""
+
+    def __init__(self, answers: dict[str, tuple[int, str]]) -> None:
+        super().__init__()
+        self.answers = answers
+
+    def __call__(self, arguments: Sequence[str], stdin: str | None) -> tuple[int, str]:
+        super().__call__(arguments, stdin)
+        command = " ".join(arguments[1:])
+        for start, answer in self.answers.items():
+            if command.startswith(start):
+                return answer
+        return 128, "fatal: not answered in this test\n"
+
+    def asked(self, start: str) -> bool:
+        """Whether a command starting with ``start`` was run."""
+        return any(" ".join(call[0][1:]).startswith(start) for call in self.calls)
+
+
+def test_without_an_upstream_the_default_branch_on_github_is_compared() -> None:
+    run = GitAnswers(
+        {
+            UPSTREAM_LOG: NO_UPSTREAM,
+            "symbolic-ref --short": (0, "origin/main\n"),
+            DEFAULT_BRANCH_LOG: (0, AHEAD),
+        }
+    )
+
+    assert GitRepository(run).has_unpushed(WORKFLOW_PATH)
+    assert run.asked(DEFAULT_BRANCH_LOG)
+
+
+def test_a_default_branch_git_cannot_name_is_found_by_its_usual_names() -> None:
+    run = GitAnswers(
+        {
+            UPSTREAM_LOG: NO_UPSTREAM,
+            "symbolic-ref --short": (
+                128,
+                "fatal: ref refs/remotes/origin/HEAD is not a symbolic ref\n",
+            ),
+            "rev-parse --verify --quiet origin/main": (0, "abc123\n"),
+            DEFAULT_BRANCH_LOG: (0, ""),
+        }
+    )
+
+    assert not GitRepository(run).has_unpushed(WORKFLOW_PATH)
+    assert run.asked(DEFAULT_BRANCH_LOG)
+
+
+def test_with_nothing_on_github_to_compare_with_the_file_is_not_called_unsent() -> None:
+    run = GitAnswers(
+        {
+            UPSTREAM_LOG: NO_UPSTREAM,
+            "symbolic-ref --short": (128, "fatal: no such ref\n"),
+            "rev-parse --verify --quiet": (1, ""),
+        }
+    )
+
+    assert not GitRepository(run).has_unpushed(WORKFLOW_PATH)
+    assert not run.asked(DEFAULT_BRANCH_LOG)
+
+
+def test_a_warning_git_printed_does_not_make_a_clean_file_look_changed() -> None:
+    quiet = Answering({"status --porcelain": (0, ""), "log --oneline": (0, "")})
+    noisy = Answering({"status --porcelain": (0, "warning: LF will be replaced by CRLF\n")})
+    repository = GitRepository(quiet, run_for_errors=noisy)
+
+    assert not repository.has_uncommitted(WORKFLOW_PATH)
+    assert not repository.has_unpushed(WORKFLOW_PATH)
+    assert noisy.calls == []
+
+
+def test_what_a_failed_git_command_printed_as_errors_is_still_shown() -> None:
+    plain = Answering({"add --": (128, "")})
+    merged = Answering({"add --": (128, "fatal: not a git repository\n")})
+
+    with pytest.raises(SourceUnavailableError) as raised:
+        GitRepository(plain, run_for_errors=merged).commit_and_push(
+            WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE
+        )
+
+    assert "git said: fatal: not a git repository" in str(raised.value)
+    assert plain.calls == []
+
+
+def test_git_pushes_what_is_already_committed() -> None:
+    run = Recorder()
+
+    GitRepository(run).push()
+
+    assert [call[0] for call in run.calls] == [["git", "push"]]
+
+
+def test_the_runner_can_hand_back_what_a_program_printed_as_errors_too() -> None:
+    script = "import sys; print('out'); print('oops', file=sys.stderr); sys.exit(3)"
+    command = ["python", "-c", script]
+
+    merged = run_command(Path.cwd(), which=lambda _: sys.executable, merge_errors=True)
+    plain = run_command(Path.cwd(), which=lambda _: sys.executable)
+
+    assert merged(command, None) == (3, "out\noops\n")
+    assert plain(command, None) == (3, "out\n")

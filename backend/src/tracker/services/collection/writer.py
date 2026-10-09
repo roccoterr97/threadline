@@ -10,7 +10,7 @@ with no body, leaving only an identifier, the dates and the decision.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Final
@@ -20,6 +20,7 @@ from tracker.domain.enums import Channel, Direction, Relevance, RelevanceDecided
 from tracker.domain.models import Conversation, Message
 from tracker.repositories import Repositories
 from tracker.services.collection.models import RawConversation
+from tracker.services.collection.noise_return import NoiseReturn, thread_returns
 from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
@@ -56,6 +57,7 @@ class ConversationWriter:
             repositories: The repository container.
         """
         self._repositories = repositories
+        self._noise_return = NoiseReturn(repositories)
 
     def write(
         self,
@@ -81,12 +83,10 @@ class ConversationWriter:
                 channel, [item.source_conversation_id for item in conversations]
             )
         }
-        records = [
-            _conversation_of(raw, existing.get(raw.source_conversation_id), person_by_identity)
-            for raw in conversations
-        ]
+        known = self._known_messages(existing.values())
+        records = self._plan(conversations, existing, known, person_by_identity)
         self._repositories.conversations.bulk_upsert(records)
-        counts = self._write_messages(conversations, records)
+        counts = self._write_messages(conversations, records, known)
         _log.info(
             "conversations_written",
             channel=channel.value,
@@ -100,26 +100,69 @@ class ConversationWriter:
             messages_new=counts.messages_new,
         )
 
+    def _plan(
+        self,
+        conversations: Sequence[RawConversation],
+        existing: dict[str, Conversation],
+        known: dict[tuple[UUID, str], Message],
+        person_by_identity: dict[tuple[Channel, str], UUID],
+    ) -> list[Conversation]:
+        """Build every thread's row, and bring back the people those rows give news of.
+
+        Args:
+            conversations: The collected threads.
+            existing: The rows already stored, by source identifier.
+            known: The messages already stored, by thread and source identifier.
+            person_by_identity: Who each participant is.
+
+        Returns:
+            The rows to write, in the order of the threads.
+        """
+        returning = {
+            raw.source_conversation_id
+            for raw in conversations
+            if thread_returns(raw, existing.get(raw.source_conversation_id), known)
+        }
+        records = [
+            _conversation_of(
+                raw,
+                existing.get(raw.source_conversation_id),
+                person_by_identity,
+                returns=raw.source_conversation_id in returning,
+            )
+            for raw in conversations
+        ]
+        self._noise_return.restore_people(_people_with_news(records, existing, returning))
+        return records
+
+    def _known_messages(
+        self,
+        stored: Iterable[Conversation],
+    ) -> dict[tuple[UUID, str], Message]:
+        """Read the messages already stored for threads that are already stored."""
+        return {
+            (message.conversation_id, message.source_message_id): message
+            for message in self._repositories.messages.list_for_conversations(
+                [conversation.id for conversation in stored]
+            )
+        }
+
     def _write_messages(
         self,
         conversations: Sequence[RawConversation],
         records: Sequence[Conversation],
+        known: dict[tuple[UUID, str], Message],
     ) -> WriteCounts:
         """Write every thread's messages in one batch.
 
         Args:
             conversations: The collected threads.
             records: The conversation rows, in the same order.
+            known: The messages already stored, by thread and source identifier.
 
         Returns:
             How many messages were offered and how many were new.
         """
-        known = {
-            (message.conversation_id, message.source_message_id): message
-            for message in self._repositories.messages.list_for_conversations(
-                [record.id for record in records]
-            )
-        }
         messages: list[Message] = []
         for raw, record in zip(conversations, records, strict=True):
             messages.extend(_messages_of(raw, record, known))
@@ -136,6 +179,8 @@ def _conversation_of(
     raw: RawConversation,
     existing: Conversation | None,
     person_by_identity: dict[tuple[Channel, str], UUID],
+    *,
+    returns: bool,
 ) -> Conversation:
     """Build the conversation row for one collected thread.
 
@@ -143,6 +188,8 @@ def _conversation_of(
         raw: The collected thread.
         existing: The row already stored, when there is one.
         person_by_identity: Who each participant is.
+        returns: Whether the owner wrote in a thread the assistant had dropped,
+            which makes the rules judge it afresh.
 
     Returns:
         The row to write. A noise thread carries no subject: the model drops it.
@@ -150,7 +197,7 @@ def _conversation_of(
         the collection window alone (a noise thread is) may not hold its
         oldest or its owner's messages, which must not move or erase them.
     """
-    relevance, decided_by = _decision(existing, raw)
+    relevance, decided_by = _decision(existing, raw, returns=returns)
     sent_times = [message.sent_at for message in raw.messages]
     conversation = Conversation(
         person_id=_person_of(raw, person_by_identity, relevance),
@@ -190,25 +237,52 @@ def _keep_known_dates(conversation: Conversation, existing: Conversation) -> Non
 def _decision(
     existing: Conversation | None,
     raw: RawConversation,
+    *,
+    returns: bool,
 ) -> tuple[Relevance, RelevanceDecidedBy | None]:
     """Work out the relevance to store and who decided it.
 
     The prefilter only ever says "obviously machine traffic" or "no opinion", so
     it must never overwrite the richer answer the assessment or the owner has
-    already given.
+    already given. The one exception is the assistant's noise when the owner has
+    written in the thread since: his reply outranks the assistant's reading, so
+    the thread is decided afresh and goes back to the assistant.
 
     Args:
         existing: The row already stored, when there is one.
         raw: The collected thread.
+        returns: Whether the thread is one of those.
 
     Returns:
         The relevance and the decider to write.
     """
-    if existing is not None and existing.relevance_decided_by in DECIDED_BEYOND_RULES:
+    if (
+        existing is not None
+        and not returns
+        and existing.relevance_decided_by in DECIDED_BEYOND_RULES
+    ):
         return existing.relevance, existing.relevance_decided_by
     if raw.relevance is Relevance.NOISE:
         return Relevance.NOISE, RelevanceDecidedBy.RULE
     return raw.relevance, None
+
+
+def _people_with_news(
+    records: Sequence[Conversation],
+    existing: dict[str, Conversation],
+    returning: set[str],
+) -> set[UUID]:
+    """The people filed under a thread that is new or that came back, and so has news."""
+    return {
+        record.person_id
+        for record in records
+        if record.person_id is not None
+        and record.relevance is not Relevance.NOISE
+        and (
+            record.source_conversation_id in returning
+            or record.source_conversation_id not in existing
+        )
+    }
 
 
 def _person_of(

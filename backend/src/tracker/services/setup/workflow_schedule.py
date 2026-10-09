@@ -102,18 +102,45 @@ def show_changes(ctx: SetupContext, before: str, after: str) -> None:
         ctx.io.say(f"  {line}")
 
 
-def offer_push(ctx: SetupContext) -> None:
-    """Commit and push only after an explicit yes, and only when there is a copy to push to."""
+def offer_push(ctx: SetupContext, *, committed: bool = False) -> None:
+    """Commit and push only after an explicit yes, and only when there is a copy to push to.
+
+    Args:
+        ctx: The set-up's context.
+        committed: Whether the change is already committed, so only a push is left.
+    """
     if not has_copy(ctx):
         _offer_commit(ctx)
         return
     ctx.io.say("GitHub uses the new time once this file is committed and pushed.")
     if ctx.io.confirm("Send the new time to your copy on GitHub now?", default=True):
-        ctx.gateways.git.commit_and_push(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)
+        if committed:
+            ctx.gateways.git.push()
+        else:
+            ctx.gateways.git.commit_and_push(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)
         ctx.io.say("Committed and pushed. GitHub will use the new time from now on.")
         return
-    _say_commit_lines(ctx)
+    if not committed:
+        _say_commit_lines(ctx)
     ctx.io.say("  git push")
+
+
+def offer_unsent_change(ctx: SetupContext) -> None:
+    """Offer again a time saved on this computer that GitHub does not have yet.
+
+    A push that stopped, or a no, leaves the workflow file changed here while
+    GitHub keeps the old time; running the step again would otherwise find
+    nothing to change and never offer it. Does nothing when GitHub is up to date.
+
+    Args:
+        ctx: The set-up's context.
+    """
+    git = ctx.gateways.git
+    uncommitted = git.has_uncommitted(WORKFLOW_PATH)
+    if not uncommitted and not (has_copy(ctx) and git.has_unpushed(WORKFLOW_PATH)):
+        return
+    ctx.io.say("This computer has your daily time, but GitHub does not have this time yet.")
+    offer_push(ctx, committed=not uncommitted)
 
 
 def _offer_commit(ctx: SetupContext) -> None:

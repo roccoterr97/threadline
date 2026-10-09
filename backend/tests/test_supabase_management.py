@@ -238,6 +238,33 @@ async def test_redirect_addresses_go_as_one_comma_separated_list() -> None:
     }
 
 
+async def test_the_redirect_list_is_read_as_separate_addresses() -> None:
+    answer = {"site_url": "http://localhost:3000", "uri_allow_list": "http://a/**, http://b/** ,,"}
+    with respx.mock:
+        route = respx.get(AUTH).mock(return_value=httpx.Response(200, json=answer))
+        async with SupabasePlatform() as platform:
+            urls = await platform.redirect_urls(REF, TOKEN)
+
+    assert urls == ("http://a/**", "http://b/**")
+    assert route.calls.last.request.headers["Authorization"] == "Bearer sbp_made_up_token"
+
+
+@pytest.mark.parametrize("answer", [{}, {"uri_allow_list": None}, {"uri_allow_list": ""}])
+async def test_a_project_with_no_redirect_list_has_none(answer: dict[str, object]) -> None:
+    with respx.mock:
+        respx.get(AUTH).mock(return_value=httpx.Response(200, json=answer))
+        async with SupabasePlatform() as platform:
+            assert await platform.redirect_urls(REF, TOKEN) == ()
+
+
+async def test_a_token_that_may_not_read_auth_is_an_auth_error() -> None:
+    with respx.mock:
+        respx.get(AUTH).mock(return_value=httpx.Response(403, json={}))
+        async with SupabasePlatform() as platform:
+            with pytest.raises(SourceAuthError, match="auth settings"):
+                await platform.redirect_urls(REF, TOKEN)
+
+
 async def test_empty_auth_settings_send_nothing() -> None:
     with respx.mock:
         route = respx.patch(AUTH).mock(return_value=httpx.Response(200, json={}))
