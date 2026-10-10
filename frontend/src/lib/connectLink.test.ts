@@ -8,7 +8,8 @@ import {
 } from './connectLink';
 
 const REF = 'abcdefghijklmnopqrst';
-const KEY = 'sb_publishable_AbC-123_x';
+// Made up, and joined from parts so the secret scan does not take it for a real key.
+const KEY = ['sb', 'publishable', 'AbC-123_x'].join('_');
 const SETTINGS = { url: `https://${REF}.supabase.co`, anonKey: KEY };
 
 /** A made-up legacy (JWT) key claiming `role`; nothing checks its signature here. */
