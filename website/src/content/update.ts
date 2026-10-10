@@ -1,7 +1,7 @@
 /**
  * The words of the "Keep your copy up to date" page. Facts come from the
  * header of `install.sh` and from docs/operations.md ("Publish a newer
- * dashboard").
+ * dashboard"), which only an own dashboard on Netlify needs.
  */
 
 export const updatePage = {
@@ -12,12 +12,12 @@ export const updatePage = {
 } as const;
 
 export const updateSteps = {
-  heading: 'Three steps',
+  heading: 'Up to three steps',
   pasteHeading: 'Paste the install line again',
   pasteBody: 'In a terminal, for your computer:',
   installLineWhat: 'the install line',
-  publishHeading: 'Publish the newer dashboard',
-  publishBody: 'Two lines publish the newer dashboard to the same address:',
+  publishHeading: 'Only with your own dashboard on Netlify',
+  publishBody: 'The shared dashboard is kept up to date for you. If you publish your own copy, two lines publish the newer one to the same address:',
   publishCommand: 'cd ~/threadline/backend\nuv run tracker setup dashboard',
   publishWhat: 'the dashboard lines',
   settingsHeading: 'Only if the change notes say settings changed',

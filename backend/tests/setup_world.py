@@ -6,12 +6,17 @@ Nothing here touches a terminal, a file outside the test folder or the network.
 from __future__ import annotations
 
 import hashlib
+import os
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from pydantic import SecretStr
 
 from tracker.domain.categories import Category
@@ -23,8 +28,10 @@ from tracker.domain.supabase import (
     AuthSettings,
     NewProject,
     Organization,
+    SealedAccessToken,
     SupabaseProject,
 )
+from tracker.infrastructure.claude_setup_token import ClaudeCodeState, ClaudeKeyScreen
 from tracker.infrastructure.github_cli import GitHubRepository, WorkflowRun
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
@@ -39,11 +46,14 @@ from tracker.services.profile.choice import Choice, Effect, SavedChoice
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.dashboard_package import pack
 from tracker.services.setup.ports import SetupGateways
+from tracker.services.setup.supabase_session import TokenRoute
 from tracker.services.setup.workflow_schedule import Schedule, write_schedule
 from tracker.shared.clock import FixedClock
 from tracker.shared.constants.dashboard import ARCHIVE_NAME, CHECKSUM_NAME, RELEASE_ASSET_URL
 from tracker.shared.constants.github import DAILY_RUN_TITLE, WORKFLOW_FILE, WorkflowMode
+from tracker.shared.constants.setup import SUPABASE_BROWSER_SIGN_IN_PAGE
 from tracker.shared.errors import (
+    ClaudeKeyNotMadeError,
     DatabaseStructureMissingError,
     DatabaseUnavailableError,
     LinkedInSignInError,
@@ -65,6 +75,10 @@ GOOD_TOKEN = "sbp_good"
 #: A scoped Supabase token: it may list and create projects, but Supabase answers
 #: "too little access" to everything inside a project, as it does for revealing keys.
 NARROW_TOKEN = "sbp_fc_scoped"
+#: The answer that picks a pasted Supabase token over the browser sign-in.
+PASTE = str(TokenRoute.PASTE.value)
+#: The code the Supabase sign-in page shows in the fake.
+GOOD_CODE = "a1b2c3d4"
 GOOD_LINKEDIN = "linkedin-good"
 GOOD_CLIENT_ID = "78linkedinapp1"
 GOOD_CLIENT_SECRET = "WPL_AP1.good-secret"
@@ -360,6 +374,32 @@ class FakePlatform:
     create_times_out: bool = False
     #: Whether ``NARROW_TOKEN`` may list the organizations (and so pass the paste check).
     narrow_may_list: bool = True
+    #: The pages the browser opened, shared with the conversation; the sign-in reads its key there.
+    opened: list[str] = field(default_factory=list)
+    #: Every code typed for a browser sign-in, in turn.
+    sign_in_codes: list[str] = field(default_factory=list)
+    #: The token a browser sign-in makes.
+    sign_in_token_value: str = GOOD_TOKEN
+    #: What the sign-in session raises for the right code instead of answering.
+    sign_in_failure: Exception | None = None
+    #: Whether the sealed token comes back damaged, so it cannot be opened.
+    sign_in_damaged: bool = False
+
+    async def sign_in_token(self, session_id: str, code: str) -> SealedAccessToken:
+        self.sign_in_codes.append(code)
+        if code != GOOD_CODE:
+            message = "Supabase did not accept that code"
+            raise SourceAuthError(message)
+        if self.sign_in_failure is not None:
+            raise self.sign_in_failure
+        page = next(url for url in self.opened if url.startswith(SUPABASE_BROWSER_SIGN_IN_PAGE))
+        query = parse_qs(urlsplit(page).query)
+        assert query["session_id"] == [session_id]
+        sealed = seal_token(query["public_key"][0], self.sign_in_token_value)
+        if not self.sign_in_damaged:
+            return sealed
+        flipped = bytes.fromhex(sealed.ciphertext_hex)[:-1] + b"\x00"
+        return replace(sealed, ciphertext_hex=flipped.hex())
 
     async def signups_disabled(self, project_url: str, publishable_key: SecretStr) -> bool:
         if self.unanswered_settings > 0:
@@ -482,6 +522,23 @@ class FakePlatform:
     ) -> None:
         _require_good(token, "the access token for deploying the function")
         self.deployed.append((slug, tuple(files), verify_jwt))
+
+
+def seal_token(public_key_hex: str, token: str) -> SealedAccessToken:
+    """Seal a token for a sign-in's public key, as Supabase does: ECDH, then AES-256-GCM."""
+    supabase_key = ec.generate_private_key(ec.SECP256R1())
+    their_key = ec.EllipticCurvePublicKey.from_encoded_point(
+        ec.SECP256R1(), bytes.fromhex(public_key_hex)
+    )
+    shared_secret = supabase_key.exchange(ec.ECDH(), their_key)
+    nonce = os.urandom(12)
+    sealed = AESGCM(shared_secret).encrypt(nonce, token.encode(), None)
+    public_point = supabase_key.public_key().public_bytes(
+        Encoding.X962, PublicFormat.UncompressedPoint
+    )
+    return SealedAccessToken(
+        ciphertext_hex=sealed.hex(), public_key_hex=public_point.hex(), nonce_hex=nonce.hex()
+    )
 
 
 def _require_known(token: SecretStr, what: str) -> None:
@@ -975,6 +1032,31 @@ class FakeLocalBuild:
 
 
 @dataclass
+class FakeClaudeKeyMaker:
+    """``claude setup-token``: out of reach unless a test says otherwise, as on Windows."""
+
+    state_now: ClaudeCodeState = ClaudeCodeState.UNSUPPORTED
+    #: What its screen shows, the key included.
+    screen: str = ""
+    exit_code: int = 0
+    columns: int = 1000
+    #: Raised instead of a screen, when set.
+    error: ClaudeKeyNotMadeError | None = None
+    runs: int = 0
+
+    def state(self) -> ClaudeCodeState:
+        return self.state_now
+
+    def make_key(self) -> ClaudeKeyScreen:
+        self.runs += 1
+        if self.error is not None:
+            raise self.error
+        return ClaudeKeyScreen(
+            text=SecretStr(self.screen), columns=self.columns, exit_code=self.exit_code
+        )
+
+
+@dataclass
 class World:
     """Everything a step test needs."""
 
@@ -1005,6 +1087,7 @@ class World:
     pages: dict[str, list[WebPage]] = field(default_factory=dict)
     #: The random ends of new site names, in turn.
     suffixes: list[str] = field(default_factory=lambda: ["abc123", "def456", "ghi789"])
+    claude: FakeClaudeKeyMaker = field(default_factory=FakeClaudeKeyMaker)
 
     def context(self) -> SetupContext:
         async def check_linkedin(token: SecretStr) -> None:
@@ -1071,6 +1154,7 @@ class World:
             local_build=self.local_build,
             page_of=page_of,
             site_name_suffix=lambda: self.suffixes.pop(0),
+            claude_key_maker=self.claude,
         )
         return SetupContext(io=self.io, env=self.env, gateways=gateways)
 
@@ -1101,11 +1185,12 @@ def make_world(
 ) -> World:
     """Build a world with every migration present and nobody signed in."""
     admin = FakeAdmin()
+    io = ScriptedIO(answers, clipboard=clipboard)
     return World(
-        io=ScriptedIO(answers, clipboard=clipboard),
+        io=io,
         env=MemoryEnv(env),
         admin=admin,
-        platform=FakePlatform(admin=admin),
+        platform=FakePlatform(admin=admin, opened=io.opened),
         microsoft=FakeMicrosoft(),
         statuses={},
         linkedin_calls=[],

@@ -29,6 +29,37 @@ CLAUDE_KEY_CHARACTERS: Final[str] = r"[A-Za-z0-9_-]+"
 #: The floor stays well below the whole length, so a whole key is never refused.
 CLAUDE_KEY_MIN_LENGTH: Final[int] = 90
 
+#: The command Claude Code is run with, and its words that make a subscription key.
+CLAUDE_COMMAND: Final[str] = "claude"
+CLAUDE_SETUP_TOKEN_ARGUMENTS: Final[tuple[str, ...]] = ("setup-token",)
+
+#: Where Anthropic's own installer puts ``claude`` on macOS and Linux, under the
+#: home folder. A terminal opened before the install may not look there yet.
+CLAUDE_NATIVE_INSTALL_PATH: Final[tuple[str, ...]] = (".local", "bin", "claude")
+
+#: Where Claude Code's installation is explained, for anyone who does not have it.
+CLAUDE_CODE_SETUP_PAGE: Final[str] = "https://code.claude.com/docs/en/setup"
+
+#: The width, in characters, of the screen ``claude setup-token`` draws on when
+#: the set-up runs it. Far wider than any window, so the key comes on one line.
+CLAUDE_KEY_SCREEN_COLUMNS: Final[int] = 1000
+
+#: The height of that screen, in lines.
+CLAUDE_KEY_SCREEN_ROWS: Final[int] = 50
+
+#: Seconds the set-up waits for the key: time to sign in and click Authorize.
+#: After that ``claude setup-token`` is stopped and the key is pasted instead.
+CLAUDE_KEY_WAIT_SECONDS: Final[float] = 300.0
+
+#: Seconds between two looks at the screen and the keyboard while waiting.
+CLAUDE_KEY_POLL_SECONDS: Final[float] = 0.1
+
+#: Seconds ``claude setup-token`` is given to end after its screen closed.
+CLAUDE_KEY_EXIT_SECONDS: Final[float] = 5.0
+
+#: What the person sees where ``claude setup-token`` printed the key.
+CLAUDE_KEY_HIDDEN: Final[str] = "[key hidden: Threadline sends it to GitHub]"
+
 #: The title of the one line the workflow writes when Claude stopped with an
 #: error. ``.github/workflows/threadline-run.yml`` repeats it; a test keeps both equal.
 CLAUDE_STOPPED_TITLE: Final[str] = "Why Claude stopped"

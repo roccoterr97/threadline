@@ -16,6 +16,9 @@ const DOCS_URL = `${GITHUB_URL}/blob/main/docs`;
 /** The dashboard filled with made-up people; nothing is saved. */
 export const DEMO_URL = 'https://demo.threadlineapp.com';
 
+/** The shared dashboard every copy uses unless its owner publishes their own. */
+export const SHARED_DASHBOARD_URL = 'https://app.threadlineapp.com';
+
 /** The one line that installs Threadline, per kind of computer. */
 export const INSTALL_LINE_MAC_LINUX = `curl -LsSf ${RAW_URL}/install.sh | sh`;
 export const INSTALL_LINE_WINDOWS = `irm ${RAW_URL}/install.ps1 | iex`;

@@ -27,6 +27,7 @@ from typing import Final
 from pydantic import SecretStr
 from supabase import Client
 
+from tracker.domain.dashboard_link import dashboard_address
 from tracker.infrastructure.database import create_database_client, probe_database
 from tracker.infrastructure.imap.reader import ImapMailbox, MailboxSurvey
 from tracker.infrastructure.imap.session import ImapSession
@@ -212,7 +213,14 @@ def _checks(settings: Settings, clients: _Clients) -> tuple[Check, ...]:
         ),
         LinkedInKeyCheck(_linkedin_check(token) if token else None),
         LinkedInExpiryCheck(token is not None, settings.linkedin_token_expires_on, SystemClock()),
-        DashboardCheck(WebProbe().status_of, settings.dashboard_base_url),
+        DashboardCheck(
+            WebProbe().status_of,
+            dashboard_address(
+                settings.dashboard_base_url,
+                settings.supabase_url,
+                settings.supabase_anon_key.get_secret_value(),
+            ),
+        ),
         RefreshNowCheck(WebProbe().status_of_post, function_url(settings.supabase_url)),
         DailyStartCheck(
             admin.daily_start_status,

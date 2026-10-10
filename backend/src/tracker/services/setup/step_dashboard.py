@@ -1,24 +1,29 @@
-"""Step: publish the dashboard, save its address, and point Supabase's sign-in at it.
+"""Step: choose the dashboard, save its address, and point Supabase's sign-in at it.
 
-The dashboard is published on Netlify, for free, with nothing to install: the
-set-up downloads the ready-made dashboard, adds the project's two public
-values and uploads it with a token the owner pastes (see ``netlify_publish``).
-Running the step again publishes the newest dashboard to the same address.
-An owner who hosts it elsewhere types its address instead, which is opened
-once before it is saved.
+By default the owner uses Threadline's shared dashboard: one page for every
+owner, with nothing to create and no key to paste. The data stays in the
+owner's own Supabase project; a personal link tells the page which project to
+open (see ``tracker.domain.dashboard_link``). The step shows that link and
+opens it once.
+
+The owner may publish their own copy on Netlify instead (``netlify_publish``),
+which an owner who already has a Netlify site is offered first, so running the
+step again publishes the newest dashboard to the same address. An owner who
+hosts it elsewhere types its address, which is opened once before it is saved.
 """
 
 from __future__ import annotations
 
 from typing import Final
 
+from tracker.domain.dashboard_link import DashboardAddress, connect_fragment, dashboard_address
 from tracker.domain.supabase import AuthSettings
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
-from tracker.services.setup.netlify_publish import SITE_ID, publish_on_netlify
+from tracker.services.setup.netlify_publish import SITE_ID, browser_settings, publish_on_netlify
 from tracker.services.setup.supabase_session import full_access_needed, require_supabase_token
-from tracker.shared.constants.dashboard import LOGIN_WALL_STATUSES
+from tracker.shared.constants.dashboard import HOSTED_DASHBOARD_URL, LOGIN_WALL_STATUSES
 from tracker.shared.constants.setup import SUPABASE_URL_CONFIGURATION_PAGE
 from tracker.shared.errors import (
     SourceAuthError,
@@ -31,9 +36,12 @@ ADDRESS: Final[str] = "DASHBOARD_BASE_URL"
 #: First status that counts as "the page did not open".
 FIRST_ERROR_STATUS: Final[int] = 400
 
+_SUPABASE_URL: Final[str] = "SUPABASE_URL"
+_PUBLISHABLE_KEY: Final[str] = "SUPABASE_ANON_KEY"
+
 
 class DashboardStep:
-    """Publishes the dashboard on Netlify (or takes the address of another host)."""
+    """Sets up the shared dashboard (or publishes the owner's own copy, or takes its address)."""
 
     name = StepName.DASHBOARD
     title = "Your dashboard"
@@ -43,26 +51,86 @@ class DashboardStep:
         return ctx.env.get(ADDRESS) is not None
 
     async def run(self, ctx: SetupContext) -> None:
-        """Publish it (or take another host's address), save it, then point Supabase at it.
+        """Choose the dashboard, save its address, point Supabase at it, then give the link.
 
         Raises:
-            ValidationFailedError: If the dashboard is not published at all, so a
-                full set-up stops here and carries on from here next time.
+            ValidationFailedError: If no dashboard is chosen at all, so a full
+                set-up stops here and carries on from here next time.
         """
-        io = ctx.io
-        io.say("Your dashboard is a private web page: open it on your computer or your phone.")
-        io.say("It is published on Netlify, free, and only you can sign in to it.")
-        republish = ctx.env.get(SITE_ID) is not None
-        question = (
-            "Publish the newest version of your dashboard on Netlify?"
-            if republish
-            else "Publish it on Netlify now?"
-        )
-        if io.confirm(question, default=True):
-            address = await publish_on_netlify(ctx)
-        else:
-            address = await _hosted_elsewhere(ctx)
+        ctx.io.say("Your dashboard is a private web page: open it on your computer or your phone.")
+        address = await _chosen_address(ctx)
+        link = _personal_link(ctx) if address == HOSTED_DASHBOARD_URL else None
         await _save(ctx, address)
+        if link is not None:
+            _give_personal_link(ctx, link)
+
+
+def _personal_link(ctx: SetupContext) -> str:
+    """The owner's personal link to the shared dashboard.
+
+    Raises:
+        ValidationFailedError: If the project address or the publishable key is
+            missing or not one the browser may hold.
+    """
+    settings = browser_settings(ctx)
+    fragment = connect_fragment(settings.supabase_url, settings.publishable_key)
+    return DashboardAddress(HOSTED_DASHBOARD_URL, fragment).page()
+
+
+def opening_link(ctx: SetupContext) -> str | None:
+    """Where the owner opens the saved dashboard: the personal link for the shared one.
+
+    Returns:
+        The address to open, or ``None`` when none is saved yet.
+    """
+    address = dashboard_address(
+        ctx.env.get(ADDRESS),
+        ctx.env.get(_SUPABASE_URL) or "",
+        ctx.env.get(_PUBLISHABLE_KEY) or "",
+    )
+    return None if address is None else address.page()
+
+
+async def _chosen_address(ctx: SetupContext) -> str:
+    """The shared dashboard, a newly published copy, or another host's address.
+
+    An owner with a Netlify site is asked about republishing it first.
+    """
+    io = ctx.io
+    if ctx.env.get(SITE_ID) is not None:
+        if io.confirm("Publish the newest version of your dashboard on Netlify?", default=True):
+            return await publish_on_netlify(ctx)
+        if _shared_wanted(ctx):
+            return HOSTED_DASHBOARD_URL
+        return await _hosted_elsewhere(ctx)
+    if _shared_wanted(ctx):
+        return HOSTED_DASHBOARD_URL
+    if io.confirm(
+        "Publish your own copy on Netlify instead (it needs a free Netlify account)?",
+        default=True,
+    ):
+        return await publish_on_netlify(ctx)
+    return await _hosted_elsewhere(ctx)
+
+
+def _shared_wanted(ctx: SetupContext) -> bool:
+    """Explain the shared dashboard and ask whether to use it."""
+    io = ctx.io
+    io.say("The simplest is Threadline's shared dashboard: nothing to create, no key to paste.")
+    io.say("Everyone opens the same page, but your data stays in your own database,")
+    io.say("and only you can sign in to it.")
+    return io.confirm("Use the shared dashboard?", default=True)
+
+
+def _give_personal_link(ctx: SetupContext, link: str) -> None:
+    """Show the personal link, put it on the clipboard and open it once."""
+    io = ctx.io
+    io.say("Your personal link opens your dashboard on any computer or phone:")
+    io.say(f"  {link}")
+    io.say("Keep it. Every morning e-mail carries it too.")
+    if io.copy(link):
+        io.say("It is on your clipboard as well.")
+    io.open_page(link)
 
 
 async def _hosted_elsewhere(ctx: SetupContext) -> str:
@@ -73,7 +141,10 @@ async def _hosted_elsewhere(ctx: SetupContext) -> str:
     """
     io = ctx.io
     if not io.confirm("Do you publish it somewhere else instead?", default=False):
-        message = "the dashboard is not published yet - publish it first (part 5 of the guide)"
+        message = (
+            "no dashboard is chosen yet - run the step again and choose the shared "
+            "dashboard (part 5 of the guide)"
+        )
         raise ValidationFailedError(message)
     return await ctx.ask_until_accepted(
         lambda: io.ask("The dashboard's address (https://...)"),
@@ -106,6 +177,18 @@ async def _save(ctx: SetupContext, address: str) -> None:
         ctx.io.say("Its address has not changed, so Supabase needs nothing new.")
         return
     await point_supabase_at(ctx, address)
+    if previous is not None:
+        _say_what_else_to_update(ctx)
+
+
+def _say_what_else_to_update(ctx: SetupContext) -> None:
+    """Name the two steps that keep a copy of the old address."""
+    ctx.io.say(
+        f"The address changed: run 'uv run tracker setup {StepName.GITHUB}' so the daily run"
+    )
+    ctx.io.say(
+        f"links to it, and 'uv run tracker setup {StepName.REFRESH}' again if you use Refresh now."
+    )
 
 
 async def point_supabase_at(ctx: SetupContext, address: str) -> None:

@@ -8,6 +8,7 @@ import { usePageScroll } from '../hooks/usePageScroll';
 import { useRefreshNow } from '../hooks/useRefreshNow';
 import { BottomNav } from './BottomNav';
 import { Button } from './Button';
+import { DatabaseUpdateNotice } from './DatabaseUpdateNotice';
 import { HeaderNav } from './HeaderNav';
 import { Icon } from './Icon';
 import { Logo } from './Logo';
@@ -81,6 +82,7 @@ export function AppLayout({ banner }: AppLayoutProps) {
         </div>
         <RefreshStatus id={REFRESH_STATUS_ID} status={refresh.status} />
       </header>
+      <DatabaseUpdateNotice />
 
       <main
         id={MAIN_ID}

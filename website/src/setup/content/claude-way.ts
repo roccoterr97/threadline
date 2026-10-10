@@ -22,11 +22,11 @@ export const CLAUDE_WAY: ClaudeWay = {
   intro: [
     {
       kind: 'paragraph',
-      text: 'Threadline runs on your own Claude subscription, and Claude can also do the set-up for you. You create a few free accounts and click where it tells you; Claude does everything that happens in the terminal. Keys are typed by you into a page in your browser, never into the chat.',
+      text: 'Threadline runs on your own Claude subscription, and Claude can also do the set-up for you. You create two free accounts and click where it tells you; Claude does everything that happens in the terminal. Keys are typed by you into a page in your browser, never into the chat.',
     },
     {
       kind: 'paragraph',
-      text: 'It takes about 30 to 40 minutes of your own time if you already have GitHub, Supabase and Netlify accounts. The first summary e-mail follows about ten minutes later, if you have a mailbox that can send it, for example Gmail with an app password. Creating the accounts as you go brings it to 50 to 70 minutes.',
+      text: 'It takes about 20 minutes of your own time with GitHub and Supabase accounts ready, about 30 without. The first summary e-mail follows about ten minutes later, if you have a mailbox that can send it, for example Gmail with an app password.',
     },
     {
       kind: 'paragraph',
@@ -62,14 +62,14 @@ export const CLAUDE_WAY: ClaudeWay = {
       items: [
         '**Tools:** it installs the small helpers it needs (`uv`, `gh` and the Claude command-line tool) if they are missing.',
         '**Your private copy:** it makes your own copy of Threadline on GitHub (you may need to sign in to GitHub once, in the browser, with a code it gives you).',
-        '**The accounts:** Supabase (the database), Netlify (the dashboard) and your mailbox\'s app password. These must be yours, so you create them, with Claude saying exactly what to click. The set-up then creates the database project and publishes the dashboard for you.',
-        '**The set-up page:** Claude starts the set-up and a page opens in your browser called *Threadline set-up*. It asks one question at a time: paste each key there. Claude sees the questions, not your answers, and is told never to open that page itself (it could: the page\'s address appears in its window). Ask it anything that is unclear.',
+        '**The accounts:** Supabase (the database; sign up with **Continue with GitHub**) and your mailbox\'s app password. These must be yours, so you create them, with Claude saying exactly what to click. The set-up then creates the database project for you.',
+        '**The set-up page:** Claude starts the set-up and a page opens in your browser called *Threadline set-up*. It asks one question at a time; answer there. On Supabase you click **Authorize** and type the short code it shows into the set-up page. On Claude you click **Authorize**, and the key goes straight to GitHub. Your mailbox\'s app password is pasted there too. Claude sees the questions, not your answers, and is told never to open that page itself (it could: the page\'s address appears in its window). Ask it anything that is unclear.',
         '**The first run:** the set-up starts it, Claude checks that it worked, and you look for the first summary e-mail. Claude then offers the Refresh now button, which also makes the daily run start on time.',
       ],
     },
     {
       kind: 'paragraph',
-      text: '**Check:** at the end Claude shows `Everything Threadline needs is working.` and tells you your dashboard address. **If not:** tell Claude what you see on the screen. It can run any step again; nothing already finished is lost.',
+      text: '**Check:** at the end Claude shows `Everything Threadline needs is working.` and tells you your dashboard\'s personal link. **If not:** tell Claude what you see on the screen. It can run any step again; nothing already finished is lost.',
     },
     {
       kind: 'warning',

@@ -27,12 +27,15 @@ class SetupSession:
 
     Attributes:
         supabase_token: The Supabase access token, once it has been accepted.
+        supabase_token_name: The name Supabase lists the token under, when a
+            browser sign-in made it, so the end of the run can say it may go.
         build_dashboard_here: Build the dashboard on this computer with Node.js
             instead of downloading the ready-made one; only asked for with
             ``tracker setup dashboard --build-here``.
     """
 
     supabase_token: SecretStr | None = None
+    supabase_token_name: str | None = None
     build_dashboard_here: bool = False
 
 

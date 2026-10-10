@@ -13,6 +13,18 @@ from typing import Final
 
 from tracker.shared.config import REPOSITORY_ROOT
 
+# --- The shared dashboard ------------------------------------------------------
+
+#: The one dashboard Threadline hosts for every owner. It holds nobody's data:
+#: each owner's personal link tells it which database to open.
+HOSTED_DASHBOARD_URL: Final[str] = "https://app.threadlineapp.com"
+
+#: The two values after the ``#`` of a personal link, as the dashboard reads them
+#: (``frontend/src/lib/connectLink.ts``): the project's identifier and its
+#: publishable key, ``#project=<ref>&key=<key>``.
+CONNECT_PROJECT_PARAMETER: Final[str] = "project"
+CONNECT_KEY_PARAMETER: Final[str] = "key"
+
 # --- The prebuilt dashboard ----------------------------------------------------
 
 #: The public template whose GitHub Release holds the prebuilt dashboard. The

@@ -1,0 +1,4 @@
+# Made-up values in tests that the secret scan mistakes for keys. One line per
+# finding, as gitleaks prints it under 'Fingerprint'.
+# A made-up publishable key in the personal-link tests.
+b90f0a2a2fd2c823a93376f7bf8cf2da017e9f36:frontend/src/lib/connectLink.test.ts:generic-api-key:11

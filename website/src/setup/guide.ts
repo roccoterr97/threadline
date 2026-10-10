@@ -10,6 +10,7 @@ import { FINAL_CHECK } from './content/final-check';
 import { LINKEDIN } from './content/linkedin';
 import { REFRESH_NOW } from './content/refresh-now';
 import { CLOUD_ROUTE } from './content/cloud-route';
+import { OWN_DASHBOARD } from './content/own-dashboard';
 
 export { CLAUDE_WAY } from './content/claude-way';
 
@@ -29,5 +30,5 @@ export const SETUP_GUIDE: SetupGuide = {
     GITHUB,
     FINAL_CHECK,
   ],
-  extras: [LINKEDIN, REFRESH_NOW, CLOUD_ROUTE],
+  extras: [LINKEDIN, REFRESH_NOW, CLOUD_ROUTE, OWN_DASHBOARD],
 };

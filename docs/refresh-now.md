@@ -270,7 +270,7 @@ project.
 | `GITHUB_TOKEN_REFRESH` | the `github_pat_…` token from step 2A |
 | `GITHUB_REPOSITORY` | your repository, e.g. `your-name/threadline` |
 | `GITHUB_REF` | the branch, usually `main` (you can leave this out for `main`) |
-| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://threadline-you.netlify.app` |
+| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://app.threadlineapp.com` (the shared dashboard) or your own copy's address |
 | `DAILY_START_KEY` | a long random key for the on-time morning start (see below) |
 
 For `DAILY_START_KEY`, make a key of at least 32 letters and digits. In a
@@ -285,7 +285,7 @@ the same key; then close the window.
 | `REFRESH_TARGET` | `claude_routine` |
 | `ROUTINE_FIRE_URL` | the address ending in `/fire` from step 2B |
 | `ROUTINE_TOKEN` | the `sk-ant-oat01-…` token from step 2B |
-| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://threadline-you.netlify.app` |
+| `DASHBOARD_ORIGIN` | your dashboard's address, e.g. `https://app.threadlineapp.com` (the shared dashboard) or your own copy's address |
 
 `DASHBOARD_ORIGIN` is the address in your browser's address bar when the
 dashboard is open, **without** anything after the name (no `/` at the end, no

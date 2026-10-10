@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest';
 import {
   netlifyHeadersFile,
   netlifyRedirectsFile,
+  NO_CONFIG_REWRITE,
   SECURITY_HEADERS,
   SPA_FALLBACK,
   UNLISTED_HEADER,
+  VERCEL_REWRITES,
 } from './hostingRules';
 
 interface VercelHeaderRule {
@@ -49,8 +51,17 @@ describe('vercel.json', () => {
     expect(pairs(unlisted)).toEqual([[...UNLISTED_HEADER]]);
   });
 
-  it('opens the dashboard for every address that is not a file', () => {
-    expect(vercel.rewrites).toEqual([{ source: '/(.*)', destination: SPA_FALLBACK.to }]);
+  it('answers config.js with a harmless script, then opens the dashboard for every other address', () => {
+    expect(vercel.rewrites).toEqual(VERCEL_REWRITES);
+    expect(vercel.rewrites.at(-1)).toEqual({ source: '/(.*)', destination: SPA_FALLBACK.to });
+  });
+
+  it('has the harmless script the config.js rewrite points at, with no code in it', () => {
+    const script = readFileSync(new URL(`../../public${NO_CONFIG_REWRITE.destination}`, import.meta.url), 'utf8');
+    const code = script
+      .split('\n')
+      .filter((line) => line.trim() !== '' && !line.trim().startsWith('//'));
+    expect(code).toEqual([]);
   });
 });
 

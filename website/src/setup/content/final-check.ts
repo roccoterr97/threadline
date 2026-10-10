@@ -10,7 +10,7 @@ export const FINAL_CHECK: SetupPart = {
   id: 'final-check',
   title: 'The final check',
   summary:
-    'The last screen names your dashboard address and the e-mail that signs in; one command repeats its check any time.',
+    'The last screen names your personal link and the e-mail that signs in; one command repeats its check any time.',
   steps: [
     {
       id: 'set-up-done',
@@ -18,14 +18,14 @@ export const FINAL_CHECK: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'The set-up ends by saying `Set-up done.`, then your dashboard\'s address and the e-mail address that can sign in to it (`Sign in there with …`). It then says how the first run was left (and, when it was started and an e-mail can be sent, when the first summary e-mail will arrive), the daily time, and how to add the extras. Then it checks every connection once and prints one line for each. The technical details of the whole set-up are in `backend/setup.log`, if anyone helping you needs them.',
+          text: 'The set-up ends by saying `Set-up done.`, then your dashboard\'s personal link and the e-mail address that can sign in to it (`Sign in there with …`). It then says how the first run was left (and, when it was started and an e-mail can be sent, when the first summary e-mail will arrive), the daily time, and how to add the extras. Then it checks every connection once and prints one line for each. The technical details of the whole set-up are in `backend/setup.log`, if anyone helping you needs them.',
         },
       ],
       youDo: [
         {
           kind: 'steps',
           items: [
-            'Write down the dashboard address and the e-mail address after `Sign in there with …`.',
+            'Write down the personal link and the e-mail address after `Sign in there with …`.',
             'Read the one line per connection that follows.',
           ],
         },
@@ -33,7 +33,7 @@ export const FINAL_CHECK: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `Set-up done.`, the dashboard address, `Sign in there with …` and your address, then one line per connection.',
+          text: 'You see `Set-up done.`, your personal link, `Sign in there with …` and your address, then one line per connection.',
         },
       ],
       ifNot: [
@@ -81,7 +81,7 @@ export const FINAL_CHECK: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: `You are done. You can delete the Supabase token now, on the same Supabase page where you made it. From now on, [operations.md](${OPERATIONS_URL}) is the page to keep: what happens every morning, and what to do when the summary asks for something.`,
+          text: `You are done. You can now delete the Supabase key named \`threadline-setup-…\` (or the token you pasted) under **Account → Access Tokens** on Supabase. From now on, [operations.md](${OPERATIONS_URL}) is the page to keep: what happens every morning, and what to do when the summary asks for something.`,
         },
       ],
     },

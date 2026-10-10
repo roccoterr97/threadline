@@ -25,6 +25,7 @@ from tests.setup_world import (
     DAILY_START_KEY,
     GOOD_GITHUB_TOKEN,
     GOOD_TOKEN,
+    PASTE,
     TEST_SCHEDULE,
     FakeAdmin,
     FakeWorkflow,
@@ -96,7 +97,7 @@ def _ts_number(source: str, name: str) -> int:
 def refresh_world(answers: list[str | bool] | None = None) -> World:
     """A world ready for the Refresh now step, whose helper deploys and guards."""
     env = configured_env() | {"DASHBOARD_BASE_URL": "https://you.vercel.app"}
-    world = make_world(answers or [True, GOOD_GITHUB_TOKEN, GOOD_TOKEN], env)
+    world = make_world(answers or [True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN], env)
     world.function_statuses = [404, 401]
     return world
 
@@ -122,7 +123,7 @@ async def test_switching_on_refresh_now_also_switches_on_the_on_time_start() -> 
 @pytest.mark.asyncio
 async def test_running_the_step_again_replaces_the_key_in_both_places() -> None:
     world = refresh_world(
-        [True, GOOD_GITHUB_TOKEN, GOOD_TOKEN, True, GOOD_GITHUB_TOKEN, GOOD_TOKEN]
+        [True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN, True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN]
     )
     world.function_statuses = [401]
     keys = iter(

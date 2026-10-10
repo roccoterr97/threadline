@@ -1,4 +1,8 @@
-import { INSTALL_LINE_MAC_LINUX, INSTALL_LINE_WINDOWS } from '../../constants/links';
+import {
+  CLAUDE_CODE_SETUP_URL,
+  INSTALL_LINE_MAC_LINUX,
+  INSTALL_LINE_WINDOWS,
+} from '../../constants/links';
 import type { SetupPart } from '../types';
 import { GITHUB_CLI_PAGE, WINGET_PAGE } from './addresses';
 import {
@@ -17,11 +21,11 @@ export const INSTALL: SetupPart = {
   id: 'install',
   title: 'Install Threadline (one line)',
   summary:
-    'One line in a terminal installs the tools, signs you in to GitHub, makes your private copy and starts the guided set-up.',
+    'One line in a terminal installs the tools, Claude Code included, signs you in to GitHub, makes your private copy and starts the guided set-up.',
   intro: [
     {
       kind: 'paragraph',
-      text: 'One line gets Threadline onto your computer. It installs **uv** (the tool that runs Threadline) and the **GitHub tool** if they are missing, signs you in to GitHub, makes your own **private** copy of Threadline on GitHub (called `threadline`), downloads it to a `threadline` folder in your home folder, and starts the guided set-up.',
+      text: 'One line gets Threadline onto your computer. It installs **uv** (the tool that runs Threadline), the **GitHub tool** and **Claude Code** if they are missing, signs you in to GitHub, makes your own **private** copy of Threadline on GitHub (called `threadline`), downloads it to a `threadline` folder in your home folder, and starts the guided set-up. Claude Code comes from Anthropic\'s official installer; the set-up uses it once, to make the key that lets GitHub use your Claude plan.',
     },
     {
       kind: 'paragraph',
@@ -127,6 +131,7 @@ export const INSTALL: SetupPart = {
             '`Could not download uv` or `Could not download the GitHub tool`: the internet connection dropped. Check it and paste the line again.',
             `\`The GitHub tool this computer uses is still version …\`: the installer could not replace an old GitHub tool. Install the newest from [cli.github.com](${GITHUB_CLI_PAGE}), open a new terminal, and paste the line again.`,
             '`… was installed but cannot be found yet`: close the terminal, open a new one, and paste the line again.',
+            `Claude Code could not be installed: install it from [code.claude.com/docs/en/setup](${CLAUDE_CODE_SETUP_URL}), open a new terminal, and paste the line again.`,
           ],
         },
       ],
@@ -225,10 +230,10 @@ export const INSTALL: SetupPart = {
           kind: 'table',
           rows: [
             ['Steps', 'Part of this guide'],
-            ['1 to 3: Supabase, the encryption key, the database', 'Supabase (one token)'],
+            ['1 to 3: Supabase, the encryption key, the database', 'Supabase (one click)'],
             ['4 to 6: your login, categories and time zone', 'Your login, categories and time zone'],
             ['7 and 8: your mailbox, and Outlook', 'Your mailbox and calendar'],
-            ['9: the dashboard', 'The dashboard (Netlify)'],
+            ['9: your dashboard', 'Your dashboard'],
             [
               '10 and 11: the daily time, the Claude key and the first run',
               'Run it every day on GitHub',

@@ -11,6 +11,7 @@ from tests.setup_world import (
     DAILY_START_KEY,
     GOOD_GITHUB_TOKEN,
     GOOD_TOKEN,
+    PASTE,
     PROJECT_URL,
     World,
     configured_env,
@@ -45,7 +46,7 @@ def refresh_world(answers: list[str | bool], statuses: list[int] | None = None) 
 
 
 async def test_refresh_now_is_switched_on_end_to_end() -> None:
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN])
 
     await RefreshStep().run(world.context())
 
@@ -66,7 +67,7 @@ async def test_refresh_now_is_switched_on_end_to_end() -> None:
 
 
 async def test_a_dashboard_on_netlify_is_the_one_origin_allowed() -> None:
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN])
     world.env.values["DASHBOARD_BASE_URL"] = "https://threadline-abc123.netlify.app"
 
     await RefreshStep().run(world.context())
@@ -75,7 +76,7 @@ async def test_a_dashboard_on_netlify_is_the_one_origin_allowed() -> None:
 
 
 async def test_neither_token_is_shown_or_written_to_env() -> None:
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN])
 
     await RefreshStep().run(world.context())
 
@@ -87,7 +88,7 @@ async def test_neither_token_is_shown_or_written_to_env() -> None:
 
 
 async def test_the_filled_in_github_page_and_the_supabase_page_open() -> None:
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN])
 
     await RefreshStep().run(world.context())
 
@@ -114,7 +115,9 @@ async def test_the_github_token_page_is_filled_in_with_the_one_permission() -> N
 
 
 async def test_refused_tokens_are_asked_for_again() -> None:
-    world = refresh_world([True, "github_pat_wrong", GOOD_GITHUB_TOKEN, "sbp_wrong", GOOD_TOKEN])
+    world = refresh_world(
+        [True, "github_pat_wrong", GOOD_GITHUB_TOKEN, PASTE, "sbp_wrong", GOOD_TOKEN]
+    )
 
     await RefreshStep().run(world.context())
 
@@ -135,7 +138,7 @@ async def test_nothing_is_saved_when_the_github_token_is_refused_every_time() ->
 
 
 async def test_a_switched_off_workflow_is_pointed_out() -> None:
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN])
     world.github_api.state = "disabled_manually"
 
     await RefreshStep().run(world.context())
@@ -168,7 +171,7 @@ async def test_a_repository_that_is_not_your_private_copy_is_never_used(
     *, private: bool, admin: bool
 ) -> None:
     """Origin still pointing at the public template must not get the helper's settings."""
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN])
     world.git.origin = "https://github.com/public-template/threadline.git"
     world.github.name = "public-template/threadline"
     world.github.private = private
@@ -184,7 +187,7 @@ async def test_a_repository_that_is_not_your_private_copy_is_never_used(
 
 
 async def test_without_the_github_cli_the_link_is_used_and_the_owner_told_to_check_it() -> None:
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN])
     world.github.signed_in = False
 
     await RefreshStep().run(world.context())
@@ -215,7 +218,7 @@ async def test_saying_no_changes_nothing() -> None:
 
 
 async def test_a_function_that_never_guards_stops_the_step() -> None:
-    world = refresh_world([True, GOOD_GITHUB_TOKEN, GOOD_TOKEN], statuses=[404])
+    world = refresh_world([True, GOOD_GITHUB_TOKEN, PASTE, GOOD_TOKEN], statuses=[404])
 
     with pytest.raises(ValidationFailedError, match="status 404"):
         await RefreshStep().run(world.context())

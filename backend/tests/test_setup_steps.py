@@ -10,6 +10,7 @@ from tests.setup_world import (
     GOOD_SECRET,
     GOOD_TOKEN,
     OWNER_EMAIL,
+    PASTE,
     PROJECT_REF,
     PROJECT_URL,
     World,
@@ -132,7 +133,7 @@ async def test_database_with_everything_applied_changes_nothing() -> None:
 
 
 async def test_database_applies_missing_files_automatically() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema", "0002_access_rules"}
 
     await DatabaseStep().run(world.context())
@@ -143,7 +144,7 @@ async def test_database_applies_missing_files_automatically() -> None:
 
 
 async def test_database_skips_what_supabase_already_recorded() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema", "0002_access_rules", "0003_people_overview"}
     world.platform.recorded = {"0007_apply_relevance_answers"}
 
@@ -153,7 +154,7 @@ async def test_database_skips_what_supabase_already_recorded() -> None:
 
 
 async def test_database_falls_back_to_the_sql_editor_when_a_file_fails() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema", "0002_access_rules", "0003_people_overview"}
     world.platform.fail_on = "0005_calendar"
     from_failed = [name for name in KNOWN_MIGRATIONS if name >= "0005"]
@@ -172,7 +173,7 @@ async def test_database_falls_back_to_the_sql_editor_when_a_file_fails() -> None
 
 
 async def test_database_waits_between_files_so_supabase_versions_never_collide() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema"}
 
     await DatabaseStep().run(world.context())
@@ -182,7 +183,7 @@ async def test_database_waits_between_files_so_supabase_versions_never_collide()
 
 
 async def test_database_sends_a_refused_file_once_more_and_shows_why() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema", "0002_access_rules"}
     world.platform.rejections = {"0003_people_overview": 1}
 
@@ -195,7 +196,7 @@ async def test_database_sends_a_refused_file_once_more_and_shows_why() -> None:
 
 
 async def test_database_refused_twice_goes_by_hand_from_that_file() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema", "0002_access_rules"}
     world.platform.rejections = {"0003_people_overview": 2}
 
@@ -211,7 +212,7 @@ async def test_database_refused_twice_goes_by_hand_from_that_file() -> None:
 
 
 async def test_database_token_that_can_read_but_not_write_goes_by_hand() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema", "0002_access_rules"}
     world.platform.apply_forbidden = True
     world.io.on_pause = lambda prompt: world.admin.present.update(KNOWN_MIGRATIONS)
@@ -226,7 +227,7 @@ async def test_database_token_that_can_read_but_not_write_goes_by_hand() -> None
 
 
 async def test_database_token_refused_on_the_second_try_goes_by_hand_too() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = {"0001_schema", "0002_access_rules"}
     world.platform.rejections = {"0003_people_overview": 1}
     world.platform.apply_forbidden = True
@@ -539,7 +540,7 @@ async def test_microsoft_refusal_stops_the_step() -> None:
 
 
 async def test_dashboard_not_published_as_one_step_names_that_step() -> None:
-    world = make_world([False, False], configured_env())
+    world = make_world([False, False, False], configured_env())
     wizard = SetupWizard(world.context(), default_steps())
 
     finished = await wizard.run_one(StepName.DASHBOARD)
@@ -614,8 +615,8 @@ def _finished_up_to_the_dashboard(answers: list[str | bool]) -> World:
 
 
 async def test_a_full_run_stops_at_a_dashboard_that_is_not_published_yet() -> None:
-    # Not on Netlify, and not anywhere else either.
-    world = _finished_up_to_the_dashboard([False, False])
+    # Not the shared dashboard, not on Netlify, and not anywhere else either.
+    world = _finished_up_to_the_dashboard([False, False, False])
     wizard = SetupWizard(world.context(), default_steps())
 
     finished = await wizard.run_core()
@@ -624,7 +625,8 @@ async def test_a_full_run_stops_at_a_dashboard_that_is_not_published_yet() -> No
     text = world.io.text()
     assert "Step 9 of 11: Your dashboard" in text
     assert (
-        "Stopped: the dashboard is not published yet - publish it first (part 5 of the guide)."
+        "Stopped: no dashboard is chosen yet - run the step again and choose the shared "
+        "dashboard (part 5 of the guide)."
         in text
     )
     assert world.io.said[-1] == (
@@ -636,9 +638,11 @@ async def test_a_full_run_stops_at_a_dashboard_that_is_not_published_yet() -> No
 
 
 async def test_the_next_full_run_skips_to_the_dashboard_and_carries_on() -> None:
-    # Not on Netlify but elsewhere, its address, Supabase's two values typed by
-    # hand, then Enter keeps the daily time already set.
-    world = _finished_up_to_the_dashboard([False, True, "https://you.host.example", False, ""])
+    # Not shared, not on Netlify but elsewhere, its address, Supabase's two values
+    # typed by hand, then Enter keeps the daily time already set.
+    world = _finished_up_to_the_dashboard(
+        [False, False, True, "https://you.host.example", False, ""]
+    )
     world.statuses["https://you.host.example"] = 200
     wizard = SetupWizard(world.context(), default_steps())
 

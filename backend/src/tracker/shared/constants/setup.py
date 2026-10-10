@@ -55,8 +55,11 @@ FORM_FAREWELL_SECONDS: Final[float] = 5.0
 #: Every Supabase project address ends with this.
 SUPABASE_HOST_SUFFIX: Final[str] = ".supabase.co"
 
+#: Supabase's API server.
+SUPABASE_API_URL: Final[str] = "https://api.supabase.com"
+
 #: Supabase's Management API, reached with a personal access token.
-SUPABASE_MANAGEMENT_API_URL: Final[str] = "https://api.supabase.com/v1"
+SUPABASE_MANAGEMENT_API_URL: Final[str] = f"{SUPABASE_API_URL}/v1"
 
 #: Supabase's web dashboard.
 SUPABASE_DASHBOARD_URL: Final[str] = "https://supabase.com/dashboard"
@@ -78,6 +81,20 @@ SUPABASE_URL_CONFIGURATION_PAGE: Final[str] = (
 #: Name the set-up suggests for the personal access token, so it is easy to
 #: recognise and delete afterwards.
 SUPABASE_TOKEN_NAME: Final[str] = "Threadline set-up"
+
+#: The browser sign-in Supabase's own command-line tool uses for ``supabase login``.
+#: The page takes ``session_id``, ``token_name`` and ``public_key``; once the
+#: person clicks Authorize it shows a short code, and the session address below
+#: hands over the new access token, sealed for this computer's key.
+SUPABASE_BROWSER_SIGN_IN_PAGE: Final[str] = f"{SUPABASE_DASHBOARD_URL}/cli/login"
+SUPABASE_SIGN_IN_SESSION_URL: Final[str] = f"{SUPABASE_API_URL}/platform/cli/login/{{session_id}}"
+
+#: Seconds to wait for the sign-in session's answer, as Supabase's tool does.
+SUPABASE_SIGN_IN_TIMEOUT_SECONDS: Final[float] = 10.0
+
+#: Start of the name of the access token a browser sign-in makes; the Unix time
+#: follows. Letters, digits and dashes only: the page address is not encoded.
+SUPABASE_SIGN_IN_TOKEN_PREFIX: Final[str] = "threadline-setup-"
 
 #: Name offered for a new Supabase project.
 SUPABASE_DEFAULT_PROJECT_NAME: Final[str] = "threadline"

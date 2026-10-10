@@ -17,20 +17,26 @@
 #      find it.
 #   3. Installs the GitHub command-line tool (gh) if it is missing, or updates
 #      it when it is too old (with winget).
-#   4. Signs you in to GitHub in the browser if you are not signed in yet, with
+#   4. Installs Claude Code if it is missing, with Anthropic's own installer,
+#      which puts the "claude" command in the ".local\bin" folder in your user
+#      folder. Claude Code may need Git, which step 1 adds first. You use it
+#      to make the key that lets the daily run use your Claude subscription.
+#      If it cannot be installed, the installer carries on: the set-up asks
+#      you to paste that key either way.
+#   5. Signs you in to GitHub in the browser if you are not signed in yet, with
 #      the extra permission that saving the daily-run file needs. Then it runs
 #      "gh auth setup-git", which adds a line to your git settings so that git
 #      uses this GitHub sign-in for github.com. If git has no name or e-mail
 #      yet, it sets them from your GitHub account (GitHub's private no-reply
 #      address) and tells you; values you already set are never changed.
-#   5. Makes your own private copy of Threadline on GitHub (from the public
+#   6. Makes your own private copy of Threadline on GitHub (from the public
 #      template, as a private repository called "threadline"), waits until
 #      GitHub has filled it, and downloads it to the "threadline" folder in
 #      your user folder. A copy that already exists, on GitHub or in that
 #      folder, is reused and brought up to date, after checking that it is
 #      private and yours. An earlier set-up in the "tracker" folder is offered
 #      instead of a second copy.
-#   6. Installs Threadline's parts and starts the guided set-up.
+#   7. Installs Threadline's parts and starts the guided set-up.
 #
 # How the keyboard is kept: "irm | iex" runs the downloaded text inside this
 # very PowerShell window, so the sign-in and the set-up read from your
@@ -64,6 +70,12 @@ $State = @{ Folder = $CopyFolder }
 # The official installer of uv, and where the GitHub tool is explained.
 $UvInstaller = 'https://astral.sh/uv/install.ps1'
 $GitHubCliPage = 'https://cli.github.com'
+
+# Anthropic's official installer of Claude Code, where it puts "claude", and
+# where its installation is explained.
+$ClaudeInstaller = 'https://claude.ai/install.ps1'
+$ClaudeFolder = Join-Path $HOME '.local\bin'
+$ClaudeSetupPage = 'https://code.claude.com/docs/en/setup'
 
 # The winget names of the tools that may be missing, and where to get them by hand.
 $GitPackage = 'Git.Git'
@@ -207,6 +219,42 @@ function Install-Uv {
             'Close this window, open PowerShell again, and paste the line again.'
         )
     }
+}
+
+# Claude Code makes the key that lets the daily run use your Claude
+# subscription. Without it the set-up still works, so a failure here is said
+# and the installer carries on.
+function Install-ClaudeCode {
+    if ((Test-Program 'claude') -or (Test-Path (Join-Path $ClaudeFolder 'claude.exe'))) {
+        Use-ClaudeFolder
+        Say 'Claude Code is installed.'
+        return
+    }
+    Say 'Installing Claude Code, which makes the key for your Claude subscription.'
+    # Saved first and run second, in a separate PowerShell, as for uv.
+    $ClaudeScript = Join-Path ([IO.Path]::GetTempPath()) "threadline-claude-install-$PID.ps1"
+    try {
+        Save-Download $ClaudeInstaller $ClaudeScript
+        & powershell -NoProfile -ExecutionPolicy ByPass -File $ClaudeScript | Out-Host
+        $ClaudeCode = $LASTEXITCODE
+    } catch {
+        $ClaudeCode = 1
+    } finally {
+        Remove-Item $ClaudeScript -ErrorAction SilentlyContinue
+    }
+    Use-ClaudeFolder
+    if ($ClaudeCode -ne 0 -or -not (Test-Program 'claude')) {
+        Note 'Claude Code did not install. You can carry on: install it later from'
+        Note "$ClaudeSetupPage before the set-up asks for the Claude key."
+    }
+}
+
+# The installer adds Claude Code to future windows, or says how; this one needs it now.
+function Use-ClaudeFolder {
+    if (-not (($env:Path -split ';') -contains $ClaudeFolder)) {
+        $env:Path = "$ClaudeFolder;$env:Path"
+    }
+    Update-SessionPath
 }
 
 # Answers with the installed GitHub tool's version, or $null when it cannot be read.
@@ -518,6 +566,7 @@ try {
     Install-Git
     Install-Uv
     Install-GitHubCli
+    Install-ClaudeCode
     Connect-GitHub
     Get-Copy
     Start-Setup

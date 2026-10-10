@@ -125,3 +125,74 @@ def test_a_private_copy_made_from_the_template_is_used() -> None:
 
     assert result.returncode == 0
     assert result.stderr == ""
+
+
+def install_claude_code_with(
+    tmp_path: Path, *, found: bool, downloads: bool = True, installs: bool = True
+) -> subprocess.CompletedProcess[str]:
+    """Run the installer's Claude Code step with the network and the install faked."""
+    folder = tmp_path / "local-bin"
+    script = "\n".join(
+        [
+            f'CLAUDE_INSTALLER="https://claude.ai/install.sh"; CLAUDE_FOLDER="{folder}"',
+            f'WORK_DIR="{tmp_path}"; PATH="/usr/bin:/bin"',
+            installer_function("say"),
+            installer_function("note"),
+            installer_function("install_claude_code"),
+            installer_function("use_claude_folder"),
+            f'has() {{ [ "$1" = bash ] || {{ [ "$1" = claude ] && {str(found).lower()}; }}; }}',
+            f'download() {{ echo "download $1"; {str(downloads).lower()}; }}',
+            f"bash() {{ echo 'ran the installer'; {str(installs).lower()}; }}",
+            'install_claude_code; echo "exit $?"; echo "path $PATH"',
+        ]
+    )
+    return run_shell(script)
+
+
+@needs_posix_shell
+def test_claude_code_already_there_is_not_installed_again(tmp_path: Path) -> None:
+    result = install_claude_code_with(tmp_path, found=True)
+
+    assert "Claude Code is installed." in result.stdout
+    assert "download" not in result.stdout
+
+
+@needs_posix_shell
+def test_claude_code_is_installed_with_anthropics_installer_and_found_this_session(
+    tmp_path: Path,
+) -> None:
+    result = install_claude_code_with(tmp_path, found=False)
+
+    assert "download https://claude.ai/install.sh" in result.stdout
+    assert "ran the installer" in result.stdout
+    assert f"path {tmp_path / 'local-bin'}:" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("downloads", "installs", "said"),
+    [(False, True, "could not be downloaded"), (True, False, "did not install")],
+)
+@needs_posix_shell
+def test_a_failed_claude_code_install_is_said_and_the_installer_carries_on(
+    tmp_path: Path, downloads: bool, installs: bool, said: str
+) -> None:
+    result = install_claude_code_with(tmp_path, found=False, downloads=downloads, installs=installs)
+
+    assert said in result.stdout
+    assert "paste the key" in result.stdout
+    assert "exit 0" in result.stdout
+
+
+def test_both_installers_use_anthropics_official_claude_code_installers() -> None:
+    assert 'CLAUDE_INSTALLER="https://claude.ai/install.sh"' in INSTALLER.read_text()
+    assert "$ClaudeInstaller = 'https://claude.ai/install.ps1'" in WINDOWS_INSTALLER.read_text()
+
+
+def test_claude_code_is_installed_after_git_and_before_the_github_sign_in() -> None:
+    shell_order = re.findall(r"^  (\w+)$", INSTALLER.read_text(), re.M)
+    windows_order = re.findall(r"^    ([A-Z]\w+-\w+)$", WINDOWS_INSTALLER.read_text(), re.M)
+
+    assert shell_order.index("check_git") < shell_order.index("install_claude_code")
+    assert shell_order.index("install_claude_code") < shell_order.index("sign_in_to_github")
+    assert windows_order.index("Install-Git") < windows_order.index("Install-ClaudeCode")
+    assert windows_order.index("Install-ClaudeCode") < windows_order.index("Connect-GitHub")

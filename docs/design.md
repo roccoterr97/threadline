@@ -109,7 +109,7 @@ wording in the dashboard is plain English.
 | AI | Claude, inside that same daily cloud session (rules first, AI for unclear items) | Satisfies "subscription, not API" |
 | Database | Supabase (hosted Postgres), free tier | The dashboard must save Yes/No answers and corrections, so plain files are not enough; also a safe writable place for the rotating Microsoft sign-in key |
 | Auth | Supabase login by email link; the one allowed login is recorded in the `app_owner` table, and database rules restrict every table to that user | No password to manage; data unreadable without login |
-| Hosting | Free static hosting on Netlify, published by the set-up (`tracker setup dashboard`) | Free, nothing to keep running |
+| Hosting | One shared copy of the dashboard at `app.threadlineapp.com`; each owner's personal link tells it which database to open. Optionally the owner's own copy on Netlify (`tracker setup dashboard`) | No account or key for the owner; the page holds no data, which stays in the owner's own database |
 | Email reading | Microsoft Graph, read-only permission, personal-account sign-in; rotating key stored encrypted in the database | The official Claude connector rejects personal Microsoft accounts |
 | LinkedIn reading | LinkedIn Member Data Portability API (official, free, EU) | Zero account risk; returns full history with same-day freshness |
 | Observability | A run-log table (one row per daily run: counts, errors) shown in the dashboard, plus a failure notice in the morning email | The owner must be able to see "did it run today?" without reading logs |

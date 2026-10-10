@@ -20,19 +20,24 @@
 #      with Homebrew on a Mac, or from GitHub's own package source on Linux.
 #      Where those cannot be used, it downloads GitHub's release into
 #      ~/.local/bin and checks it against the release's checksums.
-#   4. Signs you in to GitHub in the browser if you are not signed in yet, with
+#   4. Installs Claude Code if it is missing, with Anthropic's own installer,
+#      which puts the "claude" command in ~/.local/bin. The set-up uses it to
+#      make the key that lets the daily run use your Claude subscription. If
+#      it cannot be installed, the installer carries on: the set-up then asks
+#      you to paste that key instead.
+#   5. Signs you in to GitHub in the browser if you are not signed in yet, with
 #      the extra permission that saving the daily-run file needs. Then it runs
 #      "gh auth setup-git", which adds a line to your git settings so that git
 #      uses this GitHub sign-in for github.com. If git has no name or e-mail
 #      yet, it sets them from your GitHub account (GitHub's private no-reply
 #      address) and tells you; values you already set are never changed.
-#   5. Makes your own private copy of Threadline on GitHub (from the public
+#   6. Makes your own private copy of Threadline on GitHub (from the public
 #      template, as a private repository called "threadline"), waits until
 #      GitHub has filled it, and downloads it to ~/threadline. A copy that
 #      already exists, on GitHub or in that folder, is reused and brought up
 #      to date, after checking that it is private and yours. An earlier
 #      set-up in ~/tracker is offered instead of a second copy.
-#   6. Installs Threadline's parts and starts the guided set-up.
+#   7. Installs Threadline's parts and starts the guided set-up.
 #
 # How the terminal is kept: with "curl | sh", the shell reads this script from
 # the pipe, so the keyboard is not where "stdin" points. The whole script is
@@ -57,6 +62,10 @@ OLDER_COPY_FOLDER="$HOME/tracker"
 # The official installer of uv, and where the GitHub tool is explained.
 UV_INSTALLER="https://astral.sh/uv/install.sh"
 GITHUB_CLI_PAGE="https://cli.github.com"
+
+# Anthropic's official installer of Claude Code, and where it puts "claude".
+CLAUDE_INSTALLER="https://claude.ai/install.sh"
+CLAUDE_FOLDER="$HOME/.local/bin"
 
 # The oldest GitHub tool the set-up works with. It uses "gh variable",
 # "gh secret list --json", "gh workflow run" and "gh attestation verify
@@ -194,6 +203,44 @@ install_uv() {
   export PATH
   has uv || stop "uv was installed but cannot be found yet." \
     "Close this terminal, open a new one, and paste the line again."
+}
+
+# Claude Code makes the key that lets the daily run use your Claude
+# subscription. Without it the set-up still works, with the key pasted by
+# hand, so a failure here is said and the installer carries on.
+install_claude_code() {
+  if has claude || [ -x "$CLAUDE_FOLDER/claude" ]; then
+    use_claude_folder
+    say "Claude Code is installed."
+    return
+  fi
+  say "Installing Claude Code, which makes the key for your Claude subscription."
+  if ! has bash; then
+    note "Claude Code needs bash, which is missing; the set-up will ask you to paste the key."
+    return
+  fi
+  # Saved first and run second, as for uv.
+  claude_installer="$WORK_DIR/claude-install.sh"
+  if ! download "$CLAUDE_INSTALLER" "$claude_installer"; then
+    note "Claude Code could not be downloaded; the set-up will ask you to paste the key."
+    return
+  fi
+  if ! bash "$claude_installer"; then
+    note "Claude Code did not install; the set-up will ask you to paste the key."
+    return
+  fi
+  use_claude_folder
+  has claude || note "Claude Code cannot be found yet; the set-up will ask you to paste the key."
+}
+
+# The installer adds Claude Code to future terminals, or says how; this session needs it now.
+use_claude_folder() {
+  case ":$PATH:" in
+    *":$CLAUDE_FOLDER:"*) ;;
+    *) PATH="$CLAUDE_FOLDER:$PATH" ;;
+  esac
+  export PATH
+  hash -r
 }
 
 # Prints the installed GitHub tool's version, such as 2.68.0 (nothing if unreadable).
@@ -589,6 +636,7 @@ main() {
   check_curl
   install_uv
   install_github_cli
+  install_claude_code
   sign_in_to_github
   get_copy
   start_setup

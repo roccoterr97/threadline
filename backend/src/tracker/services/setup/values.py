@@ -12,11 +12,11 @@ from datetime import date, time
 from typing import Final
 from urllib.parse import urlsplit
 
+from tracker.domain.supabase import PROJECT_REF_PATTERN, project_ref_of
 from tracker.shared.constants.setup import LINKEDIN_PROFILE_PREFIX, SUPABASE_HOST_SUFFIX
 from tracker.shared.errors import ValidationFailedError
 from tracker.shared.time_zones import canonical_zone_name
 
-_PROJECT_REF: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9]{8,40}$")
 _EMAIL: Final[re.Pattern[str]] = re.compile(r"^[^@\s,]+@[^@\s,]+\.[^@\s,]+$")
 _HTTPS: Final[str] = "https"
 _HOST: Final[re.Pattern[str]] = re.compile(
@@ -75,7 +75,7 @@ def supabase_url(raw: str) -> str:
         ValidationFailedError: If it is neither.
     """
     cleaned = raw.strip().rstrip("/")
-    if _PROJECT_REF.match(cleaned):
+    if PROJECT_REF_PATTERN.match(cleaned):
         cleaned = f"https://{cleaned}{SUPABASE_HOST_SUFFIX}"
     project_ref(cleaned)
     return cleaned
@@ -93,10 +93,8 @@ def project_ref(url: str) -> str:
     Raises:
         ValidationFailedError: If the address is not a Supabase project address.
     """
-    parts = urlsplit(url.strip())
-    host = parts.hostname or ""
-    ref = host.removesuffix(SUPABASE_HOST_SUFFIX)
-    if parts.scheme != _HTTPS or ref == host or not _PROJECT_REF.match(ref):
+    ref = project_ref_of(url)
+    if ref is None:
         message = "the address should look like https://<project-id>.supabase.co"
         raise ValidationFailedError(message)
     return ref

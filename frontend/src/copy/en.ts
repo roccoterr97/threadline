@@ -64,6 +64,35 @@ export const login = {
   checkingSession: 'Checking whether you are signed in…',
 } as const;
 
+/** The shared dashboard's way in: the personal link, and switching databases. */
+export const connect = {
+  title: 'Open your dashboard',
+  intro:
+    'Open the personal link from your set-up or from your morning e-mail. It tells this page which database is yours.',
+  shared:
+    'Everyone who uses Threadline opens this same page. Your data stays in your own database, and only you can sign in to it.',
+  linkLabel: 'Or paste your personal link here',
+  linkHint: 'It starts with https://app.threadlineapp.com/#project=',
+  submit: 'Open my dashboard',
+  invalidPasted:
+    'That is not a complete personal link. Copy the whole link from your set-up or your morning e-mail, then try again.',
+  invalidOpened:
+    'The link you opened is not complete. Open it again from your morning e-mail, or paste it below.',
+  switchTitle: 'Open a different database?',
+  switchBody: (incoming: string, current: string) =>
+    `This link opens the database at ${incoming}. This browser opens the one at ${current} now.`,
+  switchConfirm: 'Switch to the new one',
+  switchKeep: 'Keep the current one',
+  connectedTo: (address: string) => `This page opens your database at ${address}.`,
+  forget: 'Use a different database',
+} as const;
+
+/** Said when the owner's database lacks something this dashboard needs. */
+export const databaseUpdate = {
+  notice:
+    "Your database is older than this dashboard, so some parts may not work. Update your copy of Threadline, run 'uv run tracker setup database', then reload this page.",
+} as const;
+
 export const home = {
   title: 'People',
   subtitle: 'Everyone you are talking to, and what each one is waiting for.',

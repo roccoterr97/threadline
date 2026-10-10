@@ -6,12 +6,37 @@ HTTP, no framework.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
+from urllib.parse import urlsplit
 
 from pydantic import SecretStr
 
-from tracker.shared.constants.setup import RegionGroup
+from tracker.shared.constants.setup import SUPABASE_HOST_SUFFIX, RegionGroup
+
+#: What a project's identifier is made of: the first part of its address.
+PROJECT_REF_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-z0-9]{8,40}$")
+
+_HTTPS: Final[str] = "https"
+
+
+def project_ref_of(url: str) -> str | None:
+    """Read the project identifier out of a project address.
+
+    Args:
+        url: ``https://<project-ref>.supabase.co``.
+
+    Returns:
+        The identifier, or ``None`` when the address is not a Supabase project address.
+    """
+    parts = urlsplit(url.strip())
+    host = parts.hostname or ""
+    ref = host.removesuffix(SUPABASE_HOST_SUFFIX)
+    if parts.scheme != _HTTPS or ref == host or not PROJECT_REF_PATTERN.match(ref):
+        return None
+    return ref
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,3 +121,21 @@ class AuthSettings:
     disable_signup: bool | None = None
     site_url: str | None = None
     redirect_urls: tuple[str, ...] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SealedAccessToken:
+    """The access token a browser sign-in made, as Supabase hands it over: sealed.
+
+    Only the computer holding the private key whose public half went into the
+    sign-in page can open it, so the token never travels in the clear.
+
+    Attributes:
+        ciphertext_hex: The sealed token with its 16-byte check appended, in hex.
+        public_key_hex: Supabase's one-off public key for this sign-in, in hex.
+        nonce_hex: The seal's nonce, in hex.
+    """
+
+    ciphertext_hex: str
+    public_key_hex: str
+    nonce_hex: str

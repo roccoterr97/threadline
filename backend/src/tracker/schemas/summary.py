@@ -18,6 +18,7 @@ from typing import Annotated, Final
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from tracker.domain.dashboard_link import DashboardAddress
 from tracker.domain.enums import RunStatus, RunStep
 
 _STRICT: Final[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
@@ -98,7 +99,23 @@ class SummaryContent(BaseModel):
     replied_total: int = Field(default=0, ge=0)
     open_questions: int = Field(default=0, ge=0)
     key_reminder: str | None = None
+    #: The dashboard's address, and what follows the ``#`` of the owner's
+    #: personal link when it is the shared one (``tracker.domain.dashboard_link``).
     dashboard_url: str | None = None
+    dashboard_connect: str | None = None
+
+    def dashboard_page(self, path: str = "") -> str | None:
+        """The address of one page of the dashboard, personal when it is the shared one.
+
+        Args:
+            path: The page, such as ``/review``; empty for the start page.
+
+        Returns:
+            The address, or ``None`` until the dashboard has one.
+        """
+        if self.dashboard_url is None:
+            return None
+        return DashboardAddress(self.dashboard_url, self.dashboard_connect).page(path)
 
 
 class SummaryEmail(BaseModel):

@@ -21,8 +21,10 @@ from tracker.domain.supabase import (
     AuthSettings,
     NewProject,
     Organization,
+    SealedAccessToken,
     SupabaseProject,
 )
+from tracker.infrastructure.claude_setup_token import ClaudeCodeState, ClaudeKeyScreen
 from tracker.infrastructure.github_cli import GitHubRepository, WorkflowRun
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
@@ -41,6 +43,9 @@ __all__ = [
     "ApiKeyKind",
     "AuthSettings",
     "ChoiceStore",
+    "ClaudeCodeState",
+    "ClaudeKeyMakerPort",
+    "ClaudeKeyScreen",
     "EnvStore",
     "GitHubApiPort",
     "GitHubPort",
@@ -157,6 +162,10 @@ class PlatformPort(Protocol):
 
     async def signups_disabled(self, project_url: str, publishable_key: SecretStr) -> bool:
         """Read whether strangers are prevented from creating a login."""
+        ...
+
+    async def sign_in_token(self, session_id: str, code: str) -> SealedAccessToken:
+        """Collect the access token a browser sign-in made, still sealed for this computer."""
         ...
 
     async def organizations(self, token: SecretStr) -> tuple[Organization, ...]:
@@ -457,6 +466,18 @@ class LocalBuildPort(Protocol):
         ...
 
 
+class ClaudeKeyMakerPort(Protocol):
+    """Claude Code's ``claude setup-token``, run so the set-up can take the key it prints."""
+
+    def state(self) -> ClaudeCodeState:
+        """Tell whether the key can be made on this computer."""
+        ...
+
+    def make_key(self) -> ClaudeKeyScreen:
+        """Run it until it ends; the key it printed is in what comes back, never shown."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class SetupGateways:
     """Every outside capability the steps use, injected by the command line.
@@ -490,6 +511,7 @@ class SetupGateways:
         page_of: Opens a web address and tells its status and whether it is a page.
         site_name_suffix: Makes the random end of a new Netlify site's name.
         make_daily_start_key: Generates a new key for the on-time morning start's timer.
+        claude_key_maker: Makes the Claude subscription key with ``claude setup-token``.
     """
 
     admin_for: Callable[[str, SecretStr], SupabaseAdminPort]
@@ -517,3 +539,4 @@ class SetupGateways:
     page_of: Callable[[str], Awaitable[WebPage]]
     site_name_suffix: Callable[[], str]
     make_daily_start_key: Callable[[], str]
+    claude_key_maker: ClaudeKeyMakerPort

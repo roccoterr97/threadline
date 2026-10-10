@@ -17,8 +17,6 @@ and checked against the dashboard's source by a test.
 
 from __future__ import annotations
 
-import base64
-import binascii
 import hashlib
 import hmac
 import io
@@ -31,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+from tracker.domain.dashboard_link import require_public_key
 from tracker.services.setup import values
 from tracker.shared.constants.dashboard import (
     ARCHIVE_MAX_FILES,
@@ -41,20 +40,14 @@ from tracker.shared.constants.dashboard import (
     CONFIG_GLOBAL,
     HOSTING_FILES,
     INDEX_FILE,
-    PRIVILEGED_KEY_ROLES,
-    SUPABASE_SECRET_KEY_PREFIX,
 )
-from tracker.shared.errors import DashboardPackageError, ValidationFailedError
+from tracker.shared.errors import DashboardPackageError
 
 _COMMIT: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{40}$")
 _MIGRATION_NAME: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 _SHA256_HEX: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{64}$")
-#: What a publishable key (``sb_publishable_...``) or a legacy public key (a JWT) is made of.
-_PUBLIC_KEY: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9._-]+$")
 #: A path inside the site: parts of letters, digits and ``_.-@+~``, joined by ``/``.
 _SAFE_PART: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_.@+~-]+$")
-#: A legacy key is a JWT: header, claims and signature, joined by dots.
-_JWT_PARTS: Final[int] = 3
 #: Files of the download that are never published as they came: the set-up writes
 #: its own rule files, and the build info is only read.
 _REPLACED: Final[frozenset[str]] = frozenset({*HOSTING_FILES, BUILD_INFO_FILE})
@@ -179,13 +172,7 @@ def config_script(settings: BrowserSettings) -> bytes:
             key is empty, not plain text or a secret key.
     """
     values.project_ref(settings.supabase_url)
-    key = values.non_empty(settings.publishable_key, "the publishable key")
-    if not _PUBLIC_KEY.match(key):
-        message = "SUPABASE_ANON_KEY should hold only letters, digits, '.', '_' and '-'"
-        raise ValidationFailedError(message)
-    if key.startswith(SUPABASE_SECRET_KEY_PREFIX) or _legacy_role(key) in PRIVILEGED_KEY_ROLES:
-        message = "SUPABASE_ANON_KEY holds a secret key - put the publishable key there"
-        raise ValidationFailedError(message)
+    key = require_public_key(values.non_empty(settings.publishable_key, "the publishable key"))
     payload = json.dumps(
         {"supabaseUrl": settings.supabase_url.rstrip("/"), "supabaseAnonKey": key},
         ensure_ascii=True,
@@ -247,24 +234,6 @@ def pack(files: Mapping[str, bytes]) -> bytes:
             entry.external_attr = _FILE_MODE << _FILE_TYPE_SHIFT
             bundle.writestr(entry, files[name])
     return buffer.getvalue()
-
-
-def _legacy_role(key: str) -> str | None:
-    """The ``role`` a legacy (JWT) key claims, or ``None`` when it is not one or unreadable.
-
-    Only the claims are read, to tell the public key from the service-role key;
-    the signature is Supabase's to check, so it is not.
-    """
-    parts = key.split(".")
-    if len(parts) != _JWT_PARTS:
-        return None
-    claims = parts[1]
-    try:
-        decoded = json.loads(base64.urlsafe_b64decode(claims + "=" * (-len(claims) % 4)))
-    except (binascii.Error, ValueError):
-        return None
-    role = decoded.get("role") if isinstance(decoded, dict) else None
-    return role if isinstance(role, str) else None
 
 
 def _hosting_file(name: str) -> bytes:

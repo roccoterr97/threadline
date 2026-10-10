@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FIXTURE_GUIDE } from '../test/__fixtures__/guide';
+import { SETUP_GUIDE } from './guide';
 import type { SetupProgress } from './progress';
 import { coreSequence, extraSequence, locateScreen, neighbours, resumeScreen, screenPath } from './wizard';
 
@@ -71,5 +72,23 @@ describe('where to resume', () => {
   it('ends when every step is done', () => {
     const progress = { ...fresh, done: ['have-accounts', 'open-terminal', 'run-install', 'first-run'] };
     expect(screenPath(resumeScreen(FIXTURE_GUIDE, progress))).toBe('/setup/done');
+  });
+});
+
+describe('a place saved by an older guide', () => {
+  it('skips ticks of steps the guide no longer has', () => {
+    const progress = { ...fresh, done: ['netlify-account', 'have-accounts'] };
+    expect(screenPath(resumeScreen(FIXTURE_GUIDE, progress))).toBe('/setup/step/open-terminal');
+  });
+
+  it('still finds the Netlify steps, now in the own-dashboard extra', () => {
+    for (const id of ['netlify-token', 'make-it-public']) {
+      const place = locateScreen(SETUP_GUIDE, fresh, 'step', id);
+      expect(place?.sequence.at(-1)?.kind).toBe('done');
+      const inCore = coreSequence(SETUP_GUIDE, fresh).some(
+        (screen) => screen.kind === 'step' && screen.step.id === id,
+      );
+      expect(inCore).toBe(false);
+    }
   });
 });

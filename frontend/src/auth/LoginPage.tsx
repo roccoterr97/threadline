@@ -4,6 +4,7 @@ import { Button } from '../components/Button';
 import { EmptyState } from '../components/EmptyState';
 import { fieldClassName, LabelledField } from '../components/LabelledField';
 import { LoadingState } from '../components/LoadingState';
+import { SavedDatabaseNote } from '../connect/SavedDatabaseNote';
 import * as copy from '../copy/en';
 import { useFocusFirstInvalid } from '../hooks/useFocusFirstInvalid';
 import { usePageTitle } from '../hooks/usePageTitle';
@@ -124,6 +125,7 @@ export function LoginPage() {
           </Button>
         </form>
       )}
+      <SavedDatabaseNote />
     </main>
   );
 }

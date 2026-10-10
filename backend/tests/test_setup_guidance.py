@@ -7,7 +7,14 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from tests.setup_world import OWNER_EMAIL, World, configured_env, make_world
+from tests.setup_world import (
+    GOOD_PUBLISHABLE,
+    OWNER_EMAIL,
+    PROJECT_REF,
+    World,
+    configured_env,
+    make_world,
+)
 from tests.test_setup_form import answer_soon
 from tracker.cli.commands import doctor as doctor_command
 from tracker.cli.commands import setup as setup_command
@@ -24,6 +31,7 @@ from tracker.services.setup.step_categories import CategoriesStep
 from tracker.services.setup.step_microsoft import MicrosoftStep
 from tracker.services.setup.wizard import SetupWizard
 from tracker.shared import config
+from tracker.shared.constants.dashboard import HOSTED_DASHBOARD_URL
 from tracker.shared.errors import DatabaseUnavailableError
 from tracker.shared.logging import get_logger, logs_kept_in
 
@@ -228,6 +236,17 @@ async def test_the_last_words_name_the_dashboard_and_the_login_address() -> None
         f"Your dashboard: {_SITE}",
         f"Sign in there with {_LOGIN}: a sign-in link is e-mailed to that address.",
     ]
+
+
+@pytest.mark.asyncio
+async def test_the_last_words_give_the_personal_link_to_the_shared_dashboard() -> None:
+    world = _finished_world()
+    world.env.values["DASHBOARD_BASE_URL"] = HOSTED_DASHBOARD_URL
+
+    assert await SetupWizard(world.context(), []).run_core()
+
+    link = f"{HOSTED_DASHBOARD_URL}/#project={PROJECT_REF}&key={GOOD_PUBLISHABLE}"
+    assert f"Your dashboard: {link}" in world.io.said
 
 
 @pytest.mark.asyncio

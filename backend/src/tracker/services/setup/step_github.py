@@ -10,9 +10,10 @@ first daily run (``first_run``). Without it, the step lists the names and opens
 the page, can copy each value to the clipboard, and says where to press 'Run
 workflow' by hand.
 
-The Claude subscription key from ``claude setup-token`` is asked for here
-(``claude_key`` checks it was copied whole) and goes straight to GitHub: it is
-never written to ``.env`` or anywhere else.
+The Claude subscription key from ``claude setup-token`` is made here when
+Claude Code is on this computer (``claude_key_maker``), or else asked for
+(``claude_key`` checks it was copied whole). Either way it goes straight to
+GitHub: it is never written to ``.env`` or anywhere else.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from typing import Final
 
 from pydantic import SecretStr
 
-from tracker.services.setup.claude_key import ask_claude_key
+from tracker.services.setup.claude_key_maker import claude_key_for_github, claude_key_on_github
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import (
     FirstRun,
@@ -81,7 +82,7 @@ class GitHubStep:
         if repository is not None:
             offer_unsent_change(ctx)
         ctx.io.say("It needs your settings: secret ones as 'secrets', the rest as 'variables'.")
-        token = ask_claude_key(ctx)
+        token = claude_key_for_github(ctx, repository)
         if repository is not None and ctx.io.confirm(
             f"Save {len(secrets) + (token is not None)} secrets and {len(variables)} variables "
             f"in {repository} with the GitHub CLI now?",
@@ -191,10 +192,7 @@ def _claude_key_on_github(
     """Whether GitHub holds the Claude key; ``None`` when it could not be asked."""
     if token is not None:
         return True
-    try:
-        return CLAUDE_TOKEN_SECRET in ctx.gateways.github.secret_names(repository)
-    except SourceUnavailableError:
-        return None
+    return claude_key_on_github(ctx, repository)
 
 
 def _remove_emptied(

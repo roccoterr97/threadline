@@ -6,7 +6,37 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
+A shorter set-up: about 20 minutes with GitHub and Supabase ready, about 30
+without. Only two accounts are needed now, GitHub and Supabase.
+
+### Added
+
+- A shared dashboard at <https://app.threadlineapp.com>. `tracker setup
+  dashboard` offers it first: no Netlify account and no key. The owner gets a
+  personal link (`#project=<ref>&key=<publishable key>`, never a secret key)
+  that opens their own database; the set-up shows it, copies it and opens it,
+  and every link in the morning e-mail and in `tracker doctor` carries it. The
+  dashboard keeps the link in the browser, asks before switching to another
+  database, offers "Use a different database" on the sign-in page, shows a
+  "paste your personal link" page when it has none, and tells the owner when
+  their database is older than the dashboard. Publishing an own copy on
+  Netlify stays as the second choice (guide part 8d).
+- Supabase sign-in in the browser: the owner clicks **Authorize** and types
+  the short code the page shows, the way Supabase's own command-line tool
+  signs in. The token comes back sealed for a key only this computer holds,
+  stays in memory and is never saved. Pasting a token stays as a choice and as
+  the fallback whenever the browser route does not work.
+- The installers add Claude Code when it is missing. On a Mac or Linux the
+  GitHub step runs `claude setup-token` itself: a Claude page opens, the owner
+  clicks **Authorize**, and the key goes to GitHub without being shown or
+  copied. Windows, and any failure, fall back to pasting the key. Declining a
+  new key when GitHub already has one keeps it.
+
 ### Changed
+
+- The set-up guide, the Claude-run recipe and the website wizard describe the
+  shorter set-up. Netlify moved to an optional extra; old saved progress on
+  the website still works.
 
 - The official demo lives at <https://demo.threadlineapp.com>. The old
   address, `try-threadline.vercel.app`, still opens it. `frontend/vercel.json`

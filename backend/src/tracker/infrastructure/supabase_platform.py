@@ -21,6 +21,12 @@ is held in memory for one set-up run and never written anywhere:
   Function from the repository's files
   (``POST /v1/projects/{ref}/functions/deploy?slug=...``, a multipart upload)
   and saves its settings (``POST /v1/projects/{ref}/secrets``).
+* **Collect a browser sign-in's access token.** Supabase's own command-line
+  tool signs in through the browser; once the person clicks Authorize, the
+  session (``GET /platform/cli/login/{session_id}?device_code=...``, no token
+  needed) hands over the new access token, sealed for this computer's key.
+  It is not part of the documented Management API, so every odd answer is
+  reported plainly and the set-up falls back to a pasted token.
 * **Read whether sign-ups are open.** The auth server publishes its public
   settings at ``/auth/v1/settings``; the publishable key is enough to read them.
 
@@ -45,12 +51,15 @@ from tracker.domain.supabase import (
     AuthSettings,
     NewProject,
     Organization,
+    SealedAccessToken,
     SupabaseProject,
 )
 from tracker.shared.constants.collection import HTTP_TIMEOUT_SECONDS
 from tracker.shared.constants.setup import (
     SERVICE_ERROR_DETAIL_LENGTH,
     SUPABASE_MANAGEMENT_API_URL,
+    SUPABASE_SIGN_IN_SESSION_URL,
+    SUPABASE_SIGN_IN_TIMEOUT_SECONDS,
 )
 from tracker.shared.errors import (
     SourceAuthError,
@@ -82,6 +91,12 @@ SMART_REGION_TYPE: Final[str] = "smartGroup"
 
 #: What Supabase shows beside a key the set-up created.
 API_KEY_DESCRIPTION: Final[str] = "Created by Threadline's set-up"
+
+#: Query field that carries the code the sign-in page showed.
+SIGN_IN_CODE_FIELD: Final[str] = "device_code"
+
+#: Fields of the sign-in session's answer: the sealed token, Supabase's key, the nonce.
+_SEALED_FIELDS: Final[tuple[str, str, str]] = ("access_token", "public_key", "nonce")
 
 #: What a refusal of a plain read with the token is called.
 _TOKEN: Final[str] = "the access token"
@@ -142,6 +157,39 @@ class SupabasePlatform:
             what="the publishable key",
         )
         return _json_object(response).get("disable_signup") is True
+
+    async def sign_in_token(self, session_id: str, code: str) -> SealedAccessToken:
+        """Collect the access token a browser sign-in made, still sealed.
+
+        Sent once, with a short wait: a code is checked by Supabase, and asking
+        twice could only turn a lost answer into a misleading refusal.
+
+        Args:
+            session_id: The sign-in's identifier, as it went into the page.
+            code: The verification code the page showed.
+
+        Returns:
+            The sealed token, Supabase's public key and the nonce.
+
+        Raises:
+            SourceAuthError: If Supabase did not accept the code (any 4xx answer).
+            SourceUnavailableError: If Supabase could not be reached or answered
+                with something unexpected.
+        """
+        try:
+            response = await self._send(
+                "GET",
+                SUPABASE_SIGN_IN_SESSION_URL.format(session_id=session_id),
+                {},
+                what="the verification code",
+                params={SIGN_IN_CODE_FIELD: code},
+                once=True,
+                timeout=SUPABASE_SIGN_IN_TIMEOUT_SECONDS,
+            )
+        except (SourceAuthError, SourceRequestRejectedError) as error:
+            message = "Supabase did not accept that code"
+            raise SourceAuthError(message) from error
+        return _sealed_token(_json_object(response))
 
     async def organizations(self, token: SecretStr) -> tuple[Organization, ...]:
         """List the organizations the token's owner belongs to.
@@ -474,12 +522,13 @@ class SupabasePlatform:
         form: dict[str, str] | None = None,
         files: list[tuple[str, tuple[str, bytes, str]]] | None = None,
         once: bool = False,
+        timeout: float | None = None,
     ) -> httpx.Response:
         """Send one request and turn every failure into a typed error.
 
         ``once`` sends it a single time even when Supabase answers "too many
         requests" or a server error: a project created twice would be worse
-        than a clear error.
+        than a clear error. ``timeout`` replaces the pool's own limit.
         """
         if self._http is None:
             message = "Supabase client used outside its context manager"
@@ -487,7 +536,13 @@ class SupabasePlatform:
         try:
             if method == "GET":
                 response = await get_with_retries(
-                    self._http, url, params=params, headers=headers, source="supabase"
+                    self._http,
+                    url,
+                    params=params,
+                    headers=headers,
+                    source="supabase",
+                    attempts=1 if once else None,
+                    timeout=timeout,
                 )
             else:
                 response = await request_with_retries(
@@ -502,6 +557,7 @@ class SupabasePlatform:
                     source="supabase",
                     retry_after_send=False,
                     attempts=1 if once else None,
+                    timeout=timeout,
                 )
         except httpx.HTTPError as error:
             _log.error("supabase_unreachable", error_type=type(error).__name__)
@@ -577,6 +633,16 @@ def _json_objects(response: httpx.Response) -> list[dict[str, Any]]:
 def _unreadable() -> SourceUnavailableError:
     """Build the error for an answer that is not the expected JSON."""
     return SourceUnavailableError("Supabase answered with something unexpected")
+
+
+def _sealed_token(item: dict[str, Any]) -> SealedAccessToken:
+    """Read the sign-in session's answer: three hex strings, or a typed error."""
+    fields = [item.get(name) for name in _SEALED_FIELDS]
+    if not all(isinstance(value, str) and value for value in fields):
+        _log.error("supabase_sign_in_answer_unexpected", fields=sorted(item))
+        raise _unreadable()
+    ciphertext, public_key, nonce = (str(value) for value in fields)
+    return SealedAccessToken(ciphertext_hex=ciphertext, public_key_hex=public_key, nonce_hex=nonce)
 
 
 def _project(item: dict[str, Any]) -> SupabaseProject:

@@ -6,6 +6,7 @@ import base64
 import io
 import json
 import zipfile
+from typing import Final
 
 import pytest
 from pydantic import SecretStr
@@ -19,6 +20,7 @@ from tests.setup_world import (
     GOOD_SECRET,
     GOOD_TOKEN,
     NARROW_TOKEN,
+    PASTE,
     PROJECT_REF,
     PROJECT_URL,
     World,
@@ -36,6 +38,7 @@ from tracker.services.setup.supabase_session import TOO_LITTLE_ACCESS
 from tracker.shared.constants.dashboard import (
     CONFIG_FILE,
     DEPLOY_POLL_ATTEMPTS,
+    HOSTED_DASHBOARD_URL,
     NETLIFY_APP_URL,
     NETLIFY_SIGNUP_PAGE,
     NETLIFY_TEAM_LOGIN_PAGE,
@@ -65,9 +68,19 @@ LIVE = [WebPage(status=200, is_html=True)]
 #: The answers of a first publish: publish on Netlify, has an account, the token.
 FIRST_PUBLISH: list[str | bool] = [True, True, GOOD_NETLIFY_TOKEN]
 
+#: The answer that turns down the shared dashboard, asked first when no Netlify site is saved.
+NOT_SHARED: Final[bool] = False
+
 
 def _world(answers: list[str | bool], env: dict[str, str] | None = None) -> World:
-    world = make_world(answers, configured_env() if env is None else env)
+    """A world for publishing on Netlify: the shared dashboard is turned down first.
+
+    With a Netlify site saved, republishing it is asked first instead, so the
+    answers are used as they are.
+    """
+    values = configured_env() if env is None else env
+    script = answers if "NETLIFY_SITE_ID" in values else [NOT_SHARED, *answers]
+    world = make_world(script, values)
     world.pages[SITE] = list(LIVE)
     return world
 
@@ -584,11 +597,113 @@ async def test_having_node_alone_never_asks_to_build_here() -> None:
     assert world.env.values["DASHBOARD_BASE_URL"] == SITE
 
 
+# --- The shared dashboard ----------------------------------------------------------
+
+#: The personal link of the test project: the shared address, then its two public values.
+PERSONAL_LINK = f"{HOSTED_DASHBOARD_URL}/#project={PROJECT_REF}&key={GOOD_PUBLISHABLE}"
+
+
+async def test_the_shared_dashboard_is_the_default_and_needs_no_account_or_key() -> None:
+    world = make_world([""], configured_env())
+
+    await DashboardStep().run(_context(world))
+
+    assert world.env.values["DASHBOARD_BASE_URL"] == HOSTED_DASHBOARD_URL
+    assert "NETLIFY_SITE_ID" not in world.env.values
+    assert world.netlify.created == []
+    assert world.io.secret_prompts == []
+    assert world.platform.auth_changes == _pointed_at(HOSTED_DASHBOARD_URL)
+    assert "your data stays in your own database" in world.io.text()
+
+
+async def test_the_personal_link_is_shown_copied_and_opened_once() -> None:
+    world = make_world([True], configured_env())
+
+    await DashboardStep().run(_context(world))
+
+    assert f"  {PERSONAL_LINK}" in world.io.said
+    assert world.io.copied == [PERSONAL_LINK]
+    assert world.io.opened == [PERSONAL_LINK]
+    assert GOOD_SECRET not in world.io.text()
+
+
+async def test_without_a_clipboard_the_link_is_still_shown_and_opened() -> None:
+    world = make_world([True], configured_env(), clipboard=False)
+
+    await DashboardStep().run(_context(world))
+
+    assert f"  {PERSONAL_LINK}" in world.io.said
+    assert "It is on your clipboard as well." not in world.io.said
+    assert world.io.opened == [PERSONAL_LINK]
+
+
+async def test_the_secret_key_in_the_publishable_setting_stops_before_anything_is_saved() -> None:
+    env = configured_env() | {"SUPABASE_ANON_KEY": GOOD_SECRET}
+    world = make_world([True], env)
+
+    with pytest.raises(ValidationFailedError, match="secret key"):
+        await DashboardStep().run(_context(world))
+
+    assert "DASHBOARD_BASE_URL" not in world.env.values
+    assert world.platform.auth_changes == []
+    assert world.io.opened == []
+
+
+async def test_running_it_again_on_the_shared_dashboard_shows_the_link_again() -> None:
+    env = configured_env() | {"DASHBOARD_BASE_URL": HOSTED_DASHBOARD_URL}
+    world = make_world([True], env)
+
+    await DashboardStep().run(_context(world))
+
+    assert "Supabase needs nothing new" in world.io.text()
+    assert world.platform.auth_changes == []
+    assert world.io.opened == [PERSONAL_LINK]
+
+
+async def test_an_owner_with_a_netlify_site_is_offered_the_newest_version_first() -> None:
+    env = configured_env() | {"NETLIFY_SITE_ID": "site-1", "DASHBOARD_BASE_URL": SITE}
+    world = _world(FIRST_PUBLISH, env)
+    world.netlify.sites["site-1"] = NetlifySite(id="site-1", name="threadline-abc123", address=SITE)
+
+    await DashboardStep().run(_context(world))
+
+    assert [site for site, _ in world.netlify.deployed] == ["site-1"]
+    assert world.env.values["DASHBOARD_BASE_URL"] == SITE
+    assert "Use the shared dashboard?" not in world.io.text()
+
+
+async def test_an_owner_with_a_netlify_site_can_move_to_the_shared_dashboard() -> None:
+    env = configured_env() | {"NETLIFY_SITE_ID": "site-1", "DASHBOARD_BASE_URL": SITE}
+    # No newer Netlify version, yes to the shared dashboard, yes to replacing the address.
+    world = make_world([False, True, True], env)
+
+    await DashboardStep().run(_context(world))
+
+    assert world.netlify.deployed == []
+    assert world.env.values["DASHBOARD_BASE_URL"] == HOSTED_DASHBOARD_URL
+    assert world.platform.auth_changes == _pointed_at(HOSTED_DASHBOARD_URL)
+    text = world.io.text()
+    assert "The address changed: run 'uv run tracker setup github'" in text
+    assert "'uv run tracker setup refresh' again if you use Refresh now." in text
+    assert world.io.opened == [PERSONAL_LINK]
+
+
+async def test_turning_down_the_shared_dashboard_offers_netlify_next() -> None:
+    world = _world(FIRST_PUBLISH)
+
+    await DashboardStep().run(_context(world))
+
+    assert world.env.values["DASHBOARD_BASE_URL"] == SITE
+    assert "Use the shared dashboard?" not in world.io.said
+    assert PERSONAL_LINK not in world.io.text()
+    assert world.io.copied == []
+
+
 # --- Another host --------------------------------------------------------------
 
 
 async def test_another_host_is_saved_once_it_opens() -> None:
-    world = make_world([False, True, "https://you.host.example/"], configured_env())
+    world = make_world([False, False, True, "https://you.host.example/"], configured_env())
     world.statuses["https://you.host.example"] = 200
 
     await DashboardStep().run(_context(world))
@@ -600,7 +715,7 @@ async def test_another_host_is_saved_once_it_opens() -> None:
 
 async def test_another_host_behind_a_login_is_refused() -> None:
     address = "https://a.vercel.example"
-    world = make_world([False, True, address, address, "http://a"], configured_env())
+    world = make_world([False, False, True, address, address, "http://a"], configured_env())
     world.statuses[address] = 401
 
     with pytest.raises(ValidationFailedError, match="https://"):
@@ -609,8 +724,8 @@ async def test_another_host_behind_a_login_is_refused() -> None:
     assert "asks for a login" in world.io.text()
 
 
-async def test_saying_no_to_both_stops_the_step_and_saves_nothing() -> None:
-    world = make_world([False, False], configured_env())
+async def test_saying_no_to_all_three_stops_the_step_and_saves_nothing() -> None:
+    world = make_world([False, False, False], configured_env())
 
     with pytest.raises(ValidationFailedError, match="part 5 of the guide"):
         await DashboardStep().run(_context(world))
@@ -669,7 +784,7 @@ async def test_a_list_that_cannot_be_read_is_not_overwritten() -> None:
 
 
 async def test_run_alone_it_asks_for_the_supabase_token_once_and_sets_both_addresses() -> None:
-    world = _world([*FIRST_PUBLISH, True, GOOD_TOKEN])
+    world = _world([*FIRST_PUBLISH, True, PASTE, GOOD_TOKEN])
 
     await DashboardStep().run(world.context())
 
@@ -713,7 +828,7 @@ async def test_an_unreachable_supabase_also_falls_back_to_typing_the_two_values(
 
 
 async def test_a_scoped_token_falls_back_to_typing_the_two_values_with_the_fix() -> None:
-    world = _world([*FIRST_PUBLISH, True, NARROW_TOKEN])
+    world = _world([*FIRST_PUBLISH, True, PASTE, NARROW_TOKEN])
     ctx = world.context()
 
     await DashboardStep().run(ctx)

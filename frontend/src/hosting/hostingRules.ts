@@ -47,6 +47,21 @@ export const UNLISTED_HEADER: Header = ['X-Robots-Tag', 'noindex, nofollow'];
 /** Every address that is not a file opens the dashboard, which routes it itself. */
 export const SPA_FALLBACK = { from: '/*', to: '/index.html', status: 200 } as const;
 
+/**
+ * Vercel's answer to `/config.js`, which `index.html` always asks for. The
+ * shared dashboard has no such file, and the fallback would answer with
+ * `index.html`, a page the browser refuses to run as a script. A published
+ * dashboard's own `config.js` is a real file, which every host serves before
+ * any rule, so this never hides it.
+ */
+export const NO_CONFIG_REWRITE = { source: '/config.js', destination: '/no-config.js' } as const;
+
+/** Vercel's rewrites, in order: the harmless `config.js`, then the fallback. */
+export const VERCEL_REWRITES = [
+  NO_CONFIG_REWRITE,
+  { source: '/(.*)', destination: SPA_FALLBACK.to },
+] as const;
+
 /** Netlify's `_headers` file: every header above, for every address. */
 export function netlifyHeadersFile(): string {
   const lines = [...SECURITY_HEADERS, UNLISTED_HEADER].map(([name, value]) => `  ${name}: ${value}`);

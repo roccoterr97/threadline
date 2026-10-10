@@ -1,3 +1,4 @@
+import { SHARED_DASHBOARD_URL } from '../constants/links';
 import { DASHBOARD_ADDRESS_KEY } from '../constants/site';
 import {
   forgetDashboardAddress,
@@ -15,6 +16,11 @@ beforeEach(() => {
 describe('parseDashboardAddress', () => {
   it('accepts a whole https address and trims it', () => {
     expect(parseDashboardAddress(`  ${ADDRESS}  `)).toEqual({ ok: true, address: ADDRESS });
+  });
+
+  it('keeps a personal link to the shared dashboard whole, with what follows the address', () => {
+    const personalLink = `${SHARED_DASHBOARD_URL}/?project=abcdefghijklmnopqrst#signed-out`;
+    expect(parseDashboardAddress(personalLink)).toEqual({ ok: true, address: personalLink });
   });
 
   it('turns down an empty address', () => {

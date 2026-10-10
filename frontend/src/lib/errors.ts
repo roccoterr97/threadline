@@ -15,8 +15,8 @@ export class NotConfiguredError extends DashboardError {}
 export class DataUnavailableError extends DashboardError {}
 
 /**
- * The database has no such table: a structure file newer than the database
- * has not been applied yet. A kind of "unavailable" a page can explain.
+ * The database has no such table or column: a structure file newer than the
+ * database has not been applied yet. A kind of "unavailable" a page can explain.
  */
 export class TableMissingError extends DataUnavailableError {}
 

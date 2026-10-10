@@ -68,7 +68,7 @@ def render_html(content: SummaryContent, product_name: str) -> str:
     Returns:
         A complete HTML document.
     """
-    url = content.dashboard_url
+    url = content.dashboard_page()
     rows = [
         _header(content, product_name),
         _tiles(content),
@@ -78,9 +78,9 @@ def render_html(content: SummaryContent, product_name: str) -> str:
         _people(OVERDUE_HEADING, content.overdue, content.overdue_total, url, _ALERT),
         _people(CHASE_HEADING, content.chase, content.chase_total, url, _MUTED),
         _people(REPLIED_HEADING, content.replied, content.replied_total, url, _INK),
-        _review(content.open_questions, url),
+        _review(content.open_questions, content.dashboard_page(DASHBOARD_REVIEW_PATH)),
         _key_reminder(content.key_reminder),
-        _footer(url, product_name),
+        _footer(content.dashboard_page(DASHBOARD_RUNS_PATH), product_name),
     ]
     body = "".join(f"<tr><td style='padding:0 28px'>{row}</td></tr>" for row in rows if row)
     return (
@@ -209,15 +209,15 @@ def _more_row(hidden: int, url: str | None) -> str:
     )
 
 
-def _review(open_questions: int, url: str | None) -> str:
+def _review(open_questions: int, review_url: str | None) -> str:
     """The yes-or-no questions waiting, with a button to answer them."""
     head = _section_heading(REVIEW_HEADING)
     if not open_questions:
         return f"{head}<p style='margin:0;font-size:14px;color:{_MUTED}'>{NO_QUESTIONS}</p>"
     text = f"<p style='margin:0;font-size:14px'>{questions_waiting(open_questions)}</p>"
-    if not url:
+    if not review_url:
         return f"{head}{text}"
-    return f"{head}{text}{_button('Answer them', f'{url}{DASHBOARD_REVIEW_PATH}')}"
+    return f"{head}{text}{_button('Answer them', review_url)}"
 
 
 def _key_reminder(reminder: str | None) -> str:
@@ -231,11 +231,11 @@ def _key_reminder(reminder: str | None) -> str:
     )
 
 
-def _footer(url: str | None, product_name: str) -> str:
+def _footer(runs_url: str | None, product_name: str) -> str:
     """The closing line, with the run history when the dashboard has an address."""
     runs = ""
-    if url:
-        href = escape(f"{url}{DASHBOARD_RUNS_PATH}", quote=True)
+    if runs_url:
+        href = escape(runs_url, quote=True)
         runs = f" · <a href='{href}' style='color:{_MUTED}'>See every run</a>"
     return (
         f"<p style='margin:28px 0 24px;padding-top:16px;border-top:1px solid {_RULE};"

@@ -12,6 +12,7 @@ from datetime import date, time
 from typing import Final, Protocol
 
 from tracker.domain.daily_start import DailyStartStatus
+from tracker.domain.dashboard_link import DashboardAddress
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.services.database_structure import (
     MigrationFile,
@@ -308,24 +309,31 @@ class LinkedInExpiryCheck:
 
 @dataclass(slots=True)
 class DashboardCheck:
-    """The published dashboard opens."""
+    """The dashboard opens, and the shared one has the owner's personal link."""
 
     status_of: Callable[[str], Awaitable[int]]
-    address: str | None
+    address: DashboardAddress | None
     name: str = "Dashboard address"
     fix: str = _setup("dashboard")
 
     async def run(self) -> CheckResult:
-        """Open the address once."""
-        if not self.address:
+        """Open the address once; name the personal link to open it with."""
+        address = self.address
+        if address is None:
             return skipped(self.name, "DASHBOARD_BASE_URL is not set yet (optional)")
-        status = await self.status_of(self.address)
+        status = await self.status_of(address.base)
         if status in _LOGIN_WALL_STATUSES:
             detail = "the page asks for a login instead of showing the dashboard"
             return problem(self.name, detail, self.fix)
         if status >= _FIRST_ERROR_STATUS:
             return problem(self.name, f"the page answered status {status}", self.fix)
-        return ok(self.name, f"{self.address} opens")
+        if address.shared and address.connect is None:
+            detail = (
+                "the shared dashboard opens, but your personal link cannot be made: "
+                "SUPABASE_URL or SUPABASE_ANON_KEY is not right"
+            )
+            return problem(self.name, detail, _setup("supabase"))
+        return ok(self.name, f"{address.page()} opens")
 
 
 @dataclass(slots=True)

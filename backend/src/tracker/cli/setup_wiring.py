@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+import sys
 from pathlib import Path
 
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
+from tracker.infrastructure.claude_setup_token import PtyClaudeKeyMaker, write_to_terminal
 from tracker.infrastructure.database import connect
 from tracker.infrastructure.env_file import EnvFile
 from tracker.infrastructure.github_api import GitHubApi
@@ -95,6 +97,7 @@ def build_context(
         page_of=WebProbe().page_of,
         site_name_suffix=random_site_suffix,
         make_daily_start_key=make_daily_start_key,
+        claude_key_maker=claude_key_maker(in_terminal=io is None),
     )
     return SetupContext(
         io=io or TerminalIO(),
@@ -102,6 +105,25 @@ def build_context(
         gateways=gateways,
         session=SetupSession(build_dashboard_here=build_dashboard_here),
     )
+
+
+def claude_key_maker(*, in_terminal: bool) -> PtyClaudeKeyMaker:
+    """Build what runs ``claude setup-token`` for the set-up.
+
+    In a terminal, Claude's screen is shown there (the key blanked) and typing
+    reaches it. On the set-up's page there is no screen to show it on: the
+    browser sign-in alone finishes it.
+
+    Args:
+        in_terminal: Whether the set-up talks to the person in this terminal.
+
+    Returns:
+        The key maker.
+    """
+    if not in_terminal:
+        return PtyClaudeKeyMaker(screen=None, keyboard=None)
+    keyboard = sys.stdin.fileno() if sys.stdin.isatty() else None
+    return PtyClaudeKeyMaker(screen=write_to_terminal, keyboard=keyboard)
 
 
 def choice_saver(url: str, key: SecretStr, clock: Clock) -> ChoiceSaver:

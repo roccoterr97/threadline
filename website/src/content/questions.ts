@@ -13,7 +13,7 @@ export const QUESTIONS: readonly Question[] = [
     id: 'data',
     question: 'Is my data sent anywhere?',
     answer: [
-      'Only to accounts you own. Your own copy reads your messages on GitHub, Claude judges them on your own Claude plan, and the results live in your own Supabase database. Your dashboard is on your own Netlify account.',
+      'Only to accounts you own. Your own copy reads your messages on GitHub, Claude judges them on your own Claude plan, and the results live in your own Supabase database. Your dashboard is a shared page that shows only what your own database sends it, after you sign in.',
       'Nothing is sent to the people who make Threadline. There is no Threadline server.',
     ],
   },
@@ -49,14 +49,14 @@ export const QUESTIONS: readonly Question[] = [
     id: 'cost',
     question: 'What does it cost?',
     answer: [
-      'Threadline itself is free. GitHub, Supabase and Netlify are used on their free plans, and Claude runs on the paid plan you already have (Pro, Max or Team). Free plans change from time to time, so check the providers\' pages if in doubt.',
+      'Threadline itself is free. GitHub and Supabase are used on their free plans, and Claude runs on the paid plan you already have (Pro, Max or Team). Free plans change from time to time, so check the providers\' pages if in doubt.',
     ],
   },
   {
     id: 'time',
     question: 'How long does the set-up take?',
     answer: [
-      'About 30 to 40 minutes if you already have GitHub, Supabase and Netlify accounts, and 50 to 70 if you create them as you go. The first summary e-mail arrives about ten minutes after you finish.',
+      'About 20 minutes with GitHub and Supabase ready, about 30 without. The first summary e-mail arrives about ten minutes after you finish.',
     ],
   },
   {
@@ -83,14 +83,14 @@ export const QUESTIONS: readonly Question[] = [
   {
     id: 'update',
     question: 'How do I update to a new version?',
-    answer: ['Paste the install line again, then publish the newer dashboard. [How to update](/update) shows the two lines.'],
+    answer: ['Paste the install line again. The shared dashboard is kept up to date for you. [How to update](/update) shows the line.'],
   },
   {
     id: 'pause-remove',
     question: 'How do I pause it, or remove it completely?',
     answer: [
       `To pause, open your copy on GitHub, go to **Actions**, then **Threadline run**, and choose **Disable workflow**. Nothing is lost while it is off. [Step by step](${OPERATIONS_URL}#pause-and-resume).`,
-      'To remove it completely, delete your threadline copy on GitHub, your project on Supabase and your dashboard site on Netlify, and remove the app password from your mailbox. Everything was on your accounts, so that is all there is.',
+      'To remove it completely, delete your threadline copy on GitHub and your project on Supabase (and your own dashboard site on Netlify, if you made one), and remove the app password from your mailbox. Everything was on your accounts, so that is all there is.',
     ],
   },
 ];

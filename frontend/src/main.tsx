@@ -4,6 +4,12 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './auth/AuthProvider';
+import { ConnectionGate } from './connect/ConnectionGate';
+import {
+  restartOnNewLink,
+  startConnection,
+  type StartupState,
+} from './connect/connectionStartup';
 import type { DemoParts } from './demo/startDemo';
 import './index.css';
 import { systemClock } from './lib/clock';
@@ -26,16 +32,21 @@ async function prepareDemo(): Promise<DemoParts | null> {
 }
 
 const demo = await prepareDemo();
+// Before anything starts the database client, which also reads the address.
+const startup: StartupState = demo === null ? startConnection() : { kind: 'ready' };
+if (demo === null) restartOnNewLink();
 const queryClient = createQueryClient();
 
 createRoot(rootElement).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <App banner={demo?.banner} signInPage={demo?.signInPage} />
-        </BrowserRouter>
-      </AuthProvider>
-    </QueryClientProvider>
+    <ConnectionGate startup={startup}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <BrowserRouter>
+            <App banner={demo?.banner} signInPage={demo?.signInPage} />
+          </BrowserRouter>
+        </AuthProvider>
+      </QueryClientProvider>
+    </ConnectionGate>
   </StrictMode>,
 );

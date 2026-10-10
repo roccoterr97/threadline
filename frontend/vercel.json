@@ -5,6 +5,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/config.js",
+      "destination": "/no-config.js"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

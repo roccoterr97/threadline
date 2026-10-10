@@ -35,8 +35,11 @@ const REFUSAL_CODES = new Map<string, RefusalReason>([
   ['23505', RefusalReason.Duplicate],
 ]);
 
-/** Postgres's and the data API's codes for a table the database does not have (yet). */
-const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST205']);
+/**
+ * Postgres's and the data API's codes for a table (`42P01`, `PGRST205`) or a
+ * column (`42703`) the database does not have (yet).
+ */
+const MISSING_TABLE_CODES = new Set(['42P01', 'PGRST205', '42703']);
 
 /** Where Postgres names the rule a refused write broke: `… constraint "name"`. */
 const CONSTRAINT_NAME = /constraint "([^"]+)"/;

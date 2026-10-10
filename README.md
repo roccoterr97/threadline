@@ -122,10 +122,8 @@ Outlook-only set-ups). The design is described in
 |------|---------------------|------|
 | A computer with macOS, Linux or Windows (10 or 11) | Running the set-up once. After that it can stay off | – |
 | A paid Claude plan (Pro, Max or Team) | The Claude Code session that runs everything and does the judging. The daily run uses part of your plan's usage limits | Your existing subscription; no separate API key |
-| [Claude Code](https://code.claude.com/docs/en/setup), installed before the set-up asks for your key (check with `claude --version`) | Making the key that lets GitHub use your plan (`claude setup-token`) | Included in your plan |
 | A [GitHub](https://github.com) account | Your private copy of the code, and GitHub Actions, which starts the run every day. The installer adds the [GitHub CLI](https://cli.github.com) (`gh`), which signs you in, makes your copy and saves your settings | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
-| A [Supabase](https://supabase.com) account | The database and the dashboard sign-in. The set-up creates the project with one access token. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
-| A [Netlify](https://www.netlify.com) account | Publishing the dashboard | Free plan |
+| A [Supabase](https://supabase.com) account (sign up with **Continue with GitHub**) | The database and the dashboard sign-in. The set-up creates the project after one click on **Authorize**. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
 | At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any IMAP mailbox | The mail that is read (read-only). Gmail and the others need an app password, which also sends you the summary; Outlook needs a one-time sign-in | Free (Fastmail: a paid plan above Basic) |
 | *Optional:* a Microsoft personal account | The calendar, which is read from Outlook only for now | Free |
 | *Optional:* a LinkedIn developer app | Reading your LinkedIn messages; only for members located in the EEA or Switzerland (see below) | Free |
@@ -134,11 +132,11 @@ Outlook-only set-ups). The design is described in
 | *Only for the Claude cloud route:* a Gmail account connected to Claude | Sending the summary from a Claude cloud routine, when you read Outlook alone | Free |
 
 No other paid service is needed, unless you choose a paid mailbox such as
-Fastmail. Setting it up takes about 30 to 40 minutes of your own time if you
-already have GitHub, Supabase, Netlify and Claude Code. The first summary
-e-mail follows about ten minutes later, if you have a mailbox that can send it,
-for example Gmail with an app password. Creating those accounts yourself brings
-it to 50 to 70 minutes.
+Fastmail. The dashboard is shared, at <https://app.threadlineapp.com>: your
+data stays in your own Supabase database, and only you can sign in. Setting it
+up takes about 20 minutes of your own time with GitHub and Supabase ready,
+about 30 without. The first summary e-mail follows about ten minutes later, if
+you have a mailbox that can send it, for example Gmail with an app password.
 
 ### LinkedIn: only in the EEA and Switzerland
 
@@ -165,10 +163,8 @@ accounts and click where it says. Keys go into a page in your browser, never
 into the chat. See [`docs/setup-with-claude.md`](./docs/setup-with-claude.md):
 it is one sentence to paste into the Claude app.
 
-**By hand:** create free GitHub, Supabase and Netlify accounts first. Then
-paste one line into a terminal. You install
-[Claude Code](https://code.claude.com/docs/en/setup) a little later, just
-before the set-up asks for your Claude key (on Windows, after this line).
+**By hand:** create a free GitHub account, then a free Supabase account with
+**Continue with GitHub**. Then paste one line into a terminal.
 
 On macOS or Linux:
 
@@ -184,27 +180,32 @@ irm https://raw.githubusercontent.com/roccoterr97/threadline/main/install.ps1 | 
 
 What happens next:
 
-1. The installer adds uv and the GitHub CLI if they are missing (and Git, on
-   Windows), signs you in to GitHub in the browser, makes your private copy
-   called `threadline`, downloads it to `~/threadline`, and starts the guided
-   set-up. The first time, it may also download Python itself, which can take a
+1. The installer adds uv, the GitHub CLI and Claude Code if they are missing
+   (and Git, on Windows), signs you in to GitHub in the browser, makes your
+   private copy called `threadline`, downloads it to `~/threadline`, and starts
+   the guided set-up. The first time, it may also download Python itself, which can take a
    few minutes and needs the internet. Pasting the line again carries on where
    it stopped.
-2. The set-up runs 11 steps. With one Supabase access token it creates your
-   project, builds the database, creates your dashboard login and switches
-   sign-ups off. It then asks for your categories, time zone and mailbox,
-   publishes the dashboard, and asks for the daily time.
-3. Last, it saves your settings and your Claude key on GitHub, starts the first
-   run and watches it for two minutes (so a problem is said at once), and
-   checks every connection. Its last screen names your dashboard's address and
-   the e-mail address that signs in to it. The first summary e-mail arrives
-   about ten minutes later, then every day at the time you chose (this needs a mailbox
-   with an app password; with Outlook alone the set-up tells you the options).
+2. The set-up runs 11 steps. You click **Authorize** on a Supabase page and
+   type the code it shows; it then creates your project, builds the database,
+   creates your dashboard login and switches sign-ups off. It asks for your
+   categories, time zone and mailbox, points the sign-in at the shared
+   dashboard and gives you your personal link to it, and asks for the daily
+   time.
+3. Last, you click **Authorize** on a Claude page: the key that lets GitHub use
+   your plan goes straight to GitHub (on some computers you paste it instead).
+   It saves your settings on GitHub, starts the first run and watches it for
+   two minutes (so a problem is said at once), and checks every connection.
+   Its last screen names your personal link and the e-mail address that signs
+   in. The first summary e-mail arrives about ten minutes later, then every day
+   at the time you chose (this needs a mailbox with an app password; with
+   Outlook alone the set-up tells you the options).
 4. LinkedIn, the dashboard's Refresh now button and the Claude cloud route are
-   optional extras: `uv run tracker setup extras`, any time. Refresh now also
-   switches on the on-time morning start: GitHub often starts its scheduled
-   runs hours late, so your Supabase project starts the daily run at your time
-   instead, and GitHub's own schedule stays as a backup.
+   optional extras: `uv run tracker setup extras`, any time. Your own copy of
+   the dashboard on Netlify is optional too (`uv run tracker setup dashboard`).
+   Refresh now also switches on the on-time morning start: GitHub often starts
+   its scheduled runs hours late, so your Supabase project starts the daily run
+   at your time instead, and GitHub's own schedule stays as a backup.
 
 Add `--browser` to any `uv run tracker setup` command to have the questions
 asked on a page in your web browser instead of in the terminal: keys go into
@@ -234,7 +235,7 @@ information.
 | `tracker setup extras` | The optional steps, in order, each skippable: `linkedin`, `refresh` and `cloud` |
 | `tracker setup <step>` | Run one step alone, even if it was done before. The core steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `dashboard`, `schedule` and `github`; the extras are `linkedin`, `refresh` and `cloud` |
 | `tracker setup [<step>] --browser` | The same, asked on a page in your web browser instead of the terminal; what is said and asked is still shown in the terminal, answers never are |
-| `tracker setup supabase` | Create your Supabase project (or reuse one) with one access token, and save its address and keys; the token is never saved. Typing an existing project's address and keys is also offered |
+| `tracker setup supabase` | Sign in to Supabase in the browser (or paste an access token), create your project (or reuse one), and save its address and keys; the sign-in is never saved. Typing an existing project's address and keys is also offered |
 | `tracker setup mailbox` | Choose the mailbox to read; for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
 | `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow, and into the database for the on-time morning start; commit and push the workflow only after a yes |
 | `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. With `gh` it then switches the workflow on and starts the first daily run after a yes. It only ever uses your own private copy |
@@ -315,9 +316,10 @@ waiting-on value means is defined in
 
 ## Privacy and security
 
-- Everything lives in accounts you own: your database, your dashboard, your
-  GitHub repository and your Claude subscription. Nothing is sent to the
-  project's authors. The Claude key goes only into your own repository's
+- Everything lives in accounts you own: your database, your GitHub
+  repository and your Claude subscription. The shared dashboard page only
+  shows what your own database sends it after you sign in. Nothing is sent to
+  the project's authors. The Claude key goes only into your own repository's
   secrets; Threadline never stores it.
 - The mailbox and calendar are read with read-only permissions. Nothing is
   ever written to LinkedIn or the mailbox.

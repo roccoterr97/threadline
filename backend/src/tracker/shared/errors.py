@@ -28,6 +28,12 @@ class TrackerError(Exception):
         self.message = message
 
 
+class ClaudeKeyNotMadeError(TrackerError):
+    """``claude setup-token`` ended without a key the set-up could take."""
+
+    code = "claude_key_not_made"
+
+
 class ConfigurationError(TrackerError):
     """Configuration is missing, malformed, or inconsistent."""
 
@@ -170,6 +176,16 @@ class LinkedInSignInError(SourceAuthError):
         """
         super().__init__(message)
         self.problem = problem
+
+
+class SupabaseSignInError(TrackerError):
+    """Supabase's browser sign-in handed over an access token that could not be opened.
+
+    Not a :class:`SourceAuthError`: typing the code again cannot help, so the
+    set-up turns to a pasted token instead of asking again.
+    """
+
+    code = "supabase_sign_in_failed"
 
 
 class MailboxPasswordError(SourceAuthError):

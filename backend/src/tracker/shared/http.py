@@ -80,6 +80,7 @@ async def request_with_retries(
     attempts: int | None = None,
     delay: float | None = None,
     sleep: Callable[[float], Awaitable[None]] | None = None,
+    timeout: float | None = None,
 ) -> httpx.Response:
     """Send one request, trying again when the failure looks temporary.
 
@@ -110,6 +111,7 @@ async def request_with_retries(
         delay: Seconds between two attempts; the configured default when
             omitted.
         sleep: How to wait; replaced in tests so they never really wait.
+        timeout: Seconds one attempt may take; the pool's own limit when omitted.
 
     The three defaults are read when the call is made, not when this module is
     imported, so a test can shorten them for the whole suite.
@@ -139,6 +141,7 @@ async def request_with_retries(
                 json=json_body,
                 files=files,
                 content=content,
+                timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
             )
         except httpx.HTTPError as error:
             if not retry_after_send and not isinstance(error, CONNECT_ERRORS):
@@ -179,6 +182,7 @@ async def get_with_retries(
     attempts: int | None = None,
     delay: float | None = None,
     sleep: Callable[[float], Awaitable[None]] | None = None,
+    timeout: float | None = None,
 ) -> httpx.Response:
     """Send one GET, trying again when the failure looks temporary.
 
@@ -199,4 +203,5 @@ async def get_with_retries(
         attempts=attempts,
         delay=delay,
         sleep=sleep,
+        timeout=timeout,
     )

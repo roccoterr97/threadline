@@ -70,6 +70,7 @@ describe('the guided set-up content', () => {
       'linkedin',
       'refresh-now',
       'cloud-route',
+      'own-dashboard',
     ]);
   });
 

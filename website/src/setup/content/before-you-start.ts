@@ -1,11 +1,5 @@
-import {
-  CLAUDE_CODE_SETUP_URL,
-  GITHUB_SIGNUP_URL,
-  NETLIFY_URL,
-  SUPABASE_URL,
-} from '../../constants/links';
+import { GITHUB_SIGNUP_URL, SUPABASE_URL } from '../../constants/links';
 import type { SetupPart } from '../types';
-import { CLAUDE_VERSION_COMMAND } from './commands';
 import { GITHUB_CLI_PAGE, GIT_FOR_WINDOWS_PAGE, WINGET_PAGE } from './addresses';
 
 /**
@@ -33,7 +27,7 @@ export const BEFORE_YOU_START: SetupPart = {
     },
     {
       kind: 'paragraph',
-      text: '**Time.** About 30 to 40 minutes of your own time if you already have GitHub, Supabase, Netlify and Claude Code. Creating those accounts yourself brings it to 50 to 70 minutes. Part of it is waiting: a new Supabase project takes one to three minutes to start, and the first download of Python can take a few more. Making a Gmail app password takes longer if 2-Step Verification is not on yet. You can stop at any point: the set-up carries on where you left off.',
+      text: '**Time.** About 20 minutes of your own time with GitHub and Supabase ready, about 30 without. Part of it is waiting: a new Supabase project takes one to three minutes to start, and the first download of Python can take a few more. Making a Gmail app password takes longer if 2-Step Verification is not on yet. You can stop at any point: the set-up carries on where you left off.',
     },
     {
       kind: 'paragraph',
@@ -41,7 +35,7 @@ export const BEFORE_YOU_START: SetupPart = {
     },
     {
       kind: 'paragraph',
-      text: '**What it costs.** No other paid service is needed. GitHub, Supabase, Netlify, Google, Microsoft and LinkedIn are all used on their free plans; the only exception would be a paid mailbox you choose yourself, such as Fastmail. Free-plan limits change, so check the providers\' pricing pages if in doubt.',
+      text: '**What it costs.** No other paid service is needed. GitHub, Supabase, Google, Microsoft and LinkedIn are all used on their free plans; the only exception would be a paid mailbox you choose yourself, such as Fastmail. Free-plan limits change, so check the providers\' pricing pages if in doubt.',
     },
     {
       kind: 'paragraph',
@@ -84,7 +78,7 @@ export const BEFORE_YOU_START: SetupPart = {
         ],
         [
           'Management API',
-          'The official way the set-up talks to Supabase on your behalf, with a token you make and delete afterwards.',
+          'The official way the set-up talks to Supabase on your behalf, after you let it in once with **Authorize**.',
         ],
         ['CRM', 'Customer-relationship software, which Threadline is not.'],
         [
@@ -112,15 +106,10 @@ export const BEFORE_YOU_START: SetupPart = {
               'Runs the daily job on GitHub with your own subscription, with your computer off. The daily run uses part of your plan\'s usage limits, like any other use of Claude.',
             ],
             [
-              'Claude Code installed on that computer',
-              'Makes the key that lets GitHub use your Claude plan (`claude setup-token`). It is needed only at the GitHub part, so you can install it later.',
-            ],
-            [
               'A GitHub account',
               'Keeps your private copy of Threadline and runs it every day (GitHub Actions). Free: 2,000 minutes a month for private copies at the time of writing; a month of runs uses about 150 to 300.',
             ],
             ['A Supabase account', 'The database that keeps your people and conversations. Free plan.'],
-            ['A Netlify account', 'Publishes the dashboard so it opens on your phone. Free plan.'],
             [
               'At least one mailbox',
               'Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any mailbox that offers IMAP: the mail Threadline reads, read-only. Gmail and the others also send you the summary. Free (Fastmail: a paid plan above Basic).',
@@ -164,7 +153,7 @@ export const BEFORE_YOU_START: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'The one-line install adds the tools Threadline uses. What it needs from you depends on your computer.',
+          text: 'The one-line install adds the tools Threadline uses, Claude Code included. What it needs from you depends on your computer.',
         },
       ],
       youDo: [
@@ -238,7 +227,7 @@ export const BEFORE_YOU_START: SetupPart = {
       ifNot: [
         {
           kind: 'warning',
-          text: 'Pages open in your default browser. If that browser is signed in to a different GitHub, Supabase or Netlify account than the one you want to use, check the account name at the top of the page before you click anything. If it is the wrong one, copy the page\'s address into a window signed in to the right account.',
+          text: 'Pages open in your default browser. If that browser is signed in to a different GitHub, Supabase or Claude account than the one you want to use, check the account name at the top of the page before you click anything. If it is the wrong one, copy the page\'s address into a window signed in to the right account.',
         },
       ],
     },
@@ -252,14 +241,14 @@ export const BEFORE_YOU_START: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: '**The sign-in e-mail limit.** You will sign in to the dashboard with a link that Supabase e-mails to you. Supabase\'s built-in e-mail only reaches the address your Supabase account was registered with (or members of your Supabase organisation), unless you set up your own sending service ("custom SMTP"). So sign up with the address you want to sign in to the dashboard with.',
+          text: '**The sign-in e-mail limit.** You will sign in to the dashboard with a link that Supabase e-mails to you. Supabase\'s built-in e-mail only reaches the address your Supabase account was registered with (or members of your Supabase organisation), unless you set up your own sending service ("custom SMTP"). With **Continue with GitHub**, that is your GitHub account\'s main e-mail address.',
         },
       ],
       youDo: [
         {
           kind: 'steps',
           items: [
-            `Sign up at [supabase.com](${SUPABASE_URL}). You can sign in with your GitHub account.`,
+            `Sign up at [supabase.com](${SUPABASE_URL}) with **Continue with GitHub**. One click.`,
             'If Supabase asks you to create an organisation, do it: any name, free plan.',
           ],
         },
@@ -274,84 +263,6 @@ export const BEFORE_YOU_START: SetupPart = {
         {
           kind: 'paragraph',
           text: 'If the set-up later says `your Supabase account has no organization yet`, open Supabase, create an organisation (any name, free plan), and run the Supabase step again.',
-        },
-      ],
-    },
-    {
-      id: 'netlify-account',
-      title: 'A Netlify account',
-      intro: [
-        {
-          kind: 'paragraph',
-          text: 'Netlify publishes the dashboard, for free, so it opens on your computer and your phone.',
-        },
-      ],
-      youDo: [
-        {
-          kind: 'steps',
-          items: [
-            `Sign up at [netlify.com](${NETLIFY_URL}). Signing up with GitHub is quickest.`,
-            'If Netlify\'s **Sign up with GitHub** answers "Email address is invalid", your GitHub e-mail address has a "+" in it, which Netlify refuses. Use **Sign up with email** instead, with any address you can read.',
-          ],
-        },
-      ],
-      check: [
-        {
-          kind: 'paragraph',
-          text: 'You are signed in to Netlify. The dashboard part of the set-up can also open the sign-up page for you if you skip this now.',
-        },
-      ],
-      ifNot: [
-        {
-          kind: 'paragraph',
-          text: 'The set-up asks whether you already have a Netlify account when it reaches the dashboard part, and opens the sign-up page if you answer no.',
-        },
-      ],
-    },
-    {
-      id: 'claude-plan-and-claude-code',
-      title: 'A paid Claude plan, and Claude Code',
-      intro: [
-        {
-          kind: 'paragraph',
-          text: 'The daily run on GitHub uses your own Claude subscription (Pro, Max or Team). The key that lets it do so is made by Claude Code with `claude setup-token`, so Claude Code must be installed on this computer and signed in once.',
-        },
-        {
-          kind: 'paragraph',
-          platforms: ['mac', 'linux'],
-          text: '**Claude Code comes later.** You need it only when the GitHub part asks for the key, so install it any time before then.',
-        },
-        {
-          kind: 'paragraph',
-          platforms: ['windows'],
-          text: '**Claude Code comes later.** You need it only when the GitHub part asks for the key. Install it after the install line in the next part: Claude Code\'s own installer may want Git, which that line adds.',
-        },
-      ],
-      youDo: [
-        {
-          kind: 'steps',
-          items: [
-            `Install Claude Code from the official page, [code.claude.com/docs/en/setup](${CLAUDE_CODE_SETUP_URL}).`,
-            'Close the terminal and open it again, type `claude` once and sign in with your Claude plan.',
-          ],
-        },
-        {
-          kind: 'command',
-          command: CLAUDE_VERSION_COMMAND,
-          what: 'Shows that Claude Code is installed.',
-        },
-      ],
-      check: [{ kind: 'paragraph', text: 'It prints a version number.' }],
-      ifNot: [
-        {
-          kind: 'paragraph',
-          platforms: ['mac', 'linux'],
-          text: '`command not found` means Claude Code is not installed yet, or the terminal was not reopened after installing it. Install it, close the terminal, open it again and retry. You can also leave this until the GitHub part asks for the key.',
-        },
-        {
-          kind: 'paragraph',
-          platforms: ['windows'],
-          text: '"not recognized" means Claude Code is not installed yet, or the terminal was not reopened after installing it. Install it, close the terminal, open it again and retry. You can also leave this until the GitHub part asks for the key.',
         },
       ],
     },

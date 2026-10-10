@@ -82,11 +82,11 @@ export const privacyPage = {
 
 export const wizard = {
   title: 'Set it up',
-  lead: 'About 40 minutes with the accounts ready, around an hour without. One step per screen. Your place is remembered in this browser.',
+  lead: 'About 20 minutes with GitHub and Supabase ready, about 30 without. One step per screen. Your place is remembered in this browser.',
   needs: [
     'A Mac, Windows or Linux computer',
     'A paid Claude plan (Pro, Max or Team)',
-    'Free GitHub, Supabase and Netlify accounts',
+    'Free GitHub and Supabase accounts',
     'The mailbox you want it to read',
   ],
   start: 'Start',
@@ -120,7 +120,7 @@ export const wizard = {
   afterwards: 'What happens next',
 
   doneTitle: 'That is it.',
-  doneBody: 'Your dashboard address and the e-mail that signs in are on the last screen of the set-up. The first morning e-mail arrives about ten minutes after the first run.',
+  doneBody: 'Your personal link to the dashboard and the e-mail that signs in are on the last screen of the set-up. The first morning e-mail arrives about ten minutes after the first run.',
   openDashboard: 'Go to your dashboard',
   noSuchScreen: 'There is no screen at this address',
   noSuchScreenBody: 'Start again from the beginning of the set-up.',

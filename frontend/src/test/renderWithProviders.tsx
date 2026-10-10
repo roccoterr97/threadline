@@ -3,6 +3,7 @@ import { render, type RenderResult } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { MemoryRouter, parsePath, Route, Routes, useLocation } from 'react-router-dom';
+import { databaseVersionQueryKey } from '../api/databaseVersion';
 import { AuthContext, type AuthState } from '../auth/AuthContext';
 import { fixedClock, type Clock } from '../lib/clock';
 import { ClockContext } from '../lib/ClockContext';
@@ -59,6 +60,9 @@ export function renderWithProviders(ui: ReactNode, options: RenderOptions = {}):
       mutations: { retry: false },
     },
   });
+  // The database counts as up to date, so no screen asks it; the notice that
+  // asks has tests of its own.
+  queryClient.setQueryData(databaseVersionQueryKey, false);
 
   const result = render(
     <QueryClientProvider client={queryClient}>

@@ -96,7 +96,7 @@ export interface SetupPart {
 export interface SetupGuide {
   /** The parts the first morning e-mail needs, in order. */
   core: readonly SetupPart[];
-  /** Optional parts, any time after the core: LinkedIn, Refresh now, the cloud route. */
+  /** Optional parts, any time after the core: LinkedIn, Refresh now, the cloud route, an own dashboard. */
   extras: readonly SetupPart[];
 }
 

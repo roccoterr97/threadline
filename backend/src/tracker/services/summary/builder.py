@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
+from tracker.domain.dashboard_link import DashboardAddress, dashboard_address
 from tracker.domain.enums import RunStatus, WaitingOn
 from tracker.domain.models import PersonOverview, RunLog, RunStepLog
 from tracker.repositories import Repositories
@@ -118,6 +119,7 @@ class SummaryBuilder:
         overdue = [row for row in overview if row.is_overdue]
         chase = [row for row in overview if row.is_chase_due]
         replied = self._replied_since(overview, window_start)
+        dashboard = self._dashboard()
         content = SummaryContent(
             generated_at=self._clock.now(),
             day=self._clock.today(),
@@ -133,7 +135,8 @@ class SummaryBuilder:
             replied_total=len(replied),
             open_questions=len(self._repositories.review_items.list_every_unanswered()),
             key_reminder=self._key_reminder(),
-            dashboard_url=self._settings.dashboard_base_url,
+            dashboard_url=dashboard.base if dashboard is not None else None,
+            dashboard_connect=dashboard.connect if dashboard is not None else None,
         )
         _log.info(
             "summary_built",
@@ -152,6 +155,23 @@ class SummaryBuilder:
                 subject_prefix=self._settings.summary_subject_prefix,
             ),
         )
+
+    def _dashboard(self) -> DashboardAddress | None:
+        """Where the summary's links point: the personal link for the shared dashboard.
+
+        A shared dashboard whose link cannot be made still gets its plain
+        address, which opens on a device that was connected before; the
+        problem is logged, and ``tracker doctor`` names it.
+        """
+        settings = self._settings
+        dashboard = dashboard_address(
+            settings.dashboard_base_url,
+            settings.supabase_url,
+            settings.supabase_anon_key.get_secret_value(),
+        )
+        if dashboard is not None and dashboard.shared and dashboard.connect is None:
+            _log.warning("summary_personal_link_unavailable")
+        return dashboard
 
     def run_to_report(self, run_id: UUID | None) -> RunLog | None:
         """Find the run a summary reports on.

@@ -105,7 +105,7 @@ async def publish_on_netlify(ctx: SetupContext) -> str:
 
 async def _prepared_archive(ctx: SetupContext) -> bytes:
     """The dashboard's files with their ``config.js``, zipped for Netlify."""
-    settings = _browser_settings(ctx)
+    settings = browser_settings(ctx)
     if ctx.session.build_dashboard_here:
         files = await _built_on_request(ctx)
     else:
@@ -159,8 +159,16 @@ async def _downloaded_or_built_files(ctx: SetupContext) -> dict[str, bytes]:
         return await _built_files(ctx)
 
 
-def _browser_settings(ctx: SetupContext) -> BrowserSettings:
-    """The two public values ``config.js`` carries, refusing the secret key."""
+def browser_settings(ctx: SetupContext) -> BrowserSettings:
+    """The two public values the browser gets, refusing the secret key.
+
+    They go into a published dashboard's ``config.js``, or into the personal
+    link to the shared dashboard.
+
+    Raises:
+        ValidationFailedError: If either is missing, or the publishable key
+            setting holds the secret key.
+    """
     url = ctx.require(_SUPABASE_URL, StepName.SUPABASE)
     key = ctx.require(_PUBLISHABLE_KEY, StepName.SUPABASE)
     if key == ctx.env.get(_SECRET_KEY):

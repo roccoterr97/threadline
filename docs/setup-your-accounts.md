@@ -32,17 +32,15 @@ Do not skip a check. Each step builds on the one before it.
 |------|-----|------|
 | A computer with **macOS, Linux or Windows** (10 or 11) | to run the set-up once. After that it can stay off | – |
 | A paid Claude plan: **Pro, Max or Team** | runs the daily job on GitHub with your own subscription, with your computer off. The daily run uses part of your plan's usage limits, like any other use of Claude | your existing plan |
-| **Claude Code** installed on that computer | makes the key that lets GitHub use your Claude plan (`claude setup-token`). Install it from the official page, <https://code.claude.com/docs/en/setup>, and sign in once. It is needed only at part 6b | included in your plan |
 | A **GitHub** account | keeps your private copy of Threadline and runs it every day (GitHub Actions) | free (2,000 minutes a month for private copies at the time of writing; a month of runs uses about 150–300) |
 | A **Supabase** account | the database that keeps your people and conversations | free plan |
-| A **Netlify** account | publishes the dashboard so it opens on your phone | free plan |
 | At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any mailbox that offers IMAP | the mail Threadline reads, read-only. Gmail and the others also send you the summary (with only Outlook, see the Claude cloud route in part 8) | free (Fastmail: a paid plan above Basic) |
 | *Optional:* a Microsoft personal account (Outlook.com, Hotmail, Live) | the calendar, which is read from Outlook only for now | free |
 | *Optional:* a LinkedIn account | reads your LinkedIn messages too (only for members located in the EEA or Switzerland, see part 8) | free |
 
 **What the installer needs on your computer.** The one-line install in part 1
-adds the tools Threadline uses. It needs a little help depending on your
-computer:
+adds the tools Threadline uses, Claude Code included. It needs a little help
+depending on your computer:
 
 - **Windows:** nothing extra on most computers. It installs Git and the GitHub
   tool with **winget**, Windows' own installer, which is part of the "App
@@ -65,26 +63,16 @@ computer:
 The GitHub tool must be version 2.68 or newer. The installer checks the one you
 have and updates it if it is older.
 
-**Create the free accounts first.** Sign up at <https://github.com>,
-<https://supabase.com> and <https://www.netlify.com> before you start, if you
-do not have them yet. You can sign in to Supabase and Netlify with your GitHub
-account. The set-up asks for Supabase in its very first step.
-
-If Netlify's **Sign up with GitHub** answers "Email address is invalid", your
-GitHub e-mail address has a "+" in it, which Netlify refuses. Use **Sign up
-with email** instead, with any address you can read.
+**Create the two free accounts first.** Sign up at <https://github.com>, then
+at <https://supabase.com> with **Continue with GitHub** (one click). The set-up
+asks for Supabase in its very first step.
 
 **Pages open in your default browser.** When the set-up opens a page
-(GitHub, Supabase, Netlify), it appears in your usual browser. If that browser
-is signed in to a different GitHub, Supabase or Netlify account than the one
-you want to use, check the account name at the top of the page before you
-click anything. If it is the wrong one, copy the page's address into a window
-signed in to the right account.
-
-**Claude Code comes later.** You need it only at part 6b, to make the key that
-lets GitHub use your Claude plan, so install it any time before then (on
-Windows, after the install line in part 1: Claude Code's own installer may want
-Git, which that line adds). Part 6b has the check.
+(GitHub, Supabase, Claude), it appears in your usual browser. If that browser
+is signed in to a different account than the one you want to use, check the
+account name at the top of the page before you click anything. If it is the
+wrong one, copy the page's address into a window signed in to the right
+account.
 
 **The sign-in e-mail limit.** You will sign in to the dashboard with a link that
 Supabase e-mails to you. Supabase's built-in e-mail only reaches the address
@@ -92,17 +80,17 @@ your Supabase account was registered with (or members of your Supabase
 organisation), unless you set up your own sending service ("custom SMTP"). Part 3
 explains what that means for you.
 
-**Time.** About 30 to 40 minutes of your own time if you already have GitHub,
-Supabase, Netlify and Claude Code. The first summary e-mail follows about ten
-minutes after the set-up ends, but only if you have a mailbox that can send it,
-for example Gmail with an app password; with Outlook alone the dashboard fills
-and no e-mail comes (part 8c has the Claude cloud route for that). Creating
-those accounts yourself brings it to 50 to 70 minutes. Part of it is waiting: a new Supabase project takes one to
+**Time.** About 20 minutes of your own time with GitHub and Supabase ready,
+about 30 without. Part of it is waiting: a new Supabase project takes one to
 three minutes to start, and the first download of Python can take a few more.
 Making a Gmail app password takes longer if 2-Step Verification is not on yet.
-You can stop at any point: the set-up carries on where you left off.
+The first summary e-mail follows about ten minutes after the set-up ends, but
+only if you have a mailbox that can send it, for example Gmail with an app
+password; with Outlook alone the dashboard fills and no e-mail comes (part 8c
+has the Claude cloud route for that). You can stop at any point: the set-up
+carries on where you left off.
 
-**What it costs.** No other paid service is needed. GitHub, Supabase, Netlify,
+**What it costs.** No other paid service is needed. GitHub, Supabase,
 Google, Microsoft and LinkedIn are all used on their free plans; the only
 exception would be a paid mailbox you choose yourself, such as Fastmail.
 Free-plan limits change, so check the providers' pricing pages if in doubt.
@@ -128,8 +116,8 @@ paste a key into a chat, an e-mail or a document.
   starts each day.
 - An **Edge Function** is a small helper that runs inside your Supabase
   project; the Refresh now button uses one. The **Management API** is the
-  official way the set-up talks to Supabase on your behalf, with a token you
-  make and delete afterwards.
+  official way the set-up talks to Supabase on your behalf, after you let it
+  in once with **Authorize** (part 2a).
 - A **CRM** is customer-relationship software, which Threadline is not.
 - The **EEA** is the European Economic Area: the EU plus Iceland, Liechtenstein
   and Norway.
@@ -139,10 +127,12 @@ paste a key into a chat, an e-mail or a document.
 ## 1. Install Threadline (one line)
 
 One line gets Threadline onto your computer. It installs **uv** (the tool that
-runs Threadline) and the **GitHub tool** if they are missing, signs you in to
-GitHub, makes your own **private** copy of Threadline on GitHub (called
-`threadline`), downloads it to a `threadline` folder in your home folder, and
-starts the guided set-up.
+runs Threadline), the **GitHub tool** and **Claude Code** if they are missing,
+signs you in to GitHub, makes your own **private** copy of Threadline on GitHub
+(called `threadline`), downloads it to a `threadline` folder in your home
+folder, and starts the guided set-up. Claude Code comes from Anthropic's
+official installer; the set-up uses it once, in part 6b, to make the key that
+lets GitHub use your Claude plan.
 
 **What the install changes on your computer.** Besides those tools and the
 `threadline` folder, three things change, and the installer says so as it goes:
@@ -203,6 +193,9 @@ pasting the line again is safe: it skips what is already done and carries on.
   the line again.
 - `Could not download uv` or `Could not download the GitHub tool`: the internet
   connection dropped. Check it and paste the line again.
+- Claude Code could not be installed: install it from Anthropic's page,
+  <https://code.claude.com/docs/en/setup>, open a new terminal, and paste the
+  line again.
 - `The installation of Git did not finish (code …)` (or the GitHub tool) on
   Windows: Windows' question "Do you want to allow this app to make changes?"
   was closed or answered No, or the connection dropped. Paste the line again and
@@ -282,10 +275,10 @@ in a folder called `tracker`: use that name instead of `threadline`.
 
 | Steps | Part of this guide |
 |-------|--------------------|
-| 1 to 3: Supabase, the encryption key, the database | [2](#2-supabase-one-token) |
+| 1 to 3: Supabase, the encryption key, the database | [2](#2-supabase-one-click) |
 | 4 to 6: your login, categories and time zone | [3](#3-your-login-categories-and-time-zone) |
 | 7 and 8: your mailbox, and Outlook | [4](#4-your-mailbox-and-calendar) |
-| 9: the dashboard | [5](#5-the-dashboard-netlify) |
+| 9: your dashboard | [5](#5-your-dashboard) |
 | 10 and 11: the daily time, the Claude key and the first run | [6](#6-run-it-every-day-on-github-the-claude-key-and-the-first-run) |
 
 To run one step again later, name it, for example
@@ -294,45 +287,43 @@ button and the Claude cloud route) come later, in part 8.
 
 ---
 
-## 2. Supabase (one token)
+## 2. Supabase (one click)
 
-Supabase is the database. You make **one access token** on Supabase's website,
-and the set-up does the rest: it creates the project (or reuses one of yours),
-waits until it is up, reads its address and keys, builds the database, and later
-switches off sign-ups. The token is kept in memory while the set-up runs and is
-**never saved**.
+Supabase is the database. You let the set-up into your Supabase account with
+one click, and it does the rest: it creates the project (or reuses one of
+yours), waits until it is up, reads its address and keys, builds the database,
+and later switches off sign-ups.
 
-### 2a. The token and your project (`tracker setup supabase`)
+### 2a. Sign in to Supabase, and your project (`tracker setup supabase`)
 
 **What you do:**
 
 1. The set-up asks `Create the project (or pick an existing one) for you?`.
    Press Enter for yes.
-2. Supabase's **Access Tokens** page opens
-   (<https://supabase.com/dashboard/account/tokens>). Sign in if asked.
-3. Click **Generate new token**. A form opens.
-4. Do not fill in that form. On the left, under **Resource access**, click the
-   small link **Create legacy token**. Supabase's newer, limited tokens cannot
-   read your project's secret key yet, and the set-up needs it. A legacy token
-   can do everything the set-up does: create the project, read its keys, build
-   the database and switch sign-ups off.
-5. Name it `Threadline set-up` and choose the **shortest expiry**: the token is
-   only needed today.
-6. Click **Generate token**, copy it (it starts with `sbp_`), and paste it into
-   the terminal. Nothing appears while you paste: that is on purpose.
-7. If you have several Supabase organisations, type the number of the one to
+2. It asks how to let Threadline into your Supabase account. Press Enter for
+   `1. Sign in to Supabase in your browser (easiest)`.
+3. A Supabase page opens. Sign in if asked (**Continue with GitHub**), then
+   click **Authorize**. The page may mention the "Supabase CLI": that is
+   expected, Threadline signs in the same way.
+4. The page shows a short verification code. Type it into the set-up and press
+   Enter.
+5. If you have several Supabase organisations, type the number of the one to
    use.
-8. If you already have projects, it lists them (`1. name (running)`, or
+6. If you already have projects, it lists them (`1. name (running)`, or
    `(still being set up)`) and asks `Use one of them instead of creating a new
    project?`. Press Enter for yes when a project named `threadline` is running
    or starting (it is most likely the one an earlier try made), otherwise Enter
    means no and creates a new one. Type the answer you want if the default is
    not it.
-9. Press Enter to accept the name `threadline`, then press Enter to accept the
+7. Press Enter to accept the name `threadline`, then press Enter to accept the
    region it offers (the one nearest your time zone), or type another number.
-10. Wait while Supabase starts the project. This takes one to three minutes.
-    Do not press Ctrl-C meanwhile: the project is already being created, and
-    stopping leaves it half set up. The set-up warns you of this.
+8. Wait while Supabase starts the project. This takes one to three minutes.
+   Do not press Ctrl-C meanwhile: the project is already being created, and
+   stopping leaves it half set up. The set-up warns you of this.
+
+Supabase now lists a key named `threadline-setup-…` under **Account → Access
+Tokens**. That is the click you just gave. You may delete it once the set-up is
+done (part 7).
 
 The project's database password is made up for you and not kept: Threadline
 never needs it. If you ever do, reset it in Supabase under **Project Settings →
@@ -343,11 +334,22 @@ Database**.
 
 **If not:**
 
+- `Supabase did not accept that code`: type the code the newest Supabase page
+  shows. After three refused codes the set-up moves to pasting a token.
+- `Signing in through the browser did not work this time`: the set-up moves
+  to pasting a token, below.
+- **I'd rather paste a token.** Type **2** at step 2, or follow on when the
+  set-up moves here by itself. On Supabase's **Access Tokens** page
+  (<https://supabase.com/dashboard/account/tokens>), click **Generate new
+  token**, then the small link **Create legacy token** on the left (the newer,
+  limited kind cannot read your project's secret key). Choose the shortest
+  expiry, click **Generate token**, and paste the token (it starts with `sbp_`).
+  Nothing appears while you paste. It is never saved.
 - `Supabase did not accept the access token`: copy the token again, all of it,
   and paste it once more. The set-up lets you try three times.
 - `Supabase says this access token has too little access`: you made the newer,
   limited kind of token. Make a new one with the **Create legacy token** link
-  (steps 3 to 6 above) and paste that one.
+  and paste that one.
 - `your Supabase account has no organization yet`: open <https://supabase.com>,
   create an organisation (any name, free plan), then run
   `uv run tracker setup supabase`.
@@ -367,13 +369,13 @@ Database**.
   30 seconds): wait a minute and run `uv run tracker setup supabase` again.
 - Running `uv run tracker setup supabase` again when `.env` already holds a
   complete project: it says `Your .env already points to the Supabase project
-  <ref>.` and asks `Keep it?` (Enter keeps it) before it asks for any token.
+  <ref>.` and asks `Keep it?` (Enter keeps it) before it asks you to sign in.
 
 **If you prefer** to create the project yourself, answer **n** at step 1. The
 set-up then opens your Supabase projects and asks for the project address, the
 publishable key and the secret key (under **Project Settings → API Keys**, tab
 **Publishable and secret API keys**), checking each one as you paste it. The
-later steps then ask for an access token once, for the database.
+later steps then ask you to sign in to Supabase once, for the database.
 
 ### 2b. The encryption key (`tracker setup encryption`)
 
@@ -390,23 +392,22 @@ you know the old one is wrong. A new key means signing in to Microsoft again.
 ### 2c. The database (`tracker setup database`)
 
 **What the set-up does for you:** it looks at your new database, lists the
-structure files it needs, and applies them with the same token, one at a time,
-a second or two apart. This takes about half a minute. If Supabase refuses a
-file, the set-up shows Supabase's reason in one line and tries that file once
-more by itself.
+structure files it needs, and applies them with the same sign-in, one at a
+time, a second or two apart. This takes about half a minute. If Supabase
+refuses a file, the set-up shows Supabase's reason in one line and tries that
+file once more by itself.
 
 Run on its own later (`uv run tracker setup database`), the step first asks
-`Apply them automatically?`: press Enter, and paste a Supabase token made as in
-2a. The token needs to read and write the database's **migrations** (its
-structure files); a legacy token covers that.
+`Apply them automatically?`: press Enter, and sign in to Supabase as in 2a
+(**Authorize**, then the code), or paste a legacy token.
 
 **✅ Check:** the step starts with `To apply: 0001_schema, 0002_access_rules, …`,
 naming every file still missing (all of them on a new project). Then you see
 `Applied 0001_schema`, one line per file, and `The database structure is in
 place.`
 
-**If not:** if a file still fails, or Supabase refuses the token when a file is
-sent, the set-up switches to the manual route by itself: it opens the **SQL Editor**, puts each file on your clipboard in turn,
+**If not:** if a file still fails, or Supabase refuses the sign-in when a file
+is sent, the set-up switches to the manual route by itself: it opens the **SQL Editor**, puts each file on your clipboard in turn,
 and waits. For each file: click **+** for a new query, paste, click **Run**,
 wait for `Success. No rows returned`, and only then press Enter in the
 terminal. Pressing Enter is not enough on its own: the set-up checks that the
@@ -432,7 +433,7 @@ signed up to Supabase with. (Another address needs your own e-mail sending
 service, called "custom SMTP" in Supabase. This guide does not cover it.)
 
 **What the set-up does for you:** it creates your login, records it as the only
-owner, and switches off sign-ups in Supabase with the token from part 2.
+owner, and switches off sign-ups in Supabase with the sign-in from part 2.
 
 **What you do:** type the e-mail address you signed up to Supabase with, and
 press Enter. If you signed in to Supabase with GitHub, it is the main e-mail
@@ -477,7 +478,7 @@ tells the AI helper about them.
 5. Look at the list it shows, then press Enter to save it.
 
 **✅ Check:** you should now see `Saved … categories, 'Not known' included.`
-Once the dashboard is published (part 5), its **Settings** page shows the same
+Once your dashboard is ready (part 5), its **Settings** page shows the same
 categories.
 
 **If not:** "That did not work" means a name was empty, too long, already in
@@ -779,106 +780,48 @@ default, and run `uv run tracker setup microsoft` again.
 
 ---
 
-## 5. The dashboard (Netlify)
+## 5. Your dashboard
 
-The dashboard is a private web page. The set-up publishes it on Netlify, for
-free, so you can open it on your computer and your phone. You make one token on
-Netlify's website and paste it. Nothing needs installing.
+The dashboard is the web page that shows your people and conversations. You
+use the **shared dashboard** at <https://app.threadlineapp.com>: nothing to
+publish, no extra account. The page is the same for everyone. Your data stays
+in your own Supabase database, and only your e-mail address can sign in.
+
+**What the set-up does for you:** it points Supabase's sign-in link at the
+shared dashboard and gives you your **personal link**. That link opens your own
+dashboard. It carries your database's public address, nothing secret. The
+set-up saves it, so every morning summary e-mail carries it too.
 
 **What you do:**
 
-1. When the set-up asks `Publish it on Netlify now?`, press Enter (yes).
-2. It asks whether you already have a Netlify account. If not, answer **n**:
-   Netlify's sign-up page opens. Signing up with GitHub is quickest; if
-   Netlify answers "Email address is invalid", use **Sign up with email**
-   instead (see [Before you start](#before-you-start)). Press Enter in the
-   terminal once you are signed in.
-3. Netlify's token page opens. Click **New access token**, name it
-   `Threadline set-up`, choose the shortest expiry offered, click
-   **Generate token** and copy it. The page may look slightly different.
-4. Paste the token into the terminal. It stays hidden and is never saved.
+1. When the set-up offers the shared dashboard, press Enter (yes).
+2. Write down the personal link it shows. It starts with
+   `https://app.threadlineapp.com`.
 
-**What the set-up does for you:** it downloads the ready-made dashboard, adds
-your project's address and its public key, and publishes it at an address such
-as `https://threadline-xxxxxx.netlify.app`. It saves that address so the
-morning e-mail links to it, and points Supabase's sign-in link at it with the
-Supabase token from part 2. Netlify's free plan is enough.
-
-Three things happen behind the scenes that are good to know:
-
-- The GitHub command-line tool must be signed in for the ready-made dashboard,
-  because the set-up uses it to check who built the download. If it is not, the
-  step prints `Run 'gh auth login'`: do that, then run the step again.
-- Before publishing, the step checks that the download was built by this
-  project's own release workflow (GitHub keeps a signed record of that, called a
-  build attestation). If the check fails, **nothing is published**. When Node.js
-  22 or newer is installed, the step then offers to build the dashboard on your
-  computer instead; answer yes.
-- The dashboard's security settings (its security headers and its redirect
-  rule) come from the set-up itself and never from the download.
-
-**✅ Check:** on your phone, open the address, type your e-mail, and click the
-link in the e-mail Supabase sends. The dashboard opens (it is empty until the
-first run).
+**✅ Check:** on your phone, open your personal link, type your e-mail, and
+click the link in the e-mail Supabase sends. The dashboard opens (it is empty
+until the first run).
 
 **If not:** "This address cannot sign in" on the dashboard means you typed
 another address than your dashboard login: use the one you typed in part 3a,
 usually your Supabase address. "Too many links were asked for" means waiting as
 long as it says. Supabase's own message "Email address not authorized" means
 the address is not the one of your Supabase account (see part 3a). A link that
-opens `localhost` means the
-sign-in link was not connected: run `uv run tracker setup dashboard` again.
-Running it again keeps the sign-in addresses you already have in Supabase and
-adds the new one; it tells you which it did.
+opens `localhost` means the sign-in link was not connected: run
+`uv run tracker setup dashboard` again. Running it again keeps the sign-in
+addresses you already have in Supabase and adds the new one; it tells you which
+it did.
 
-**If it says Netlify keeps your dashboard private.** Netlify accounts made
-since July 2026 keep every new site private, so only you, signed in to Netlify,
-can open it, and your phone cannot. Netlify gives the set-up no way to change
-that, so the set-up stops, opens your project's page on Netlify and lists the
-clicks. You do them once:
+**On a new device.** Open your personal link once (it is in every morning
+e-mail), then sign in with the link Supabase e-mails you.
 
-1. Open your project (`threadline-xxxxxx`) if it is not open already.
-2. Click **Project configuration → General → Visitor access**.
-3. Under **Project visibility**, click **Edit visibility**. If Netlify asks,
-   choose **Customize this project's visibility**.
-4. Set **Production** to **Public** (leave the previews as they are) and click
-   **Save**.
-5. Run `uv run tracker setup dashboard` again.
+**Put it on your home screen.** Open your personal link in your phone's
+browser. On an iPhone, tap **Share → Add to Home Screen**. On Android, tap
+**⋮ → Add to Home screen**. It then opens like an app.
 
-This is safe: the dashboard has its own sign-in, and only your e-mail address
-can open your data.
-
-**✅ Check:** the step now says `Check: https://threadline-xxxxxx.netlify.app
-opens the dashboard.`
-
-**If not:** if Netlify does not offer **Public**, your team is set to keep
-every project private: change it in **Team settings → General → Visitor access
-→ Default project visibility**, then do the steps above again.
-
-If you set `NETLIFY_SITE_ID` in `.env` yourself, it must be a Netlify site ID or
-a plain site name, nothing else.
-
-If the step warns that the downloaded dashboard is **newer than your copy of
-Threadline**, the dashboard expects database changes your copy does not have
-yet, and it may show errors. The safe way out is to publish the dashboard from
-your own copy with a local build: run
-`uv run tracker setup dashboard --build-here` (this needs Node.js 22 or
-newer).
-
-**Not on Netlify?** If you answer **n** to `Publish it on Netlify now?`, the
-set-up asks whether you publish it somewhere else instead. Answer **y** and
-paste its address: the set-up opens it once and saves it if it shows the
-dashboard. Answer **n** to both and the set-up stops there with `Stopped: the
-dashboard is not published yet - publish it first (part 5 of the guide).`,
-because the steps after it need the dashboard's address. Run
-`uv run tracker setup` again when you are ready: it skips what is already done
-and carries on from the dashboard.
-
-**Put it on your home screen.** Open the address in your phone's browser. On an
-iPhone, tap **Share → Add to Home Screen**. On Android, tap **⋮ → Add to Home
-screen**. It then opens like an app.
-
-To publish the dashboard again later, run `uv run tracker setup dashboard`.
+Would you rather have your own copy of the dashboard, at your own address? See
+[8d](#8d-your-own-dashboard-on-netlify-tracker-setup-dashboard). It is
+optional.
 
 ---
 
@@ -952,51 +895,45 @@ moves the workflow's zone too, keeping the time.
 The run on GitHub cannot read the `.env` file on your computer, so your
 settings go into your copy's **secrets** (hidden in every log) and
 **variables** (the harmless ones, such as your time zone). GitHub also needs a
-key that lets it use your Claude subscription.
-
-**Check Claude Code first.** The key is made by Claude Code, so open a terminal
-and type:
-
-```bash
-claude --version
-```
-
-**✅ Check:** it prints a version number.
-
-**If not:** `command not found` (or "not recognized" on Windows) means Claude
-Code is not installed yet, or the terminal was not reopened after installing it.
-Install it from the official page, <https://code.claude.com/docs/en/setup> (on
-Windows, the install line from part 1 must have run first, because it adds Git),
-close the terminal, open it again and retry. Then type `claude` once and sign in
-with your Claude plan.
+key that lets it use your Claude subscription. The set-up makes that key for
+you with Claude Code, which the install line added.
 
 **What you do:**
 
-1. When the set-up asks for the Claude key, open a **second** terminal window
-   and type:
+1. On a Mac or Linux, it asks `Make the Claude key now? A Claude page opens in
+   your browser: click Authorize`. Press Enter for yes.
+2. A Claude page opens. Sign in if asked, with the account of your Claude plan,
+   and click **Authorize**. The key goes straight to GitHub: you never see or
+   copy it. It lasts one year. The set-up waits up to 5 minutes for the click.
+3. When it asks `Save … secrets and … variables in … with the GitHub CLI now?`,
+   press Enter for yes.
+
+Running this step again later, it asks `GitHub already has a Claude key. Make
+a new one now?`. Enter keeps the key GitHub has; type `y` for a new one, for
+example once a year when the key runs out.
+
+**If the set-up asks you to paste the key** (always on Windows, and on a Mac or
+Linux when it says `The key could not be made here`):
+
+1. Open a **second** terminal window and type:
 
    ```bash
    claude setup-token
    ```
 
 2. Sign in in the browser that opens, then go back to that second window: it
-   prints a long key that starts with `sk-ant-oat` and lasts one year. The key
-   is split over two lines. Copy it from the first letter to the last,
-   including the second line.
+   prints a long key that starts with `sk-ant-oat`. The key is split over two
+   lines. Copy it from the first letter to the last, including the second line.
 3. Paste it into the set-up in the first window (nothing shows while you
    paste) and press Enter. If the key looks cut short, the set-up asks you to
    paste its second line, or the whole key again. Pressing Enter on an empty
    line keeps the key GitHub already has, if any (useful when you run the step
-   again). If GitHub
-   has no key, the set-up does not start the first run, because the run would
-   do nothing: it tells you to run `claude setup-token` and then
+   again). If GitHub has no key, the set-up does not start the first run,
+   because the run would do nothing: it tells you to run
    `uv run tracker setup github` again.
-4. When it asks `Save … secrets and … variables in … with the GitHub CLI now?`,
-   press Enter for yes.
 
-The key goes straight to GitHub: it is never saved on your computer, not even
-in `.env`. Anyone with this key can use your Claude subscription, so never
-paste it anywhere else.
+The key is never saved on your computer, not even in `.env`. Anyone with this
+key can use your Claude subscription, so never paste it anywhere else.
 
 **What the set-up does for you:** it saves every secret and variable on your
 copy and names each one as it goes, never its value. The **secrets** include
@@ -1015,10 +952,12 @@ them.
 **✅ Check:** the list names every secret and variable it set, ending with
 `Done. GitHub has everything it needs to run Threadline on your copy.`
 
-**If not:** `That key is cut short`, `That is an API key` or `That is not the
-key` means the paste was not the whole key from `claude setup-token`. Go back
-to the second window and copy it again, from `sk-ant-oat` to the last letter of
-the second line, and paste it when the set-up asks again.
+**If not:** if the Claude page did not open, or you closed it, run
+`uv run tracker setup github` again. `That key is cut short`, `That is an API
+key` or `That is not the key` means a pasted key was not the whole key from
+`claude setup-token`. Go back to the second window and copy it again, from
+`sk-ant-oat` to the last letter of the second line, and paste it when the
+set-up asks again.
 
 If the set-up stopped with `there is no private copy on GitHub
 yet`, this folder is not linked to your own private copy. Paste the install
@@ -1049,10 +988,10 @@ finished.` instead.)
 **If not:**
 
 - `The first run stopped with a problem.`, followed by the reason: do what that
-  line says. Most often it is `Claude did not accept the key saved on GitHub`:
-  the Claude key was not copied whole. Run `claude setup-token` again, then
-  `uv run tracker setup github`, paste the new key (both lines), and answer yes
-  to start a new first run.
+  line says. Most often it is `Claude did not accept the key saved on GitHub`.
+  Run `uv run tracker setup github` again: it makes a new key the same way (if
+  it asks you to paste one, paste both lines), and answer yes to start a new
+  first run.
 - If GitHub refused to start the run, the set-up says so in one line and names
   the page where you start the run yourself:
 
@@ -1085,9 +1024,9 @@ shows the run as **Worked** or **Partly worked**.
 - *Red cross:* open the run. When Claude stopped with an error, a line titled
   **Why Claude stopped** at the top of the run's page says why, such as a
   refused key, the plan's usage limit, or Claude being busy, and what to do.
-  For a refused key, run `claude setup-token` again, then
-  `uv run tracker setup github`, and paste the new key (both lines). Without
-  that line, click **Threadline** and open the step with the red cross.
+  For a refused key, run `uv run tracker setup github` again: it makes a new
+  key. Without that line, click **Threadline** and open the step with the red
+  cross.
 - *Green tick but no e-mail:* a green tick only means the job ran, not that
   every part worked. Read Claude's report at the end of the log, then run
   `uv run tracker doctor` on your computer: its **Summary e-mail** line checks
@@ -1106,9 +1045,9 @@ GitHub's timer allows; with Refresh now switched on (part 8b), exactly on time.
 
 ## 7. The final check
 
-The set-up ends by saying `Set-up done.`, then your dashboard's address and
-the e-mail address that can sign in to it (`Sign in there with …`: write it
-down). It then says how the first run was left (and, when it was started and an
+The set-up ends by saying `Set-up done.`, then your dashboard's personal link
+and the e-mail address that can sign in to it (`Sign in there with …`: write
+both down). It then says how the first run was left (and, when it was started and an
 e-mail can be sent, when the first summary e-mail will arrive), the daily time,
 and how to add the extras. Then it checks every connection once and prints one
 line for each. The technical details of the whole set-up are in
@@ -1132,8 +1071,9 @@ you add the extras (part 8), these are expected:
 **If not:** fix the lines marked `PROBLEM` from top to bottom. Each one ends
 with the command that repairs it, usually `uv run tracker setup <step>`.
 
-You are done. You can delete the Supabase token now, on the same Supabase page
-where you made it. From now on, [`operations.md`](operations.md) is the page to
+You are done. You can now delete the Supabase key named `threadline-setup-…`
+(or the token you pasted) under **Account → Access Tokens** on Supabase. From
+now on, [`operations.md`](operations.md) is the page to
 keep: what happens every morning, and what to do when the summary asks for
 something.
 
@@ -1153,6 +1093,10 @@ It shows `Step 1 of 3` (LinkedIn), `Step 2 of 3` (Refresh now) and
 `Step 3 of 3` (the Claude cloud route). To do one alone, name it:
 `uv run tracker setup linkedin`, `uv run tracker setup refresh` or
 `uv run tracker setup cloud`.
+
+One more choice is in [8d](#8d-your-own-dashboard-on-netlify-tracker-setup-dashboard):
+your own copy of the dashboard on Netlify, for people who would rather not use
+the shared one.
 
 ### 8a. LinkedIn (`tracker setup linkedin`)
 
@@ -1373,10 +1317,10 @@ you want: it reads only what is new and sends no e-mail. This step switches it
 on, together with the **on-time morning start** described below. It puts a
 small helper called `refresh-now` into your Supabase project. You install
 nothing: the set-up does it through Supabase's and GitHub's websites.
-It needs two keys, each pasted once (nothing shows while you paste) and never
-saved on your computer.
+It needs a GitHub key, pasted once (nothing shows while you paste), and one
+more Supabase sign-in. Neither is saved on your computer.
 
-**Before you start:** the dashboard is published (part 5) and your private
+**Before you start:** your dashboard is ready (part 5) and your private
 copy is on GitHub (part 1). If not, the set-up says which step to run first.
 Only a private repository you administer counts as your copy: if this folder
 still points at the public template, the set-up says
@@ -1385,7 +1329,7 @@ before anything is made. Without the GitHub tool it cannot check this, so it
 names the repository it will use and asks you to confirm it.
 
 **What you do:** answer **yes** to `Switch on Refresh now for …?` (press Enter),
-then make the two keys.
+then do these two things.
 
 **1. The GitHub key.** A GitHub page opens with the name
 (`Threadline refresh now`), a one-year expiry date and the permission
@@ -1402,10 +1346,11 @@ then make the two keys.
 Put the expiry date in your calendar: on that day the button stops working
 until you run `uv run tracker setup refresh` again with a new key.
 
-**2. The Supabase token.** The set-up asks for a Supabase access token once
-more, because it never saved the one from part 2. Make one exactly as in
-[part 2a](#2a-the-token-and-your-project-tracker-setup-supabase) (steps 2 to 6),
-or paste the one from part 2 if you still have it.
+**2. Supabase, once more.** The set-up never saved the sign-in from part 2,
+so it asks again, as in
+[part 2a](#2a-sign-in-to-supabase-and-your-project-tracker-setup-supabase):
+click **Authorize** on the Supabase page and type the code it shows (or paste
+a legacy token).
 
 The set-up then saves the helper's settings in Supabase (your GitHub key goes
 straight there), puts the helper in place, and checks that it answers.
@@ -1429,8 +1374,8 @@ appear in a few minutes."
   make the key again and check that step 1 picked your copy of Threadline and
   that **Actions** says **Read and write**.
 - *`Supabase did not accept the access token` or `Supabase says this access
-  token has too little access`:* make the Supabase token again with the
-  **Create legacy token** link, as in part 2a (steps 3 to 6).
+  token has too little access`:* sign in to Supabase again as in part 2a, or
+  make a token with the **Create legacy token** link.
 - *`The workflow is switched off on GitHub`:* open the link the set-up shows
   and click **Enable workflow**.
 - *The dashboard still says "not switched on yet":* close the dashboard tab and
@@ -1553,3 +1498,86 @@ inbox, and the dashboard's **Daily runs** page shows the run as **Worked** or
 worked. Open the session and read its last message. Then run
 `uv run tracker doctor` on your computer: it names what is wrong, one line
 each.
+
+### 8d. Your own dashboard on Netlify (`tracker setup dashboard`)
+
+Only if you would rather not use the shared dashboard. The set-up publishes
+your own copy on Netlify, for free, at an address such as
+`https://threadline-xxxxxx.netlify.app`. You need a free Netlify account and
+one Netlify token.
+
+**What you do:**
+
+1. Run `uv run tracker setup dashboard`. When it asks which dashboard to use,
+   choose your own copy on Netlify.
+2. It asks whether you already have a Netlify account. If not, answer **n**:
+   Netlify's sign-up page opens. **Sign up with GitHub** is quickest. If
+   Netlify answers "Email address is invalid", your GitHub e-mail address has a
+   "+" in it, which Netlify refuses: use **Sign up with email** instead, with
+   any address you can read. Press Enter in the terminal once you are signed
+   in.
+3. Netlify's token page opens. Click **New access token**, name it
+   `Threadline set-up`, choose the shortest expiry offered, click
+   **Generate token** and copy it. The page may look slightly different.
+4. Paste the token into the terminal. It stays hidden and is never saved.
+
+**What the set-up does for you:** it downloads the ready-made dashboard, adds
+your project's address and its public key, and publishes it. It saves the
+address so the morning e-mail links to it, and points Supabase's sign-in link
+at it. Netlify's free plan is enough.
+
+Three things happen behind the scenes that are good to know:
+
+- The GitHub command-line tool must be signed in for the ready-made dashboard,
+  because the set-up uses it to check who built the download. If it is not, the
+  step prints `Run 'gh auth login'`: do that, then run the step again.
+- Before publishing, the step checks that the download was built by this
+  project's own release workflow (GitHub keeps a signed record of that, called a
+  build attestation). If the check fails, **nothing is published**. When Node.js
+  22 or newer is installed, the step then offers to build the dashboard on your
+  computer instead; answer yes.
+- The dashboard's security settings (its security headers and its redirect
+  rule) come from the set-up itself and never from the download.
+
+**✅ Check:** on your phone, open the new address, type your e-mail, and click
+the link in the e-mail Supabase sends. Your dashboard opens.
+
+**If not:** the lines of part 5's **If not** apply here too.
+
+**If it says Netlify keeps your dashboard private.** Netlify accounts made
+since July 2026 keep every new site private, so only you, signed in to Netlify,
+can open it, and your phone cannot. Netlify gives the set-up no way to change
+that, so the set-up stops, opens your project's page on Netlify and lists the
+clicks. You do them once:
+
+1. Open your project (`threadline-xxxxxx`) if it is not open already.
+2. Click **Project configuration → General → Visitor access**.
+3. Under **Project visibility**, click **Edit visibility**. If Netlify asks,
+   choose **Customize this project's visibility**.
+4. Set **Production** to **Public** (leave the previews as they are) and click
+   **Save**.
+5. Run `uv run tracker setup dashboard` again.
+
+This is safe: the dashboard has its own sign-in, and only your e-mail address
+can open your data.
+
+**✅ Check:** the step now says `Check: https://threadline-xxxxxx.netlify.app
+opens the dashboard.`
+
+**If not:** if Netlify does not offer **Public**, your team is set to keep
+every project private: change it in **Team settings → General → Visitor access
+→ Default project visibility**, then do the steps above again.
+
+If you set `NETLIFY_SITE_ID` in `.env` yourself, it must be a Netlify site ID or
+a plain site name, nothing else.
+
+If the step warns that the downloaded dashboard is **newer than your copy of
+Threadline**, the dashboard expects database changes your copy does not have
+yet, and it may show errors. The safe way out is to publish the dashboard from
+your own copy with a local build: run
+`uv run tracker setup dashboard --build-here` (this needs Node.js 22 or
+newer).
+
+Your own copy stays as it was when it was published. To publish a newer one,
+for example after you updated Threadline, run `uv run tracker setup dashboard`
+again.

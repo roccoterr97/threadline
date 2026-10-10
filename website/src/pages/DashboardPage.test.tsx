@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { DASHBOARD_ADDRESS_KEY } from '../constants/site';
 import { DEMO_URL } from '../constants/links';
-import { dashboardPage, rememberForm, remembered } from '../content/dashboard';
+import { dashboardPage, rememberForm, remembered, whereToFind } from '../content/dashboard';
 import { DashboardPage } from './DashboardPage';
 
 const ADDRESS = 'https://something-123abc.netlify.app';
@@ -27,7 +27,7 @@ describe('DashboardPage', () => {
     expect(document.title).toBe(`${dashboardPage.title} – Threadline`);
     expect(screen.getByRole('link', { name: 'Set it up' })).toHaveAttribute('href', '/setup');
     expect(screen.getByRole('link', { name: 'Try the demo' })).toHaveAttribute('href', DEMO_URL);
-    expect(screen.getByRole('heading', { name: 'Where do I find my address?' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: whereToFind.heading })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'On your phone' })).toBeInTheDocument();
   });
 

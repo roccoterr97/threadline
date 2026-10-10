@@ -17,6 +17,7 @@ from pydantic import SecretStr
 from tests.conftest import TEST_ENCRYPTION_KEY, FakeSupabaseClient, as_client
 from tests.setup_world import FakeAdmin, migration_files
 from tracker.cli.doctor_wiring import _Clients, _outlook_checks, _smtp_verify, render, run_doctor
+from tracker.domain.dashboard_link import DashboardAddress
 from tracker.infrastructure.microsoft.auth import TOKEN_URL, MicrosoftAuthenticator
 from tracker.infrastructure.microsoft.probe import CALENDAR_URL, INBOX_URL, GraphProbe
 from tracker.infrastructure.secret_store import (
@@ -54,6 +55,7 @@ from tracker.services.setup.step_database import pending_files
 from tracker.shared import config
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
+from tracker.shared.constants.dashboard import HOSTED_DASHBOARD_URL
 from tracker.shared.errors import (
     ConfigurationError,
     DatabaseUnavailableError,
@@ -268,9 +270,35 @@ async def test_dashboard_check(status: int, expected: CheckStatus) -> None:
     async def status_of(url: str) -> int:
         return status
 
-    result = await DashboardCheck(status_of, "https://you.vercel.app").run()
+    result = await DashboardCheck(status_of, DashboardAddress("https://you.vercel.app")).run()
 
     assert result.status is expected
+
+
+async def test_the_shared_dashboard_is_opened_without_and_named_with_the_personal_link() -> None:
+    opened: list[str] = []
+
+    async def status_of(url: str) -> int:
+        opened.append(url)
+        return 200
+
+    connect = "project=abcdefghijklmnop&key=sb_publishable_x"
+    address = DashboardAddress(HOSTED_DASHBOARD_URL, connect)
+    result = await DashboardCheck(status_of, address).run()
+
+    assert opened == [HOSTED_DASHBOARD_URL]
+    assert result.status is CheckStatus.OK
+    assert f"{HOSTED_DASHBOARD_URL}/#{connect}" in result.detail
+
+
+async def test_a_shared_dashboard_without_a_personal_link_is_a_problem() -> None:
+    async def status_of(url: str) -> int:
+        return 200
+
+    result = await DashboardCheck(status_of, DashboardAddress(HOSTED_DASHBOARD_URL)).run()
+
+    assert result.status is CheckStatus.PROBLEM
+    assert "personal link cannot be made" in result.detail
 
 
 async def test_dashboard_check_is_skipped_without_an_address() -> None:

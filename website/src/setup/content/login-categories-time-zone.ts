@@ -27,7 +27,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: '**What the set-up does for you:** it creates your login, records it as the only owner, and switches off sign-ups in Supabase with the token from the Supabase part.',
+          text: '**What the set-up does for you:** it creates your login, records it as the only owner, and switches off sign-ups in Supabase with your Supabase sign-in.',
         },
       ],
       youDo: [
@@ -81,7 +81,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `Saved … categories, \'Not known\' included.` Once the dashboard is published, its **Settings** page shows the same categories.',
+          text: 'You see `Saved … categories, \'Not known\' included.` Once your dashboard is ready, its **Settings** page shows the same categories.',
         },
       ],
       ifNot: [

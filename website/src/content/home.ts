@@ -59,11 +59,11 @@ export const needs = {
   items: [
     ['A computer', 'Mac, Windows or Linux, for the set-up once'],
     ['A paid Claude plan', 'Pro, Max or Team'],
-    ['Three free accounts', 'GitHub, Supabase and Netlify'],
+    ['Two free accounts', 'GitHub and Supabase'],
     ['A mailbox', 'Gmail, Outlook, iCloud, Yahoo, Fastmail or any IMAP mailbox'],
     ['LinkedIn, if you want', 'Only for profiles located in the EEA or Switzerland'],
   ] satisfies readonly (readonly [string, string])[],
-  time: 'About 40 minutes with the accounts ready, around an hour without.',
+  time: 'About 20 minutes with GitHub and Supabase ready, about 30 without.',
 } as const;
 
 export const finalCall = {

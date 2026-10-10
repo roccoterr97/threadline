@@ -1,13 +1,6 @@
-import { CLAUDE_CODE_SETUP_URL } from '../../constants/links';
 import type { SetupPart } from '../types';
 import { GITHUB_CLI_PAGE } from './addresses';
-import {
-  CLAUDE_TOKEN_COMMAND,
-  CLAUDE_VERSION_COMMAND,
-  DOCTOR_COMMAND,
-  SETUP_COMMAND,
-  STEP_COMMAND,
-} from './commands';
+import { CLAUDE_TOKEN_COMMAND, DOCTOR_COMMAND, SETUP_COMMAND, STEP_COMMAND } from './commands';
 
 /**
  * Mirrors part 6 of docs/setup-your-accounts.md, "Run it every day on
@@ -78,46 +71,7 @@ export const GITHUB: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'The run on GitHub cannot read the `.env` file on your computer, so your settings go into your copy\'s **secrets** (hidden in every log) and **variables** (the harmless ones, such as your time zone). GitHub also needs a key that lets it use your Claude subscription.',
-        },
-        {
-          kind: 'paragraph',
-          text: '**Check Claude Code first.** The key is made by Claude Code, so open a terminal and type the line below. It should print a version number.',
-        },
-        {
-          kind: 'command',
-          command: CLAUDE_VERSION_COMMAND,
-          what: 'Shows that Claude Code is installed.',
-        },
-        {
-          kind: 'paragraph',
-          platforms: ['mac', 'linux'],
-          text: `\`command not found\` means Claude Code is not installed yet, or the terminal was not reopened after installing it. Install it from the official page, [code.claude.com/docs/en/setup](${CLAUDE_CODE_SETUP_URL}), close the terminal, open it again and retry. Then type \`claude\` once and sign in with your Claude plan.`,
-        },
-        {
-          kind: 'paragraph',
-          platforms: ['windows'],
-          text: `"not recognized" means Claude Code is not installed yet, or the terminal was not reopened after installing it. Install it from the official page, [code.claude.com/docs/en/setup](${CLAUDE_CODE_SETUP_URL}) (the install line must have run first, because it adds Git), close the terminal, open it again and retry. Then type \`claude\` once and sign in with your Claude plan.`,
-        },
-      ],
-      youDo: [
-        {
-          kind: 'steps',
-          items: [
-            'When the set-up asks for the Claude key, open a **second** terminal window and type the line below.',
-            'Sign in in the browser that opens, then go back to that second window: it prints a long key that starts with `sk-ant-oat` and lasts one year. The key is split over two lines. Copy it from the first letter to the last, including the second line.',
-            `Paste it into the set-up in the first window (nothing shows while you paste) and press Enter. If the key looks cut short, the set-up asks you to paste its second line, or the whole key again. Pressing Enter on an empty line keeps the key GitHub already has, if any (useful when you run the step again). If GitHub has no key, the set-up does not start the first run, because the run would do nothing: it tells you to run \`${CLAUDE_TOKEN_COMMAND}\` and then \`${STEP_COMMAND.github}\` again.`,
-            'When it asks `Save … secrets and … variables in … with the GitHub CLI now?`, press Enter for yes.',
-          ],
-        },
-        {
-          kind: 'command',
-          command: CLAUDE_TOKEN_COMMAND,
-          what: 'Makes the key that lets GitHub use your Claude plan; type it in a second terminal window.',
-        },
-        {
-          kind: 'warning',
-          text: 'The key is split over two lines in the terminal. Copy it from the first letter to the last, including the second line. It goes straight to GitHub and is never saved on your computer, not even in `.env`. Anyone with this key can use your Claude subscription, so never paste it anywhere else.',
+          text: 'The run on GitHub cannot read the `.env` file on your computer, so your settings go into your copy\'s **secrets** (hidden in every log) and **variables** (the harmless ones, such as your time zone). GitHub also needs a key that lets it use your Claude subscription. The set-up makes that key for you with Claude Code, which the install line added.',
         },
         {
           kind: 'paragraph',
@@ -126,6 +80,49 @@ export const GITHUB: SetupPart = {
         {
           kind: 'paragraph',
           text: 'If you emptied a setting on your computer (for example you removed `OWNER_DISPLAY_NAME` from `.env`) and GitHub still holds it, the set-up lists each one by name and asks once whether to delete them on GitHub, so the daily run stops using the old values. Press Enter to delete them, or type `n` to keep them.',
+        },
+      ],
+      youDo: [
+        {
+          kind: 'steps',
+          platforms: ['mac', 'linux'],
+          items: [
+            'It asks `Make the Claude key now? A Claude page opens in your browser: click Authorize`. Press Enter for yes.',
+            'A Claude page opens. Sign in if asked, with the account of your Claude plan, and click **Authorize**. The key goes straight to GitHub: you never see or copy it. It lasts one year.',
+            'When it asks `Save … secrets and … variables in … with the GitHub CLI now?`, press Enter for yes.',
+          ],
+        },
+        {
+          kind: 'paragraph',
+          platforms: ['mac', 'linux'],
+          text: 'Running this step again later, it asks `GitHub already has a Claude key. Make a new one now?`. Enter keeps the key GitHub has.',
+        },
+        {
+          kind: 'paragraph',
+          platforms: ['mac', 'linux'],
+          text: '**If the set-up says `The key could not be made here`**, it asks you to paste the key instead:',
+        },
+        {
+          kind: 'paragraph',
+          platforms: ['windows'],
+          text: 'On Windows you make the key yourself and paste it. Then, when it asks `Save … secrets and … variables in … with the GitHub CLI now?`, press Enter for yes. To make and paste the key:',
+        },
+        {
+          kind: 'steps',
+          items: [
+            'Open a **second** terminal window and type the line below.',
+            'Sign in in the browser that opens, then go back to that second window: it prints a long key that starts with `sk-ant-oat`. The key is split over two lines. Copy it from the first letter to the last, including the second line.',
+            'Paste it into the set-up in the first window (nothing shows while you paste) and press Enter. If the key looks cut short, the set-up asks you to paste its second line, or the whole key again. Pressing Enter on an empty line keeps the key GitHub already has, if any.',
+          ],
+        },
+        {
+          kind: 'command',
+          command: CLAUDE_TOKEN_COMMAND,
+          what: 'Makes the key by hand, only if the set-up asks you to paste it; type it in a second terminal window.',
+        },
+        {
+          kind: 'warning',
+          text: 'The key is never saved on your computer, not even in `.env`. Anyone with this key can use your Claude subscription, so never paste it anywhere else.',
         },
       ],
       check: [
@@ -138,7 +135,9 @@ export const GITHUB: SetupPart = {
         {
           kind: 'bullets',
           items: [
-            `\`That key is cut short\`, \`That is an API key\` or \`That is not the key\` means the paste was not the whole key from \`${CLAUDE_TOKEN_COMMAND}\`. Go back to the second window and copy it again, from \`sk-ant-oat\` to the last letter of the second line, and paste it when the set-up asks again.`,
+            `If the Claude page did not open, or you closed it, run \`${STEP_COMMAND.github}\` again.`,
+            `\`That key is cut short\`, \`That is an API key\` or \`That is not the key\` means a pasted key was not the whole key from \`${CLAUDE_TOKEN_COMMAND}\`. Go back to the second window and copy it again, from \`sk-ant-oat\` to the last letter of the second line, and paste it when the set-up asks again.`,
+            `If GitHub has no key, the set-up does not start the first run, because the run would do nothing. Run \`${STEP_COMMAND.github}\` again.`,
             'If the set-up stopped with `there is no private copy on GitHub yet`, this folder is not linked to your own private copy. Paste the install line again: it makes the copy and downloads it.',
             `If it stopped with \`your GitHub CLI is too old\`, the \`gh\` on your computer is from before 2.68 and lacks commands Threadline uses. Install the newest from [cli.github.com](${GITHUB_CLI_PAGE}) (or run the install line again), then run \`${STEP_COMMAND.github}\`. The set-up says this at the first use of \`gh\`, not at the end.`,
           ],
@@ -174,7 +173,7 @@ export const GITHUB: SetupPart = {
         {
           kind: 'bullets',
           items: [
-            `\`The first run stopped with a problem.\`, followed by the reason: do what that line says. Most often it is \`Claude did not accept the key saved on GitHub\`: the Claude key was not copied whole. Run \`${CLAUDE_TOKEN_COMMAND}\` again, then \`${STEP_COMMAND.github}\`, paste the new key (both lines), and answer yes to start a new first run.`,
+            `\`The first run stopped with a problem.\`, followed by the reason: do what that line says. Most often it is \`Claude did not accept the key saved on GitHub\`. Run \`${STEP_COMMAND.github}\` again: it makes a new key the same way (if it asks you to paste one, paste both lines), and answer yes to start a new first run.`,
             'If GitHub refused to start the run, the set-up says so in one line and names the page where you start the run yourself: open that page (**Actions → Threadline run** in your copy on GitHub); if it shows **Enable workflow**, click it. Then click **Run workflow**, keep **mode: daily**, and click the green **Run workflow** button.',
             'The same two clicks apply if you set Threadline up without the installer and the set-up could not use the GitHub tool: it then lists the setting names to add on **Settings → Secrets and variables → Actions**, puts each value on your clipboard in turn, and ends with those two clicks.',
           ],
@@ -214,7 +213,7 @@ export const GITHUB: SetupPart = {
           kind: 'bullets',
           items: [
             `**Green tick after a few seconds, nothing sent:** a required secret is missing. Open the run; a note at the top names the missing secrets. Run \`${STEP_COMMAND.github}\` again.`,
-            `*Red cross:* open the run. When Claude stopped with an error, a line titled **Why Claude stopped** at the top of the run's page says why, such as a refused key, the plan's usage limit, or Claude being busy, and what to do. For a refused key, run \`${CLAUDE_TOKEN_COMMAND}\` again, then \`${STEP_COMMAND.github}\`, and paste the new key (both lines). Without that line, click **Threadline** and open the step with the red cross.`,
+            `*Red cross:* open the run. When Claude stopped with an error, a line titled **Why Claude stopped** at the top of the run's page says why, such as a refused key, the plan's usage limit, or Claude being busy, and what to do. For a refused key, run \`${STEP_COMMAND.github}\` again: it makes a new key. Without that line, click **Threadline** and open the step with the red cross.`,
             `*Green tick but no e-mail:* a green tick only means the job ran, not that every part worked. Read Claude's report at the end of the log, then run \`${DOCTOR_COMMAND}\` on your computer: its **Summary e-mail** line checks that your mailbox accepts the app password for sending, without sending anything.`,
             '*A run stopped half-way (cancelled, or GitHub stopped it):* nothing to clean up. The dashboard\'s **Daily runs** page shows it as **Running** for a while; when the next run starts (at least three hours later), it is closed as **Did not work**, with the step where it stopped marked "The run stopped here and never finished", and the next morning summary mentions it once.',
           ],

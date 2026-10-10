@@ -92,8 +92,9 @@ def build_subject(content: SummaryContent, prefix: str) -> str:
 def _render_text(content: SummaryContent) -> str:
     """Render the plain-text body."""
     blocks: list[str] = []
-    if content.dashboard_url is not None:
-        blocks.append(f"Open the dashboard: {content.dashboard_url}")
+    home = content.dashboard_page()
+    if home is not None:
+        blocks.append(f"Open the dashboard: {home}")
     if content.problems:
         lines = [ATTENTION_HEADING]
         for problem in content.problems:
@@ -104,11 +105,13 @@ def _render_text(content: SummaryContent) -> str:
     blocks.append(_text_people(OVERDUE_HEADING, content.overdue, content.overdue_total))
     blocks.append(_text_people(CHASE_HEADING, content.chase, content.chase_total))
     blocks.append(_text_people(REPLIED_HEADING, content.replied, content.replied_total))
-    blocks.append(_text_review(content.open_questions, content.dashboard_url))
+    review = content.dashboard_page(DASHBOARD_REVIEW_PATH)
+    blocks.append(_text_review(content.open_questions, review))
     if content.key_reminder is not None:
         blocks.append(f"{KEY_HEADING}\n- {content.key_reminder}")
-    if content.dashboard_url is not None:
-        blocks.append(f"Run page: {content.dashboard_url}{DASHBOARD_RUNS_PATH}")
+    runs = content.dashboard_page(DASHBOARD_RUNS_PATH)
+    if runs is not None:
+        blocks.append(f"Run page: {runs}")
     return "\n\n".join(blocks) + "\n"
 
 
@@ -124,14 +127,14 @@ def _text_people(heading: str, people: tuple[SummaryPerson, ...], total: int) ->
     return "\n".join(lines)
 
 
-def _text_review(open_questions: int, dashboard_url: str | None) -> str:
+def _text_review(open_questions: int, review_url: str | None) -> str:
     """Render the review section as plain text."""
     if not open_questions:
         return f"{REVIEW_HEADING}\n- {NO_QUESTIONS}"
     waiting = f"{REVIEW_HEADING}\n- {questions_waiting(open_questions)}"
-    if dashboard_url is None:
+    if review_url is None:
         return waiting
-    return f"{waiting}: {dashboard_url}{DASHBOARD_REVIEW_PATH}"
+    return f"{waiting}: {review_url}"
 
 
 def _person_line(person: SummaryPerson) -> str:

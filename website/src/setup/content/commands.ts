@@ -15,11 +15,8 @@ export const SETUP_BROWSER_COMMAND = `${SETUP_COMMAND} --browser`;
 /** Checks every account and setting, one line each. */
 export const DOCTOR_COMMAND = 'uv run tracker doctor';
 
-/** Makes the key that lets GitHub use the reader's Claude plan. */
+/** Makes the key that lets GitHub use the reader's Claude plan, when it has to be pasted by hand. */
 export const CLAUDE_TOKEN_COMMAND = 'claude setup-token';
-
-/** Shows that Claude Code is installed. */
-export const CLAUDE_VERSION_COMMAND = 'claude --version';
 
 /** One set-up step on its own, by the name the terminal uses. */
 export const STEP_COMMAND = {

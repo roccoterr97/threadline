@@ -243,17 +243,19 @@ says why in a line titled **Why Claude stopped** ("Claude did not accept the
 key saved on GitHub"). Put a reminder in your calendar for a week before the
 date you made it.
 
-1. In a terminal, run `claude setup-token` and sign in. It prints a long key
-   that starts with `sk-ant-oat`, split over two lines. Copy it from the first
-   letter to the last, including the second line.
-2. In the `backend` folder (`cd ~/threadline/backend`), run
-   `uv run tracker setup github` and paste the key when asked. If the key
-   looks cut short, the set-up asks you to paste its second line, or the whole
-   key again; it also refuses an API key (`sk-ant-api…`). It replaces the
-   `CLAUDE_CODE_OAUTH_TOKEN` secret and is saved nowhere else. (Without the
-   GitHub tool `gh`: on GitHub, open **Settings → Secrets and variables →
-   Actions**, click the pencil next to `CLAUDE_CODE_OAUTH_TOKEN`, paste the key
-   and save.)
+1. In the `backend` folder (`cd ~/threadline/backend`), run
+   `uv run tracker setup github`.
+2. On a Mac or Linux, it asks `GitHub already has a Claude key. Make a new one
+   now?`. Type `y` and press Enter, then click **Authorize** on the Claude page
+   that opens. The new key goes straight to GitHub and replaces the
+   `CLAUDE_CODE_OAUTH_TOKEN` secret; it is saved nowhere else.
+   On Windows, or when the set-up says `The key could not be made here`, make
+   the key yourself: in a second terminal run `claude setup-token`, sign in,
+   copy the long key that starts with `sk-ant-oat` (split over two lines: copy
+   from the first letter to the last) and paste it when the set-up asks. It
+   refuses a key cut short or an API key (`sk-ant-api…`). (Without the GitHub
+   tool `gh`: on GitHub, open **Settings → Secrets and variables → Actions**,
+   click the pencil next to `CLAUDE_CODE_OAUTH_TOKEN`, paste the key and save.)
 3. When it offers to start a daily run, press Enter for yes. (Without `gh`: on
    GitHub, open **Actions → Threadline run → Run workflow** with mode
    **daily**.)
@@ -277,8 +279,9 @@ cd ~/threadline/backend
 uv run tracker setup refresh
 ```
 
-As in part 8b, it opens GitHub's page for a new key and Supabase's page for a
-short-lived token, checks the key, and saves it in your Supabase project.
+As in part 8b, it opens GitHub's page for a new key, asks you to sign in to
+Supabase once more (**Authorize**, then the code it shows), checks the key, and
+saves it in your Supabase project.
 Nothing changes on your computer. The way by hand is in
 [Renew the key](refresh-now.md#renew-the-key).
 
@@ -337,8 +340,13 @@ used.
 
 ## Publish a newer dashboard
 
-The dashboard on Netlify stays as it was when it was published. To publish it
-again, for example after your copy of Threadline was updated, run:
+The shared dashboard at <https://app.threadlineapp.com> is kept up to date for
+you: there is nothing to publish.
+
+Only if you publish your own copy on Netlify (part 8d of the
+[set-up guide](setup-your-accounts.md#8d-your-own-dashboard-on-netlify-tracker-setup-dashboard)):
+it stays as it was when it was published. To publish it again, for example
+after your copy of Threadline was updated, run:
 
 ```bash
 cd ~/threadline/backend

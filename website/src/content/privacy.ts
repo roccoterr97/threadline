@@ -21,7 +21,8 @@ export const PRIVACY: readonly PrivacySection[] = [
     id: 'tool',
     heading: 'Threadline, the tool',
     paragraphs: [
-      'You run your own copy, on your own GitHub, Supabase and Netlify accounts and your own Claude plan. Your messages, your list of people and your notes are stored in your own database.',
+      'You run your own copy, on your own GitHub and Supabase accounts and your own Claude plan. Your messages, your list of people and your notes are stored in your own database.',
+      'The dashboard at app.threadlineapp.com is one page shared by everyone. It holds no data: after you sign in, your browser reads your data straight from your own database.',
       'The people who make Threadline have no database of their own and no access to yours. We cannot see, recover or delete your data: only you can.',
     ],
   },

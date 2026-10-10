@@ -14,6 +14,7 @@ from tests.setup_world import (
     NEW_PROJECT_REF,
     ORGANIZATION,
     OWNER_EMAIL,
+    PASTE,
     PROJECT_REF,
     PROJECT_URL,
     World,
@@ -58,7 +59,7 @@ pytestmark = pytest.mark.asyncio
 NEW_PROJECT_URL = f"https://{NEW_PROJECT_REF}.supabase.co"
 
 #: Yes to the automatic route, the token, the offered name and the offered region.
-CREATE_NEW: list[str | bool] = [True, GOOD_TOKEN, "", ""]
+CREATE_NEW: list[str | bool] = [True, PASTE, GOOD_TOKEN, "", ""]
 
 
 def _existing(
@@ -113,7 +114,7 @@ async def test_neither_the_token_nor_the_password_nor_the_secret_key_is_shown() 
 
 
 async def test_a_refused_token_is_asked_for_again_and_never_kept() -> None:
-    world = make_world([True, "sbp_wrong", GOOD_TOKEN, "", ""])
+    world = make_world([True, PASTE, "sbp_wrong", GOOD_TOKEN, "", ""])
 
     await SupabaseStep().run(world.context())
 
@@ -135,7 +136,7 @@ async def test_the_steps_lead_to_a_legacy_token_on_supabases_page() -> None:
 
 
 async def test_a_scoped_token_turned_away_at_once_is_asked_for_again_with_the_fix() -> None:
-    world = make_world([True, NARROW_TOKEN, GOOD_TOKEN, "", ""])
+    world = make_world([True, PASTE, NARROW_TOKEN, GOOD_TOKEN, "", ""])
     world.platform.narrow_may_list = False
 
     await SupabaseStep().run(world.context())
@@ -146,7 +147,7 @@ async def test_a_scoped_token_turned_away_at_once_is_asked_for_again_with_the_fi
 
 
 async def test_a_scoped_token_that_may_not_read_the_keys_stops_with_the_fix() -> None:
-    world = make_world([True, NARROW_TOKEN, "", ""])
+    world = make_world([True, PASTE, NARROW_TOKEN, "", ""])
     ctx = world.context()
 
     with pytest.raises(SourcePermissionError) as raised:
@@ -159,7 +160,7 @@ async def test_a_scoped_token_that_may_not_read_the_keys_stops_with_the_fix() ->
 
 
 async def test_a_token_refused_every_time_creates_nothing() -> None:
-    world = make_world([True, "bad", "bad", "bad"])
+    world = make_world([True, PASTE, "bad", "bad", "bad"])
 
     with pytest.raises(SourceAuthError):
         await SupabaseStep().run(world.context())
@@ -169,7 +170,7 @@ async def test_a_token_refused_every_time_creates_nothing() -> None:
 
 
 async def test_an_account_without_an_organization_stops_with_a_clear_message() -> None:
-    world = make_world([True, GOOD_TOKEN])
+    world = make_world([True, PASTE, GOOD_TOKEN])
     world.platform.organization_list = []
 
     with pytest.raises(ValidationFailedError, match="no organization yet"):
@@ -179,7 +180,7 @@ async def test_an_account_without_an_organization_stops_with_a_clear_message() -
 
 
 async def test_with_several_organizations_the_chosen_one_is_used() -> None:
-    world = make_world([True, GOOD_TOKEN, "4", "2", "", ""])
+    world = make_world([True, PASTE, GOOD_TOKEN, "4", "2", "", ""])
     other = Organization(slug="second-org", name="Second organization")
     world.platform.organization_list = [ORGANIZATION, other]
 
@@ -190,7 +191,7 @@ async def test_with_several_organizations_the_chosen_one_is_used() -> None:
 
 
 async def test_an_existing_project_can_be_used_instead() -> None:
-    world = make_world([True, GOOD_TOKEN, True])
+    world = make_world([True, PASTE, GOOD_TOKEN, True])
     world.platform.project_list = [_existing("old-tracker")]
 
     await SupabaseStep().run(world.context())
@@ -202,7 +203,7 @@ async def test_an_existing_project_can_be_used_instead() -> None:
 
 
 async def test_declining_the_existing_projects_creates_a_named_one_where_chosen() -> None:
-    world = make_world([True, GOOD_TOKEN, False, "my-tracker", "1"])
+    world = make_world([True, PASTE, GOOD_TOKEN, False, "my-tracker", "1"])
     world.platform.project_list = [_existing("old-tracker")]
 
     await SupabaseStep().run(world.context())
@@ -238,7 +239,7 @@ async def test_a_paused_project_is_named_with_how_to_restore_it_but_not_offered(
 
 
 async def test_a_paused_project_is_mentioned_beside_the_ones_that_can_be_used() -> None:
-    world = make_world([True, GOOD_TOKEN, True])
+    world = make_world([True, PASTE, GOOD_TOKEN, True])
     world.platform.project_list = [
         _existing("old-tracker"),
         _existing("paused-one", status="INACTIVE", ref="pausedprojectref"),
@@ -253,7 +254,7 @@ async def test_a_paused_project_is_mentioned_beside_the_ones_that_can_be_used() 
 
 
 async def test_a_project_left_by_a_stopped_run_is_reused_by_just_pressing_enter() -> None:
-    world = make_world([True, GOOD_TOKEN, ""])
+    world = make_world([True, PASTE, GOOD_TOKEN, ""])
     world.platform.project_list = [_existing("threadline", status="COMING_UP")]
 
     await SupabaseStep().run(world.context())
@@ -265,7 +266,7 @@ async def test_a_project_left_by_a_stopped_run_is_reused_by_just_pressing_enter(
 
 
 async def test_the_project_named_threadline_is_the_default_among_several() -> None:
-    world = make_world([True, GOOD_TOKEN, "", ""])
+    world = make_world([True, PASTE, GOOD_TOKEN, "", ""])
     other_ref = "someotherprojectref"
     world.platform.project_list = [
         _existing("old-tracker", ref=other_ref),
@@ -281,7 +282,7 @@ async def test_the_project_named_threadline_is_the_default_among_several() -> No
 
 
 async def test_a_project_with_another_name_is_not_chosen_by_just_pressing_enter() -> None:
-    world = make_world([True, GOOD_TOKEN, "", "", ""])
+    world = make_world([True, PASTE, GOOD_TOKEN, "", "", ""])
     world.platform.project_list = [_existing("old-tracker")]
 
     await SupabaseStep().run(world.context())
@@ -405,7 +406,7 @@ async def test_the_saved_project_is_kept_just_by_pressing_enter() -> None:
 
 
 async def test_choosing_another_project_replaces_the_saved_one_without_asking_twice() -> None:
-    world = make_world([False, True, GOOD_TOKEN, "", ""], configured_env())
+    world = make_world([False, True, PASTE, GOOD_TOKEN, "", ""], configured_env())
 
     await SupabaseStep().run(world.context())
 
@@ -416,7 +417,7 @@ async def test_choosing_another_project_replaces_the_saved_one_without_asking_tw
 
 async def test_a_saved_address_that_is_not_a_project_is_replaced_not_kept() -> None:
     env = configured_env() | {"SUPABASE_URL": "https://example.com"}
-    world = make_world([True, GOOD_TOKEN, "", ""], env)
+    world = make_world([True, PASTE, GOOD_TOKEN, "", ""], env)
 
     await SupabaseStep().run(world.context())
 
@@ -489,7 +490,7 @@ async def test_the_region_offered_follows_the_time_zone(
 
 
 async def test_the_token_is_asked_once_and_then_kept_for_the_run() -> None:
-    world = make_world([GOOD_TOKEN])
+    world = make_world([PASTE, GOOD_TOKEN])
     ctx = world.context()
 
     first = await require_supabase_token(ctx)
@@ -501,7 +502,7 @@ async def test_the_token_is_asked_once_and_then_kept_for_the_run() -> None:
 
 
 async def test_a_token_pasted_with_spaces_or_line_breaks_is_cleaned() -> None:
-    world = make_world([f" {GOOD_TOKEN}\n"])
+    world = make_world([PASTE, f" {GOOD_TOKEN}\n"])
 
     token = await require_supabase_token(world.context())
 
@@ -528,7 +529,7 @@ async def test_project_structure_and_signups_share_one_token() -> None:
 
 
 async def test_a_token_that_may_not_apply_the_structure_falls_back_to_the_editor() -> None:
-    world = make_world([True, GOOD_TOKEN], configured_env())
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
     world.admin.present = set(KNOWN_MIGRATIONS) - {"0006_meeting_time"}
     world.platform.migrations_allowed = False
     world.io.on_pause = lambda prompt: world.admin.present.add("0006_meeting_time")
@@ -541,7 +542,7 @@ async def test_a_token_that_may_not_apply_the_structure_falls_back_to_the_editor
 
 
 async def test_a_scoped_token_falls_back_to_the_editor_and_says_how_to_fix_it() -> None:
-    world = make_world([True, NARROW_TOKEN], configured_env())
+    world = make_world([True, PASTE, NARROW_TOKEN], configured_env())
     world.admin.present = set(KNOWN_MIGRATIONS) - {"0006_meeting_time"}
     world.io.on_pause = lambda prompt: world.admin.present.add("0006_meeting_time")
     ctx = world.context()
@@ -579,7 +580,7 @@ async def test_a_database_that_never_answers_stops_the_structure_check() -> None
 
 
 async def test_signups_are_switched_off_through_the_api() -> None:
-    world = make_world([OWNER_EMAIL, True, GOOD_TOKEN], configured_env())
+    world = make_world([OWNER_EMAIL, True, PASTE, GOOD_TOKEN], configured_env())
     world.platform.signups_off = [False]
 
     await LoginStep().run(world.context())
@@ -591,7 +592,7 @@ async def test_signups_are_switched_off_through_the_api() -> None:
 
 
 async def test_the_switch_is_read_again_until_it_shows() -> None:
-    world = make_world([OWNER_EMAIL, True, GOOD_TOKEN], configured_env())
+    world = make_world([OWNER_EMAIL, True, PASTE, GOOD_TOKEN], configured_env())
     world.platform.signups_off = [False]
     world.platform.signups_after_change = [False, False, True]
 
@@ -604,7 +605,7 @@ async def test_the_switch_is_read_again_until_it_shows() -> None:
     "refusal", [SourceAuthError, SourceRequestRejectedError, SourceUnavailableError]
 )
 async def test_a_failed_switch_falls_back_to_the_settings_page(refusal: type[Exception]) -> None:
-    world = make_world([OWNER_EMAIL, True, GOOD_TOKEN], configured_env())
+    world = make_world([OWNER_EMAIL, True, PASTE, GOOD_TOKEN], configured_env())
     world.platform.signups_off = [False]
     world.platform.auth_refusal = refusal
 
@@ -621,7 +622,7 @@ async def test_a_failed_switch_falls_back_to_the_settings_page(refusal: type[Exc
 
 
 async def test_a_scoped_token_switches_signups_off_by_hand_and_is_forgotten() -> None:
-    world = make_world([OWNER_EMAIL, True, NARROW_TOKEN], configured_env())
+    world = make_world([OWNER_EMAIL, True, PASTE, NARROW_TOKEN], configured_env())
     world.platform.signups_off = [False]
 
     def saved_by_hand(prompt: str) -> None:

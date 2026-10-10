@@ -18,8 +18,7 @@ from tracker.services.setup.ports import SetupIO
 from tracker.services.setup.skipped_steps import forget_skip
 from tracker.services.setup.step_categories import CategoriesStep
 from tracker.services.setup.step_cloud import CloudStep
-from tracker.services.setup.step_dashboard import ADDRESS as DASHBOARD_ADDRESS
-from tracker.services.setup.step_dashboard import DashboardStep
+from tracker.services.setup.step_dashboard import DashboardStep, opening_link
 from tracker.services.setup.step_database import DatabaseStep
 from tracker.services.setup.step_github import GitHubStep
 from tracker.services.setup.step_linkedin import LinkedInStep
@@ -30,6 +29,7 @@ from tracker.services.setup.step_refresh import RefreshStep
 from tracker.services.setup.step_schedule import ScheduleStep
 from tracker.services.setup.step_supabase import EncryptionStep, SupabaseStep
 from tracker.services.setup.step_time_zone import TimeZoneStep
+from tracker.services.setup.supabase_sign_in import say_sign_in_can_go
 from tracker.services.setup.workflow_schedule import read_schedule
 from tracker.shared.constants.github import FIRST_SUMMARY_MINUTES
 from tracker.shared.errors import SetupStoppedError, TrackerError
@@ -90,6 +90,7 @@ class SetupWizard:
         if not await self._run_group(StepGroup.CORE):
             return False
         _say_finish_line(self._ctx, self._first_run())
+        say_sign_in_can_go(self._ctx)
         return True
 
     async def run_extras(self) -> bool:
@@ -98,7 +99,7 @@ class SetupWizard:
         Returns:
             Whether every extra step finished.
         """
-        return await self._run_group(StepGroup.EXTRAS)
+        return self._ended(await self._run_group(StepGroup.EXTRAS))
 
     async def run_one(self, name: StepName) -> bool:
         """Run one step, even if it was finished before.
@@ -113,7 +114,13 @@ class SetupWizard:
         # Asked for by name, a step skipped on an earlier run asks again.
         forget_skip(self._ctx, name)
         self._ctx.io.say(step.title)
-        return await self._attempt(step, skip_when_done=False)
+        return self._ended(await self._attempt(step, skip_when_done=False))
+
+    def _ended(self, finished: bool) -> bool:
+        """After a finished run, say the Supabase sign-in may be deleted; pass the result on."""
+        if finished:
+            say_sign_in_can_go(self._ctx)
+        return finished
 
     async def _run_group(self, group: StepGroup) -> bool:
         """Run one half's unfinished steps in order, numbering them."""
@@ -196,7 +203,7 @@ def _say_finish_line(ctx: SetupContext, first_run: FirstRun | None) -> None:
 
 def _say_how_to_sign_in(ctx: SetupContext) -> None:
     """Name the dashboard's address and the one address that can sign in to it."""
-    address = ctx.env.get(DASHBOARD_ADDRESS)
+    address = opening_link(ctx)
     if address is None:
         return
     login = login_address(ctx)
