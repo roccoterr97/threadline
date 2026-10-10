@@ -218,8 +218,13 @@ LINKEDIN_DEVELOPER_APPS_PAGE: Final[str] = "https://www.linkedin.com/developers/
 #: The form that creates a new application, opened straight away.
 LINKEDIN_NEW_APP_PAGE: Final[str] = "https://www.linkedin.com/developers/apps/new"
 
-#: The company page LinkedIn provides for this product, so nobody has to create one.
-LINKEDIN_DEFAULT_COMPANY: Final[str] = "Member Data Portability (Member) Default Company"
+#: The company page LinkedIn provides for this product, so nobody has to create one,
+#: as LinkedIn's list names it. Look-alike pages share most of the name; this
+#: one alone carries LinkedIn's own blue logo.
+LINKEDIN_DEFAULT_COMPANY: Final[str] = "Member Data Portability (Member-Only Default Company Page)"
+
+#: Threadline's own logo in the owner's copy, for the application's required "App logo".
+LINKEDIN_APP_LOGO: Final[Path] = REPOSITORY_ROOT / "website" / "public" / "icons" / "icon-512.png"
 
 #: The product to request on the application's Products tab.
 LINKEDIN_PRODUCT: Final[str] = "Member Data Portability API (Member)"

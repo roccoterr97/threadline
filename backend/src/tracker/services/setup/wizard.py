@@ -1,9 +1,10 @@
 """Runs the steps in order, skipping finished ones, and stops cleanly on a problem.
 
 The set-up has two halves. The core steps are what the first morning e-mail
-needs, and ``tracker setup`` runs them alone, ending with what happens next.
-The extras (LinkedIn, the Refresh now button, the Claude cloud route) are run
-together by ``tracker setup extras``, or one at a time by name.
+needs, and ``tracker setup`` runs them, then asks once whether to connect
+LinkedIn now, and ends with what happens next. The extras (LinkedIn, the
+Refresh now button, the Claude cloud route) are run together by
+``tracker setup extras``, or one at a time by name.
 """
 
 from __future__ import annotations
@@ -13,15 +14,16 @@ from typing import Final
 
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import FirstRun, workflow_page
-from tracker.services.setup.models import Step, StepGroup, StepName
+from tracker.services.setup.models import NotesWhatIsDone, Step, StepGroup, StepName
 from tracker.services.setup.ports import SetupIO
+from tracker.services.setup.setup_summary import say_summary
 from tracker.services.setup.skipped_steps import forget_skip
 from tracker.services.setup.step_categories import CategoriesStep
 from tracker.services.setup.step_cloud import CloudStep
 from tracker.services.setup.step_dashboard import DashboardStep, opening_link
 from tracker.services.setup.step_database import DatabaseStep
 from tracker.services.setup.step_github import GitHubStep
-from tracker.services.setup.step_linkedin import LinkedInStep
+from tracker.services.setup.step_linkedin import LinkedInStep, wants_linkedin_now
 from tracker.services.setup.step_login import LoginStep, login_address
 from tracker.services.setup.step_mailbox import MailboxStep
 from tracker.services.setup.step_microsoft import MicrosoftStep
@@ -82,14 +84,16 @@ class SetupWizard:
         self._steps = tuple(steps)
 
     async def run_core(self) -> bool:
-        """Run every core step that is not finished yet, then say what happens next.
+        """Run every core step that is not finished yet, offer LinkedIn, then say what is next.
 
         Returns:
-            Whether every core step finished.
+            Whether every core step finished. LinkedIn is not one of them: when
+            it stops, it says how to carry on, and the run still ends as done.
         """
         if not await self._run_group(StepGroup.CORE):
             return False
-        _say_finish_line(self._ctx, self._first_run())
+        linkedin_connected = await self._offer_linkedin()
+        _say_finish_line(self._ctx, self._first_run(), linkedin_connected=linkedin_connected)
         say_sign_in_can_go(self._ctx)
         return True
 
@@ -142,6 +146,7 @@ class SetupWizard:
         try:
             if skip_when_done and await step.is_done(self._ctx):
                 self._ctx.io.say(f"Already done. To redo it: {_COMMAND} {step.name}")
+                _say_done_note(self._ctx, step)
                 return True
             await step.run(self._ctx)
         except SetupStoppedError as error:
@@ -157,9 +162,33 @@ class SetupWizard:
             return False
         return True
 
+    async def _offer_linkedin(self) -> bool:
+        """Ask once whether to connect LinkedIn now, and run its step on a yes.
+
+        Returns:
+            Whether LinkedIn is connected at the end.
+        """
+        step = next((step for step in self._steps if step.name is StepName.LINKEDIN), None)
+        if step is None:
+            return False
+        if await step.is_done(self._ctx):
+            return True
+        if not wants_linkedin_now(self._ctx):
+            return False
+        self._ctx.io.say(step.title)
+        await self._attempt(step, skip_when_done=False)
+        return await step.is_done(self._ctx)
+
     def _first_run(self) -> FirstRun | None:
         """How the GitHub step left the first run; ``None`` when it did not run here."""
         return next((step.first_run for step in self._steps if isinstance(step, GitHubStep)), None)
+
+
+def _say_done_note(ctx: SetupContext, step: Step) -> None:
+    """Repeat what a finished step left, for a step that has something to repeat."""
+    note = step.done_note(ctx) if isinstance(step, NotesWhatIsDone) else None
+    if note is not None:
+        ctx.io.say(note)
 
 
 def _how_to_carry_on(step: Step, *, full_run: bool) -> str:
@@ -179,14 +208,20 @@ def _group_command(step: Step) -> str:
     return _COMMAND
 
 
-def _say_finish_line(ctx: SetupContext, first_run: FirstRun | None) -> None:
-    """Say what happens now: the first run, the daily time, and how to add the extras."""
+def _say_finish_line(
+    ctx: SetupContext, first_run: FirstRun | None, *, linkedin_connected: bool
+) -> None:
+    """Say what happens now: the dashboard, the first run, the choices, and the extras.
+
+    Every choice is listed with the command that changes it (``setup_summary``).
+    """
     io = ctx.io
     schedule = read_schedule(ctx.gateways.workflow.read())
     run = first_run if first_run is not None else FirstRun(started=False, page=workflow_page(None))
+    login = login_address(ctx)
     io.say("")
     io.say("Set-up done.")
-    _say_how_to_sign_in(ctx)
+    _say_how_to_sign_in(ctx, login)
     _say_first_run(io, run)
     when = f"every day at {schedule.describe()}" if schedule is not None else "every day"
     if schedule is None:
@@ -196,17 +231,27 @@ def _say_finish_line(ctx: SetupContext, first_run: FirstRun | None) -> None:
     else:
         io.say(f"After that the dashboard is updated {when}.")
         _say_no_email(io)
+    say_summary(ctx, login)
+    _say_extras(io, linkedin_connected=linkedin_connected)
+
+
+def _say_extras(io: SetupIO, *, linkedin_connected: bool) -> None:
+    """Name the extras still to add, LinkedIn only when it is not connected."""
+    if linkedin_connected:
+        io.say("Extras you can add any time: the dashboard's Refresh now button, which also")
+        io.say("makes the daily run start on time, and the Claude cloud route:")
+        io.say(f"{_COMMAND} {StepGroup.EXTRAS}")
+        return
     io.say("Extras you can add any time: LinkedIn (EEA and Switzerland only), the dashboard's")
     io.say("Refresh now button, which also makes the daily run start on time, and the Claude")
     io.say(f"cloud route: {_COMMAND} {StepGroup.EXTRAS}")
 
 
-def _say_how_to_sign_in(ctx: SetupContext) -> None:
+def _say_how_to_sign_in(ctx: SetupContext, login: str | None) -> None:
     """Name the dashboard's address and the one address that can sign in to it."""
     address = opening_link(ctx)
     if address is None:
         return
-    login = login_address(ctx)
     ctx.io.say(f"Your dashboard: {address}")
     if login is None:
         ctx.io.say("Sign in there with the address you gave for the dashboard login: a sign-in")

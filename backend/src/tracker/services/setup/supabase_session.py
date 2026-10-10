@@ -72,7 +72,8 @@ TOO_LITTLE_ACCESS: Final[str] = (
 async def require_supabase_token(ctx: SetupContext) -> SecretStr:
     """Return this run's Supabase access token, asking for it the first time.
 
-    The first call offers the browser sign-in or a pasted token. A pasted
+    The first call offers the browser sign-in or a pasted token (an express
+    run goes straight to the browser sign-in). A pasted
     token's route opens Supabase's token page, says how to make the token and
     takes it hidden; it also takes over when the browser route does not work.
     Either way the token is proven with one read that changes nothing (the
@@ -139,8 +140,10 @@ def too_little_access(ctx: SetupContext) -> SourcePermissionError:
 
 
 def _chosen_route(ctx: SetupContext) -> TokenRoute:
-    """Offer the browser sign-in first and the pasted token second."""
+    """Offer the browser sign-in first and the pasted token second; express takes the first."""
     ctx.io.say("Threadline needs your permission to work in your Supabase account.")
+    if ctx.session.express:
+        return TokenRoute.BROWSER
     for route in TokenRoute:
         ctx.io.say(f"  {route.value}. {ROUTE_LABELS[route]}")
     number = ctx.ask_until_valid(

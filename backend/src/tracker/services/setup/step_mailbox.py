@@ -1,5 +1,9 @@
 """Step: the mailbox Threadline reads — Gmail, Outlook, iCloud, Yahoo, Fastmail or another.
 
+An express run asks only for the address and tells the provider from it
+(``mail_provider``); the provider question is left for an address whose
+provider the ending does not show. Any other run asks the provider first.
+
 Outlook is handed on to the Microsoft sign-in step. Every other mailbox is
 read over IMAP with an app password: the step explains what that is, opens
 the provider's page, tries the password live (sign in, open the inbox
@@ -27,6 +31,7 @@ from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.smtp import SmtpAccount
 from tracker.services.setup import values
 from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
+from tracker.services.setup.mail_provider import provider_for
 from tracker.services.setup.mail_sources import save_sources, saved_sources, summary_route
 from tracker.services.setup.models import StepName
 from tracker.services.setup.owner_address import remember_address
@@ -72,6 +77,12 @@ _CHOICES: Final[dict[str, MailSource | ImapProvider]] = {
 _QUESTION: Final[str] = (
     "Which mailbox should Threadline read? gmail, outlook, icloud, yahoo, fastmail or other"
 )
+
+#: The one question of an express run.
+ADDRESS_PROMPT: Final[str] = "Your e-mail address"
+
+#: How Outlook is named when it was told from the address.
+_OUTLOOK_LABEL: Final[str] = "Outlook"
 
 #: What every provider has in common, in two plain sentences.
 _APP_PASSWORD: Final[str] = (
@@ -124,13 +135,39 @@ class MailboxStep:
         return await ctx.gateways.mailbox.has_password(store_access(ctx), username)
 
     async def run(self, ctx: SetupContext) -> None:
-        """Ask which mailbox, then connect it."""
-        choice = ctx.ask_until_valid(lambda: ctx.io.ask(_QUESTION, default="gmail"), _choice)
+        """Ask which mailbox (an express run: only the address), then connect it."""
+        if ctx.session.express:
+            address, choice = _address_and_provider(ctx)
+        else:
+            address, choice = None, _asked_provider(ctx)
         if isinstance(choice, ImapProvider):
-            await _connect_imap(ctx, choice)
+            await _connect_imap(ctx, choice, address)
             return
         save_sources(ctx, (*(saved_sources(ctx) or ()), MailSource.OUTLOOK))
+        if ctx.session.express:
+            ctx.io.say("Outlook is read through a Microsoft sign-in: it comes next.")
+            return
         ctx.io.say("The Microsoft step signs you in: 'uv run tracker setup microsoft'.")
+
+
+def _asked_provider(ctx: SetupContext) -> MailSource | ImapProvider:
+    """Ask which mailbox Threadline should read."""
+    return ctx.ask_until_valid(lambda: ctx.io.ask(_QUESTION, default="gmail"), _choice)
+
+
+def _address_and_provider(ctx: SetupContext) -> tuple[str, MailSource | ImapProvider]:
+    """Ask the address alone, and ask the provider only when the address does not show it."""
+    address = ctx.ask_until_valid(
+        lambda: ctx.io.ask(ADDRESS_PROMPT, default=ctx.env.get(IMAP_USERNAME)),
+        values.email_address,
+    )
+    provider = provider_for(address)
+    if provider is None:
+        ctx.io.say("The address does not show who runs this mailbox, so please say.")
+        return address, _asked_provider(ctx)
+    label = IMAP_PRESETS[provider].label if isinstance(provider, ImapProvider) else _OUTLOOK_LABEL
+    ctx.io.say(f"From the address, your mailbox is {label}.")
+    return address, provider
 
 
 def store_access(ctx: SetupContext) -> StoreAccess:
@@ -142,10 +179,10 @@ def store_access(ctx: SetupContext) -> StoreAccess:
     )
 
 
-async def _connect_imap(ctx: SetupContext, provider: ImapProvider) -> None:
+async def _connect_imap(ctx: SetupContext, provider: ImapProvider, address: str | None) -> None:
     """Describe the mailbox, check its app password live, then save everything."""
     preset = IMAP_PRESETS[provider]
-    account = _account(ctx, provider, preset)
+    account = _account(ctx, provider, preset, address)
     _explain(ctx, provider, preset)
     since = ctx.gateways.clock.now() - timedelta(days=INITIAL_WINDOW_DAYS)
 
@@ -195,10 +232,12 @@ async def _connect_sending(
     _say_sending_left_for_later(ctx)
 
 
-def _account(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> ImapAccount:
-    """Ask for the address and, for another provider, the server."""
+def _account(
+    ctx: SetupContext, provider: ImapProvider, preset: ImapPreset, address: str | None
+) -> ImapAccount:
+    """Ask for the address, unless it was given, and, for another provider, the server."""
     if provider is not ImapProvider.CUSTOM:
-        username = ctx.ask_until_valid(
+        username = address or ctx.ask_until_valid(
             lambda: ctx.io.ask(f"Your {preset.label} address", default=ctx.env.get(IMAP_USERNAME)),
             values.email_address,
         )
@@ -217,7 +256,7 @@ def _account(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> I
     username = ctx.ask_until_valid(
         lambda: ctx.io.ask(
             "The name you sign in with, usually your address",
-            default=ctx.env.get(IMAP_USERNAME),
+            default=address or ctx.env.get(IMAP_USERNAME),
         ),
         lambda raw: values.non_empty(raw, "the sign-in name"),
     )
@@ -389,8 +428,9 @@ async def _save_sources(ctx: SetupContext) -> None:
         if saved is not None
         else await ctx.gateways.microsoft.is_signed_in(microsoft_access(ctx))
     )
-    keep = had_outlook and ctx.io.confirm(
-        "Keep reading your Outlook mailbox and calendar as well?", default=True
+    keep = had_outlook and (
+        ctx.session.express
+        or ctx.io.confirm("Keep reading your Outlook mailbox and calendar as well?", default=True)
     )
     save_sources(ctx, (MailSource.OUTLOOK, MailSource.IMAP) if keep else (MailSource.IMAP,))
 

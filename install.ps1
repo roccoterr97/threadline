@@ -395,23 +395,28 @@ function Connect-GitHub {
 
 # Answers with the copy's full name (you/threadline) when it exists on GitHub.
 function Get-ExistingCopy {
-    $ErrorActionPreference = 'Continue'
-    $Name = & gh repo view $CopyName --json nameWithOwner --jq .nameWithOwner 2> $null
-    if ($LASTEXITCODE -eq 0 -and $Name) {
-        return "$Name".Trim()
+    $Facts = Get-CopyFacts
+    if ($Facts) {
+        return "$($Facts.owner.login)/$($Facts.name)"
     }
     return $null
 }
 
 # Answers with what matters about the repository called "threadline" on this
-# GitHub account, or $null when there is none.
+# GitHub account, or $null when there is none. GitHub also answers for a
+# repository renamed from "threadline", through its old name: that one is
+# another repository now, so it counts as none and a new copy is made.
 function Get-CopyFacts {
     $ErrorActionPreference = 'Continue'
-    $Json = (& gh repo view $CopyName --json nameWithOwner,isPrivate,viewerPermission,templateRepository 2> $null) -join "`n"
+    $Json = (& gh repo view $CopyName --json name,owner,isPrivate,viewerPermission,templateRepository 2> $null) -join "`n"
     if ($LASTEXITCODE -ne 0 -or -not $Json) {
         return $null
     }
-    return $Json | ConvertFrom-Json
+    $Facts = $Json | ConvertFrom-Json
+    if ($Facts.name -ne $CopyName) {
+        return $null
+    }
+    return $Facts
 }
 
 # Tells whether GitHub shows the project's files in the copy.
@@ -428,7 +433,7 @@ function Test-ExistingCopy {
     if (-not $Facts) {
         return $false
     }
-    $Name = $Facts.nameWithOwner
+    $Name = "$($Facts.owner.login)/$($Facts.name)"
     # The account that publishes the template finds the template itself under
     # this name, and can never have a copy of its own called that.
     if ($Name -eq $TemplateRepository) {

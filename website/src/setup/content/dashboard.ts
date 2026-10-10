@@ -32,11 +32,8 @@ export const DASHBOARD: SetupPart = {
       ],
       youDo: [
         {
-          kind: 'steps',
-          items: [
-            'When the set-up offers the shared dashboard, press Enter (yes).',
-            'Write down the personal link it shows.',
-          ],
+          kind: 'paragraph',
+          text: `Write down the personal link it shows. The set-up takes the shared dashboard without asking; run on its own (\`${STEP_COMMAND.dashboard}\`), the step offers it first: press Enter (yes).`,
         },
       ],
       check: [
@@ -84,7 +81,7 @@ export const DASHBOARD: SetupPart = {
         {
           kind: 'bullets',
           items: [
-            '"This address cannot sign in" means you typed another address than your dashboard login: use the one you typed at the login step, usually your Supabase address.',
+            '"This address cannot sign in" means you typed another address than your dashboard login: use the one the set-up named at the login step (`Your dashboard login is …`), usually your Supabase address. The end of the set-up names it again.',
             '"Too many links were asked for" means waiting as long as it says.',
             'Supabase\'s own message "Email address not authorized" means the address is not the one of your Supabase account (see the login step).',
             `A link that opens \`localhost\` means the sign-in link was not connected: run \`${STEP_COMMAND.dashboard}\` again.`,

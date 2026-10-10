@@ -106,8 +106,8 @@ def pending_files(
 
 
 def _apply_automatically_wanted(ctx: SetupContext) -> bool:
-    """Apply with this run's token when there is one; otherwise ask first."""
-    if ctx.session.supabase_token is not None:
+    """Apply with this run's token when there is one or the run is express; otherwise ask."""
+    if ctx.session.supabase_token is not None or ctx.session.express:
         return True
     return ctx.io.confirm(
         "Apply them automatically? It needs a Supabase access token, used now and not saved.",

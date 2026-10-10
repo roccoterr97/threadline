@@ -31,7 +31,11 @@ from tracker.domain.supabase import (
     SealedAccessToken,
     SupabaseProject,
 )
-from tracker.infrastructure.claude_setup_token import ClaudeCodeState, ClaudeKeyScreen
+from tracker.infrastructure.claude_setup_token import (
+    ClaudeCodeState,
+    ClaudeKeyListener,
+    ClaudeKeyScreen,
+)
 from tracker.infrastructure.github_cli import GitHubRepository, WorkflowRun
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
@@ -136,6 +140,8 @@ class ScriptedIO:
         self.opened: list[str] = []
         self.copied: list[str] = []
         self.secret_prompts: list[str] = []
+        #: Every question that took an answer, in the order asked.
+        self.asked: list[str] = []
         self.clipboard = clipboard
         self.on_pause: Callable[[str], None] | None = None
 
@@ -177,6 +183,7 @@ class ScriptedIO:
         return "\n".join(self.said)
 
     def _next(self, prompt: str) -> str | bool:
+        self.asked.append(prompt)
         if not self.answers:
             message = f"unexpected question: {prompt}"
             raise AssertionError(message)
@@ -384,6 +391,10 @@ class FakePlatform:
     sign_in_failure: Exception | None = None
     #: Whether the sealed token comes back damaged, so it cannot be opened.
     sign_in_damaged: bool = False
+    #: The address ``GET /v1/profile`` answers with; ``None`` for an answer without one.
+    profile_email: str | None = OWNER_EMAIL
+    #: What reading the profile raises instead of answering, when set.
+    profile_failure: Exception | None = None
 
     async def sign_in_token(self, session_id: str, code: str) -> SealedAccessToken:
         self.sign_in_codes.append(code)
@@ -418,6 +429,12 @@ class FakePlatform:
         else:
             _require_good(token, "the access token")
         return tuple(self.organization_list)
+
+    async def account_email(self, token: SecretStr) -> str | None:
+        _require_known(token, "the access token")
+        if self.profile_failure is not None:
+            raise self.profile_failure
+        return self.profile_email
 
     async def projects(self, token: SecretStr) -> tuple[SupabaseProject, ...]:
         _require_known(token, "the access token")
@@ -1042,13 +1059,21 @@ class FakeClaudeKeyMaker:
     columns: int = 1000
     #: Raised instead of a screen, when set.
     error: ClaudeKeyNotMadeError | None = None
+    #: The sign-in address its screen shows, if any.
+    address: str | None = None
+    #: Whether no key came for a while, so the owner hears a code can be pasted.
+    slow: bool = False
     runs: int = 0
 
     def state(self) -> ClaudeCodeState:
         return self.state_now
 
-    def make_key(self) -> ClaudeKeyScreen:
+    def make_key(self, listener: ClaudeKeyListener) -> ClaudeKeyScreen:
         self.runs += 1
+        if self.address is not None:
+            listener.sign_in_address(self.address)
+        if self.slow:
+            listener.no_key_yet()
         if self.error is not None:
             raise self.error
         return ClaudeKeyScreen(

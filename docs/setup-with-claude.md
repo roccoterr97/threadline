@@ -49,10 +49,12 @@ time:
    create them, with Claude saying exactly what to click. The set-up then
    creates the database project for you.
 4. **The set-up page** — Claude starts the set-up and a page opens in your
-   browser called *Threadline set-up*. It asks one question at a time; answer
-   there. On Supabase you click **Authorize** and type the short code it shows
-   into the set-up page. On Claude you click **Authorize**, and the key goes
-   straight to GitHub. Your mailbox's app password is pasted there too. Claude
+   browser called *Threadline set-up*. It asks only what you must do, one
+   question at a time; answer there. On Supabase you click **Authorize** and
+   type the short code it shows into the set-up page. Then it asks your e-mail
+   address and its app password. On Claude you click **Authorize**, and the key
+   goes straight to GitHub. Everything else is chosen for you, and the end
+   lists each choice with the command that changes it. Claude
    sees the questions, not your answers, and is told never to open that page
    itself (it could: the page's address appears in its window). Ask it
    anything that is unclear.

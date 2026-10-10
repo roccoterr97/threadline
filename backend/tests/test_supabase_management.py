@@ -27,6 +27,7 @@ API = "https://api.supabase.com/v1"
 REF = "abcdefghijklmnopqrst"
 TOKEN = SecretStr("sbp_made_up_token")
 ORGANIZATIONS = f"{API}/organizations"
+PROFILE = f"{API}/profile"
 PROJECTS = f"{API}/projects"
 PROJECT = f"{PROJECTS}/{REF}"
 KEYS = f"{PROJECT}/api-keys"
@@ -62,6 +63,24 @@ async def test_organizations_are_read_by_slug_with_the_token() -> None:
         ("made-up-org", "Made-up organization")
     ]
     assert route.calls.last.request.headers["Authorization"] == "Bearer sbp_made_up_token"
+
+
+async def test_the_account_address_is_read_from_the_profile() -> None:
+    answer = {"gotrue_id": "made-up-id", "primary_email": " you@example.com ", "username": "you"}
+    with respx.mock:
+        route = respx.get(PROFILE).mock(return_value=httpx.Response(200, json=answer))
+        async with SupabasePlatform() as platform:
+            address = await platform.account_email(TOKEN)
+
+    assert address == "you@example.com"
+    assert route.calls.last.request.headers["Authorization"] == "Bearer sbp_made_up_token"
+
+
+async def test_a_profile_without_an_address_says_none() -> None:
+    with respx.mock:
+        respx.get(PROFILE).mock(return_value=httpx.Response(200, json={"gotrue_id": "id"}))
+        async with SupabasePlatform() as platform:
+            assert await platform.account_email(TOKEN) is None
 
 
 async def test_a_refused_token_is_an_auth_error_and_never_logged() -> None:

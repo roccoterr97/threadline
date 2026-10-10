@@ -99,7 +99,8 @@ output on that page, that is a fault worth reporting.
 ## Renew the LinkedIn key
 
 The key that lets Threadline read your LinkedIn messages works until a date
-LinkedIn sets; the set-up saved that date when you made the key. Seven days
+LinkedIn sets, about a year after you made it; the set-up saved that date when
+you made the key. Seven days
 before it, every morning summary carries a "LinkedIn key" line with the exact
 date. Renewing it takes about a minute.
 
@@ -119,8 +120,8 @@ date. Renewing it takes about a minute.
 
    The first time after updating Threadline, if you made your key by hand
    before, the set-up first offers the one-click way once: answer **yes** to
-   `Set that up now?` and do steps 1 to 6 of
-   [stage 3](setup-your-accounts.md#stage-3-of-3-connect-the-application-to-threadline)
+   `Set that up now?` and do steps 1 to 5 of
+   [stage 2](setup-your-accounts.md#stage-2-of-2-connect-the-application-to-threadline)
    in the set-up guide (add one address on your LinkedIn application's
    **Auth** tab and copy two values). Answer **n** to keep making the key by
    hand, as in

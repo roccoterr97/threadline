@@ -6,6 +6,7 @@ import {
 import type { SetupPart } from '../types';
 import { GITHUB_CLI_PAGE, WINGET_PAGE } from './addresses';
 import {
+  ASK_EVERYTHING_COMMAND,
   BACKEND_FOLDER_LINE,
   SETUP_BROWSER_COMMAND,
   SETUP_COMMAND,
@@ -242,7 +243,11 @@ export const INSTALL: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: `To run one step again later, name it, for example \`${STEP_COMMAND.database}\`. The optional extras (LinkedIn, the Refresh now button and the Claude cloud route) come later.`,
+          text: `**It asks only what you must do.** You give the Supabase code, your e-mail address and its app password, and click **Authorize** twice (Supabase, then Claude). Everything else takes the usual answer by itself: the Supabase project named \`threadline\`, your Supabase account's address as the dashboard login, the usual categories, your computer's time zone, the shared dashboard and 07:00 for the daily run. Each is said in one line with the command that changes it, and the end lists them all again. To answer every question yourself, run \`${ASK_EVERYTHING_COMMAND}\`.`,
+        },
+        {
+          kind: 'paragraph',
+          text: `To run one step again later, name it, for example \`${STEP_COMMAND.database}\`. A step run by name asks all its questions. At the end of the full run, one question offers LinkedIn (EEA and Switzerland only, about 5 minutes); press Enter to leave it for later. The other extras (the Refresh now button and the Claude cloud route) come later.`,
         },
       ],
       youDo: [

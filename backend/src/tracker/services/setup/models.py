@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Final, Protocol
+from typing import Final, Protocol, runtime_checkable
 
 from tracker.services.setup.context import SetupContext
 
@@ -60,4 +60,13 @@ class Step(Protocol):
 
     async def run(self, ctx: SetupContext) -> None:
         """Do the step, checking live before anything is written."""
+        ...
+
+
+@runtime_checkable
+class NotesWhatIsDone(Protocol):
+    """A step with something to repeat when a full run finds it done, such as the login address."""
+
+    def done_note(self, ctx: SetupContext) -> str | None:
+        """One line to say after "Already done", or ``None`` for nothing."""
         ...

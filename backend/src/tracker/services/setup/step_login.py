@@ -1,10 +1,19 @@
 """Step 4: the first dashboard login, and switching off sign-ups.
 
+Supabase's built-in e-mail only reaches the members of the Supabase account
+unless the owner set up their own e-mail sender, so the login is best made
+for the account's own address. With this run's access token that address is
+read from Supabase (``GET /v1/profile``): an express run uses it without
+asking, and any other run offers it. The address is always said, and said
+again when a later run finds the step done.
+
 Sign-ups are switched off through Supabase's Management API with this run's
 access token; the settings page is opened only when Supabase refuses that.
 """
 
 from __future__ import annotations
+
+from typing import Final
 
 from pydantic import SecretStr
 
@@ -12,6 +21,7 @@ from tracker.domain.supabase import AuthSettings
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
+from tracker.services.setup.owner_address import OWNER_ADDRESSES
 from tracker.services.setup.supabase_session import full_access_needed, require_supabase_token
 from tracker.shared.constants.setup import (
     SIGNUP_CHECK_ATTEMPTS,
@@ -28,6 +38,9 @@ from tracker.shared.logging import get_logger
 
 _log = get_logger(__name__)
 
+#: The setting that holds the mailbox's sign-in name, usually its address.
+_MAILBOX_ADDRESS: Final[str] = "IMAP_USERNAME"
+
 
 class LoginStep:
     """Creates your dashboard login and records it as the only owner."""
@@ -39,16 +52,16 @@ class LoginStep:
         """Done when somebody is recorded as the owner."""
         return bool(ctx.admin().owner_ids())
 
+    def done_note(self, ctx: SetupContext) -> str | None:
+        """Name the login address, so a finished step still says which address signs in."""
+        address = login_address(ctx)
+        return None if address is None else f"Your dashboard login: {address}"
+
     async def run(self, ctx: SetupContext) -> None:
         """Create the login (or find it), record it, then check sign-ups are off."""
         io = ctx.io
         io.say("You sign in to the dashboard with a link Supabase e-mails to you.")
-        io.say("Supabase's free e-mail only reaches the members of your Supabase account,")
-        io.say("so use the address you signed up to Supabase with.")
-        email = ctx.ask_until_valid(
-            lambda: io.ask("E-mail address for the dashboard", default=_first_owner_address(ctx)),
-            values.email_address,
-        )
+        email = await _login_email(ctx)
         admin = ctx.admin()
         user_id = admin.create_confirmed_user(email) or admin.find_user_id(email)
         if user_id is None:
@@ -80,10 +93,45 @@ def login_address(ctx: SetupContext) -> str | None:
         return None
 
 
+async def _login_email(ctx: SetupContext) -> str:
+    """The Supabase account's address in an express run; otherwise asked, offering it."""
+    io = ctx.io
+    account = await _supabase_account_address(ctx)
+    if ctx.session.express and account is not None:
+        io.say(f"Your dashboard login is {account}, the address of your Supabase account,")
+        io.say("which Supabase's free e-mail reaches. To use another address:")
+        io.say(f"uv run tracker setup {StepName.LOGIN}")
+        return account
+    io.say("Supabase's free e-mail only reaches the members of your Supabase account,")
+    io.say("so use the address you signed up to Supabase with.")
+    return ctx.ask_until_valid(
+        lambda: io.ask(
+            "E-mail address for the dashboard", default=account or _first_owner_address(ctx)
+        ),
+        values.email_address,
+    )
+
+
+async def _supabase_account_address(ctx: SetupContext) -> str | None:
+    """Read the Supabase account's address with this run's token; ``None`` without one."""
+    token = ctx.session.supabase_token
+    if token is None:
+        return None
+    try:
+        address = await ctx.gateways.platform.account_email(token)
+        return values.email_address(address) if address else None
+    except (SourceAuthError, SourceUnavailableError, ValidationFailedError) as error:
+        _log.warning("supabase_account_address_unavailable", code=error.code)
+        return None
+
+
 def _first_owner_address(ctx: SetupContext) -> str | None:
-    """Offer the first of your own addresses as the default answer."""
-    saved = ctx.env.get("OWNER_EMAIL_ADDRESSES")
-    return saved.split(",")[0].strip() if saved else None
+    """Offer the first of your own addresses, or the mailbox's, as the default answer."""
+    saved = ctx.env.get(OWNER_ADDRESSES)
+    if saved:
+        return saved.split(",")[0].strip()
+    mailbox = ctx.env.get(_MAILBOX_ADDRESS)
+    return mailbox if mailbox and "@" in mailbox else None
 
 
 async def _signups_disabled(ctx: SetupContext) -> bool:
@@ -117,8 +165,12 @@ async def _switched_off_through_the_api(ctx: SetupContext) -> bool:
     A refused token, a refused request and an outage (a server error, a timeout)
     all end in the same place: the hand-guided settings page.
     """
-    if ctx.session.supabase_token is None and not ctx.io.confirm(
-        "Switch them off with a Supabase access token (used now, not saved)?", default=True
+    if (
+        ctx.session.supabase_token is None
+        and not ctx.session.express
+        and not ctx.io.confirm(
+            "Switch them off with a Supabase access token (used now, not saved)?", default=True
+        )
     ):
         return False
     ref = values.project_ref(ctx.require("SUPABASE_URL", StepName.SUPABASE))

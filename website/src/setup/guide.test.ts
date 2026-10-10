@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { INSTALL_LINE_MAC_LINUX, INSTALL_LINE_WINDOWS } from '../constants/links';
 import { PLATFORMS } from '../lib/platform';
+import { ASK_EVERYTHING_COMMAND } from './content/commands';
 import { CLAUDE_WAY, SETUP_GUIDE } from './guide';
 import type { Block, SetupPart, SetupStep } from './types';
 
@@ -173,5 +174,44 @@ describe('the questions parts ask first', () => {
       expect(part.choice.question).not.toBe('');
       part.choice.options.forEach((option) => expect(option.label).not.toBe(''));
     }
+  });
+});
+
+describe('the set-up that asks only what the reader must do', () => {
+  /** Questions a full run now answers by itself; only a step run on its own still asks them. */
+  const ANSWERED_BY_ITSELF = [
+    'Create the project (or pick an existing one)',
+    'Use one of them instead of creating a new project',
+    'Make the Claude key now?',
+    'with the GitHub CLI now?',
+    'Start the first daily run on GitHub now?',
+    'offers the shared dashboard',
+  ];
+
+  function stepWithId(id: string): SetupStep {
+    const step = ALL_STEPS.find((candidate) => candidate.id === id);
+    if (step === undefined) throw new Error(`no step ${id}`);
+    return step;
+  }
+
+  function numberedItems(step: SetupStep): readonly string[] {
+    return step.youDo.flatMap((block) => (block.kind === 'steps' ? block.items : []));
+  }
+
+  it('lists none of those questions among the things to do', () => {
+    for (const id of ['supabase-token-and-project', 'claude-key', 'first-run', 'personal-link']) {
+      for (const item of numberedItems(stepWithId(id))) {
+        for (const question of ANSWERED_BY_ITSELF) expect(item).not.toContain(question);
+      }
+    }
+  });
+
+  it('asks for the e-mail address first, not the provider', () => {
+    expect(numberedItems(stepWithId('choose-mailbox'))[0]).toContain('Type your e-mail address');
+  });
+
+  it('names the command that brings every question back', () => {
+    expect(ASK_EVERYTHING_COMMAND).toBe('uv run tracker setup --ask-everything');
+    expect(ALL_TEXTS.some((text) => text.includes(ASK_EVERYTHING_COMMAND))).toBe(true);
   });
 });

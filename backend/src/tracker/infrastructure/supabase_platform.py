@@ -27,6 +27,9 @@ is held in memory for one set-up run and never written anywhere:
   needed) hands over the new access token, sealed for this computer's key.
   It is not part of the documented Management API, so every odd answer is
   reported plainly and the set-up falls back to a pasted token.
+* **Read the account's own address.** ``GET /v1/profile`` answers with the
+  signed-in account's ``primary_email``, the one address Supabase's built-in
+  e-mail always reaches, so the dashboard login can use it without asking.
 * **Read whether sign-ups are open.** The auth server publishes its public
   settings at ``/auth/v1/settings``; the publishable key is enough to read them.
 
@@ -97,6 +100,9 @@ SIGN_IN_CODE_FIELD: Final[str] = "device_code"
 
 #: Fields of the sign-in session's answer: the sealed token, Supabase's key, the nonce.
 _SEALED_FIELDS: Final[tuple[str, str, str]] = ("access_token", "public_key", "nonce")
+
+#: The field of ``GET /v1/profile`` that holds the account's own address.
+_PROFILE_EMAIL_FIELD: Final[str] = "primary_email"
 
 #: What a refusal of a plain read with the token is called.
 _TOKEN: Final[str] = "the access token"
@@ -214,6 +220,25 @@ class SupabasePlatform:
             for item in _json_objects(response)
             if "slug" in item
         )
+
+    async def account_email(self, token: SecretStr) -> str | None:
+        """Read the address the token's Supabase account signs in with.
+
+        Args:
+            token: A personal access token.
+
+        Returns:
+            The account's primary address, or ``None`` when the answer holds none.
+
+        Raises:
+            SourceAuthError: If Supabase refused the token.
+            SourceUnavailableError: If Supabase could not be reached.
+        """
+        response = await self._send(
+            "GET", f"{SUPABASE_MANAGEMENT_API_URL}/profile", _bearer(token), what=_TOKEN
+        )
+        address = _json_object(response).get(_PROFILE_EMAIL_FIELD)
+        return address.strip() if isinstance(address, str) and address.strip() else None
 
     async def projects(self, token: SecretStr) -> tuple[SupabaseProject, ...]:
         """List every project the token can see.

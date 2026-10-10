@@ -6,6 +6,13 @@ with a generated database password that Threadline never needs again, in the
 smart region group closest to this computer's time zone. A new project is
 watched until Supabase reports it healthy. Last, the project's publishable and
 secret keys are read revealed, or created when it has none.
+
+An express run asks none of that. It reuses the project named ``threadline``
+when there is one, running or starting, and otherwise creates it with that
+name in the region nearest the time zone. It never picks a project with
+another name by itself, since that project may hold someone's other data: only
+when Supabase will not create one (the free plan is full) are the projects
+listed, and one is used after an explicit yes.
 """
 
 from __future__ import annotations
@@ -41,6 +48,7 @@ from tracker.shared.constants.setup import (
 )
 from tracker.shared.errors import (
     SourcePermissionError,
+    SourceRequestRejectedError,
     SourceUnavailableError,
     ValidationFailedError,
 )
@@ -63,17 +71,14 @@ async def find_or_create_project(ctx: SetupContext, token: SecretStr) -> Supabas
         The project, healthy.
 
     Raises:
-        ValidationFailedError: If the account has no organization, or the
-            project is still not up after the longest wait.
+        ValidationFailedError: If the account has no organization, no project
+            was chosen, or the project is still not up after the longest wait.
         SourceUnavailableError: If Supabase gave up on the project.
     """
-    organization = await _choose_organization(ctx, token)
-    projects = await _organization_projects(ctx, token, organization)
-    _mention_paused(ctx, projects)
-    existing = _usable(projects)
-    project = _pick_existing(ctx, existing) if existing else None
-    if project is None:
-        project = await _create(ctx, token, organization)
+    if ctx.session.express:
+        project = await _threadline_project(ctx, token)
+    else:
+        project = await _chosen_or_created(ctx, token)
     return await wait_until_ready(ctx, token, project)
 
 
@@ -139,7 +144,10 @@ async def wait_until_ready(
         return project
     ctx.io.say("Supabase is setting the project up; this takes one to three minutes.")
     ctx.io.say("If you stop now (Ctrl-C), it keeps being set up: run this step again and")
-    ctx.io.say("pick it from the list instead of creating another.")
+    if ctx.session.express:
+        ctx.io.say("it carries on with this project instead of creating another.")
+    else:
+        ctx.io.say("pick it from the list instead of creating another.")
     for _ in range(PROJECT_READY_ATTEMPTS):
         await ctx.gateways.sleep(PROJECT_READY_WAIT_SECONDS)
         try:
@@ -163,6 +171,114 @@ async def wait_until_ready(
         f"{StepName.SUPABASE}' again in a while and pick it from the list"
     )
     raise ValidationFailedError(message)
+
+
+async def _chosen_or_created(ctx: SetupContext, token: SecretStr) -> SupabaseProject:
+    """Offer the organization's projects for reuse, or create one with the name and region asked."""
+    organization = await _choose_organization(ctx, token)
+    projects = await _organization_projects(ctx, token, organization)
+    _mention_paused(ctx, projects)
+    existing = _usable(projects)
+    project = _pick_existing(ctx, existing) if existing else None
+    if project is not None:
+        return project
+    return await _create(ctx, token, organization, _asked_name(ctx), _asked_region(ctx))
+
+
+async def _threadline_project(ctx: SetupContext, token: SecretStr) -> SupabaseProject:
+    """Reuse the project named ``threadline``, or create it; never take another one unasked."""
+    projects = await ctx.gateways.platform.projects(token)
+    ours = _ours(projects)
+    if ours:
+        project = ours[0] if len(ours) == 1 else _one_of_ours(ctx, ours)
+        ctx.io.say(f"Using your Supabase project '{project.name}' ({project.ref}).")
+        return project
+    organization = await _choose_organization(ctx, token)
+    in_organization = tuple(
+        project for project in projects if project.organization_slug == organization.slug
+    )
+    _stop_for_a_paused_one(ctx, in_organization)
+    region = region_group_for(ctx.gateways.local_time_zone())
+    ctx.io.say(
+        f"Creating the project '{SUPABASE_DEFAULT_PROJECT_NAME}' in {REGION_GROUP_LABELS[region]}, "
+        "the region nearest your time zone."
+    )
+    try:
+        return await _create(ctx, token, organization, SUPABASE_DEFAULT_PROJECT_NAME, region)
+    except SourceRequestRejectedError as error:
+        others = _usable(in_organization)
+        if not others:
+            raise
+        return _chosen_after_refusal(ctx, others, error)
+
+
+def _ours(projects: tuple[SupabaseProject, ...]) -> tuple[SupabaseProject, ...]:
+    """The projects with the set-up's own name that are running or starting."""
+    return tuple(
+        project
+        for project in projects
+        if project.name == SUPABASE_DEFAULT_PROJECT_NAME
+        and project.status in PROJECT_REUSABLE_STATUSES
+    )
+
+
+def _one_of_ours(ctx: SetupContext, ours: tuple[SupabaseProject, ...]) -> SupabaseProject:
+    """Ask which of several projects named ``threadline`` to use."""
+    ctx.io.say(f"You have several projects named '{SUPABASE_DEFAULT_PROJECT_NAME}':")
+    names = [f"{_described(project)}, {project.ref}" for project in ours]
+    return ours[_ask_for_one(ctx, names, "Which one? (number)") - 1]
+
+
+def _stop_for_a_paused_one(ctx: SetupContext, projects: tuple[SupabaseProject, ...]) -> None:
+    """Stop before creating a second ``threadline`` beside a paused one, unless told to.
+
+    Raises:
+        ValidationFailedError: If the paused one is to be restored instead.
+    """
+    paused = next(
+        (
+            project
+            for project in projects
+            if project.name == SUPABASE_DEFAULT_PROJECT_NAME
+            and project.status == PROJECT_PAUSED_STATUS
+        ),
+        None,
+    )
+    if paused is None:
+        return
+    ctx.io.say(f"Your project '{paused.name}' is paused. It may hold your Threadline data.")
+    if ctx.io.confirm("Create a new project instead of restoring it?", default=False):
+        return
+    message = (
+        f"the project '{paused.name}' is paused - restore it in Supabase (open it and click "
+        "'Restore project'), then run the set-up again"
+    )
+    raise ValidationFailedError(message)
+
+
+def _chosen_after_refusal(
+    ctx: SetupContext, projects: tuple[SupabaseProject, ...], error: SourceRequestRejectedError
+) -> SupabaseProject:
+    """List the projects after Supabase refused a new one, and use one only after a yes.
+
+    Raises:
+        ValidationFailedError: If none of them is to be used.
+    """
+    io = ctx.io
+    io.say(f"Supabase would not create a new project. {error.message}.")
+    io.say("On the free plan an account has at most two active projects. Yours:")
+    _show_numbered(ctx, [_described(project) for project in projects])
+    io.say("Threadline adds its own tables to the project it uses, so choose one only if")
+    io.say("nothing else needs it. Or pause or delete a project in Supabase and run the")
+    io.say(f"set-up again: it then creates '{SUPABASE_DEFAULT_PROJECT_NAME}'.")
+    if not io.confirm("Use one of these projects for Threadline?", default=False):
+        message = (
+            "no project to use yet - pause or delete one in Supabase, then run the set-up again"
+        )
+        raise ValidationFailedError(message)
+    if len(projects) == 1:
+        return projects[0]
+    return projects[_ask_number(ctx, len(projects), "Which one? (number)", None) - 1]
 
 
 async def _choose_organization(ctx: SetupContext, token: SecretStr) -> Organization:
@@ -256,18 +372,25 @@ def _described(project: SupabaseProject) -> str:
     return f"{project.name} ({label})"
 
 
-async def _create(
-    ctx: SetupContext, token: SecretStr, organization: Organization
-) -> SupabaseProject:
-    """Create a project with a generated database password that is never kept."""
-    io = ctx.io
-    name = ctx.ask_until_valid(
-        lambda: io.ask(
+def _asked_name(ctx: SetupContext) -> str:
+    """Ask the new project's name, offering the set-up's own."""
+    return ctx.ask_until_valid(
+        lambda: ctx.io.ask(
             "Name for the new project", default=SUPABASE_DEFAULT_PROJECT_NAME, exact=True
         ),
         values.project_name,
     )
-    region = _choose_region(ctx)
+
+
+async def _create(
+    ctx: SetupContext,
+    token: SecretStr,
+    organization: Organization,
+    name: str,
+    region: RegionGroup,
+) -> SupabaseProject:
+    """Create a project with a generated database password that is never kept."""
+    io = ctx.io
     password = SecretStr(secrets.token_urlsafe(DATABASE_PASSWORD_BYTES))
     request = NewProject(
         organization_slug=organization.slug, name=name, region=region, database_password=password
@@ -285,7 +408,7 @@ async def _create(
     return project
 
 
-def _choose_region(ctx: SetupContext) -> RegionGroup:
+def _asked_region(ctx: SetupContext) -> RegionGroup:
     """Offer the region group closest to this computer's time zone."""
     groups = list(RegionGroup)
     offered = groups.index(region_group_for(ctx.gateways.local_time_zone())) + 1
@@ -308,10 +431,11 @@ def _show_numbered(ctx: SetupContext, names: list[str]) -> None:
         ctx.io.say(f"  {number}. {name}")
 
 
-def _ask_number(ctx: SetupContext, count: int, prompt: str, default: int) -> int:
-    """Ask for the number of one of ``count`` items already shown."""
+def _ask_number(ctx: SetupContext, count: int, prompt: str, default: int | None) -> int:
+    """Ask for the number of one of ``count`` items already shown; ``None`` offers none."""
+    offered = None if default is None else str(default)
     return ctx.ask_until_valid(
-        lambda: ctx.io.ask(prompt, default=str(default)),
+        lambda: ctx.io.ask(prompt, default=offered),
         lambda raw: values.list_number(raw, count),
     )
 

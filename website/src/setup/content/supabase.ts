@@ -1,7 +1,7 @@
 import { SUPABASE_URL } from '../../constants/links';
 import type { SetupPart } from '../types';
 import { SUPABASE_TOKENS_PAGE } from './addresses';
-import { STEP_COMMAND } from './commands';
+import { ASK_EVERYTHING_COMMAND, SETUP_COMMAND, STEP_COMMAND } from './commands';
 
 /**
  * Mirrors part 2 of docs/setup-your-accounts.md, "Supabase (one click)":
@@ -16,7 +16,7 @@ export const SUPABASE: SetupPart = {
   intro: [
     {
       kind: 'paragraph',
-      text: 'Supabase is the database. You let the set-up into your Supabase account with one click, and it does the rest: it creates the project (or reuses one of yours), waits until it is up, reads its address and keys, builds the database, and later switches off sign-ups.',
+      text: 'Supabase is the database. You let the set-up into your Supabase account with one click, and it does the rest: it creates the project (or reuses your project named `threadline`), waits until it is up, reads its address and keys, builds the database, and later switches off sign-ups.',
     },
   ],
   steps: [
@@ -28,7 +28,7 @@ export const SUPABASE: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'This is `Step 1 of 11: Your Supabase project`. A Supabase page opens; you click **Authorize** and type the code it shows. Then the set-up creates the project and waits for it to start, which takes one to three minutes.',
+          text: 'This is `Step 1 of 11: Your Supabase project`. A Supabase page opens; you click **Authorize** and type the code it shows. That is all you do here: the set-up uses your project named `threadline`, or creates it in the region nearest your time zone, and waits for it to start, which takes one to three minutes. It never takes a project with another name by itself: that project may hold other data.',
         },
         {
           kind: 'note',
@@ -39,13 +39,9 @@ export const SUPABASE: SetupPart = {
         {
           kind: 'steps',
           items: [
-            'The set-up asks `Create the project (or pick an existing one) for you?`. Press Enter for yes.',
-            'It asks how to let Threadline into your Supabase account. Press Enter for `1. Sign in to Supabase in your browser (easiest)`.',
             'A Supabase page opens. Sign in if asked (**Continue with GitHub**), then click **Authorize**. The page may mention the "Supabase CLI": that is expected.',
             'The page shows a short code. Type it into the set-up and press Enter.',
             'If you have several Supabase organisations, type the number of the one to use.',
-            'If you already have projects, it lists them and asks `Use one of them instead of creating a new project?`. Press Enter for yes when a project named `threadline` is running or starting (an earlier try made it), otherwise Enter means no and creates a new one.',
-            'Press Enter to accept the name `threadline`, then press Enter to accept the region it offers.',
             'Wait while Supabase starts the project. This takes one to three minutes.',
           ],
         },
@@ -57,11 +53,15 @@ export const SUPABASE: SetupPart = {
           kind: 'note',
           text: 'The project\'s database password is made up for you and not kept: Threadline never needs it. If you ever do, reset it in Supabase under **Project Settings → Database**.',
         },
+        {
+          kind: 'note',
+          text: `**Run on its own** (\`${STEP_COMMAND.supabase}\`, or the whole set-up with \`${ASK_EVERYTHING_COMMAND}\`), the step asks first: \`Create the project (or pick an existing one) for you?\` (Enter for yes), then how to let Threadline in (Enter for the browser sign-in). It lists your projects and asks \`Use one of them instead of creating a new project?\` (Enter means yes when one is named \`threadline\`), then the name and region (Enter accepts \`threadline\` and the region nearest your time zone).`,
+        },
       ],
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `The project is up.` (for a new project), then `Supabase accepted the address and both keys.`',
+          text: 'You see `Using your Supabase project \'threadline\'` or `The project is up.` (for a new project), then `Supabase accepted the address and both keys.`',
         },
       ],
       ifNot: [
@@ -70,13 +70,13 @@ export const SUPABASE: SetupPart = {
           items: [
             '`Supabase did not accept that code`: type the code the newest Supabase page shows. After three refused codes the set-up moves to pasting a token.',
             '`Signing in through the browser did not work this time`: the set-up moves to pasting a token, below.',
-            `**I'd rather paste a token.** Type **2** when it asks how to sign in, or follow on when the set-up moves here by itself. On [supabase.com/dashboard/account/tokens](${SUPABASE_TOKENS_PAGE}), click **Generate new token**, then the small link **Create legacy token** on the left. Choose the shortest expiry, click **Generate token**, and paste the token (it starts with \`sbp_\`). Nothing appears while you paste. It is never saved.`,
+            `**I'd rather paste a token.** Run \`${STEP_COMMAND.supabase}\` and type **2** when it asks how to sign in, or follow on when the set-up moves here by itself. On [supabase.com/dashboard/account/tokens](${SUPABASE_TOKENS_PAGE}), click **Generate new token**, then the small link **Create legacy token** on the left. Choose the shortest expiry, click **Generate token**, and paste the token (it starts with \`sbp_\`). Nothing appears while you paste. It is never saved.`,
             '`Supabase did not accept the access token`: copy the token again, all of it, and paste it once more. The set-up lets you try three times.',
             '`Supabase says this access token has too little access`: you made the newer, limited kind of token. Make a new one with the **Create legacy token** link and paste that one.',
             `\`your Supabase account has no organization yet\`: open [supabase.com](${SUPABASE_URL}), create an organisation (any name, free plan), then run \`${STEP_COMMAND.supabase}\`.`,
-            `If Supabase refuses to create the project, your free plan may already have as many active projects as it allows. Run \`${STEP_COMMAND.supabase}\` again and answer yes to use an existing project, or pause a project you no longer use in Supabase first.`,
-            `\`'name' is paused\`: open the project in Supabase and click **Restore project**, then run \`${STEP_COMMAND.supabase}\` again, or let it create a new project.`,
-            `\`the project 'name' is still being set up after 5 minutes\`: the project is already created, so do not create another. Run \`${STEP_COMMAND.supabase}\` again in a while and pick it from the list (Enter picks it).`,
+            `\`Supabase would not create a new project\`: your free plan already has as many active projects as it allows (two). The set-up lists yours and asks \`Use one of these projects for Threadline?\`. Answer yes and type a number only for a project that holds nothing else you need: Threadline adds its own tables to it. Otherwise answer no, pause a project you no longer use in Supabase, and run \`${SETUP_COMMAND}\` again.`,
+            `\`Your project 'threadline' is paused\`: it may hold your Threadline data, so the set-up asks \`Create a new project instead of restoring it?\` (Enter means no). Open the project in Supabase and click **Restore project**, then run \`${SETUP_COMMAND}\` again.`,
+            `\`the project 'name' is still being set up after 5 minutes\`: the project is already created, so do not create another. Run \`${SETUP_COMMAND}\` again in a while: it carries on with it.`,
             '`a project may already have been created`: the request to create it was lost on the way. Run the step again and look at the list before creating anything.',
             `\`The project does not answer yet\` (a new project that is silent after about 30 seconds): wait a minute and run \`${STEP_COMMAND.supabase}\` again.`,
             `Running \`${STEP_COMMAND.supabase}\` again when \`.env\` already holds a complete project: it says \`Your .env already points to the Supabase project <ref>.\` and asks \`Keep it?\` (Enter keeps it) before it asks you to sign in.`,
@@ -84,7 +84,7 @@ export const SUPABASE: SetupPart = {
         },
         {
           kind: 'note',
-          text: '**If you prefer** to create the project yourself, answer **n** at step 1. The set-up then opens your Supabase projects and asks for the project address, the publishable key and the secret key (under **Project Settings → API Keys**, tab **Publishable and secret API keys**), checking each one as you paste it. The later steps then ask you to sign in to Supabase once, for the database.',
+          text: `**If you prefer** to create the project yourself, run \`${STEP_COMMAND.supabase}\` and answer **n** to its first question. The set-up then opens your Supabase projects and asks for the project address, the publishable key and the secret key (under **Project Settings → API Keys**, tab **Publishable and secret API keys**), checking each one as you paste it. The later steps then ask you to sign in to Supabase once, for the database.`,
         },
       ],
     },

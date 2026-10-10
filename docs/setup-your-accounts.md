@@ -281,9 +281,22 @@ in a folder called `tracker`: use that name instead of `threadline`.
 | 9: your dashboard | [5](#5-your-dashboard) |
 | 10 and 11: the daily time, the Claude key and the first run | [6](#6-run-it-every-day-on-github-the-claude-key-and-the-first-run) |
 
+**It asks only what you must do.** In the full run you give the Supabase code
+(2a), your e-mail address and its app password (4), and click **Authorize**
+twice (Supabase, then Claude). Everything else takes the usual answer by
+itself: the Supabase project named `threadline`, your Supabase account's
+address as the dashboard login, the usual categories, your computer's time
+zone, the shared dashboard and 07:00 for the daily run. Each is said in one
+line with the command that changes it, and the end lists them all again. To
+answer every question yourself, run `uv run tracker setup --ask-everything`.
+
 To run one step again later, name it, for example
-`uv run tracker setup database`. The optional extras (LinkedIn, the Refresh now
-button and the Claude cloud route) come later, in part 8.
+`uv run tracker setup database`. A step run by name asks all its questions, as
+this guide describes under **Run on its own**. At the end of the full run, one
+question offers LinkedIn (part 8a): `Connect LinkedIn now? It works if your
+LinkedIn profile is located in the EEA or Switzerland (about 5 minutes)`.
+Press Enter to leave it for later. The other extras (the Refresh now button
+and the Claude cloud route) come later, in part 8.
 
 ---
 
@@ -298,28 +311,29 @@ and later switches off sign-ups.
 
 **What you do:**
 
-1. The set-up asks `Create the project (or pick an existing one) for you?`.
-   Press Enter for yes.
-2. It asks how to let Threadline into your Supabase account. Press Enter for
-   `1. Sign in to Supabase in your browser (easiest)`.
-3. A Supabase page opens. Sign in if asked (**Continue with GitHub**), then
+1. A Supabase page opens. Sign in if asked (**Continue with GitHub**), then
    click **Authorize**. The page may mention the "Supabase CLI": that is
    expected, Threadline signs in the same way.
-4. The page shows a short verification code. Type it into the set-up and press
+2. The page shows a short verification code. Type it into the set-up and press
    Enter.
-5. If you have several Supabase organisations, type the number of the one to
+3. If you have several Supabase organisations, type the number of the one to
    use.
-6. If you already have projects, it lists them (`1. name (running)`, or
-   `(still being set up)`) and asks `Use one of them instead of creating a new
-   project?`. Press Enter for yes when a project named `threadline` is running
-   or starting (it is most likely the one an earlier try made), otherwise Enter
-   means no and creates a new one. Type the answer you want if the default is
-   not it.
-7. Press Enter to accept the name `threadline`, then press Enter to accept the
-   region it offers (the one nearest your time zone), or type another number.
-8. Wait while Supabase starts the project. This takes one to three minutes.
+4. The set-up uses your project named `threadline` when there is one, running
+   or starting (it is most likely the one an earlier try made). Otherwise it
+   creates it, in the region nearest your time zone. It never takes a project
+   with another name by itself: that project may hold other data.
+5. Wait while Supabase starts the project. This takes one to three minutes.
    Do not press Ctrl-C meanwhile: the project is already being created, and
    stopping leaves it half set up. The set-up warns you of this.
+
+**Run on its own** (`uv run tracker setup supabase`, or the full run with
+`--ask-everything`), the step asks first: `Create the project (or pick an
+existing one) for you?` (Enter for yes), then how to let Threadline in (Enter
+for `1. Sign in to Supabase in your browser (easiest)`). It lists the projects
+you already have and asks `Use one of them instead of creating a new
+project?` (Enter means yes when one is named `threadline`), then the new
+project's name and region (Enter accepts `threadline` and the region nearest
+your time zone).
 
 Supabase now lists a key named `threadline-setup-…` under **Account → Access
 Tokens**. That is the click you just gave. You may delete it once the set-up is
@@ -338,8 +352,9 @@ Database**.
   shows. After three refused codes the set-up moves to pasting a token.
 - `Signing in through the browser did not work this time`: the set-up moves
   to pasting a token, below.
-- **I'd rather paste a token.** Type **2** at step 2, or follow on when the
-  set-up moves here by itself. On Supabase's **Access Tokens** page
+- **I'd rather paste a token.** Run the step on its own and type **2** when
+  it asks how to let Threadline in, or follow on when the set-up moves here by
+  itself. On Supabase's **Access Tokens** page
   (<https://supabase.com/dashboard/account/tokens>), click **Generate new
   token**, then the small link **Create legacy token** on the left (the newer,
   limited kind cannot read your project's secret key). Choose the shortest
@@ -353,16 +368,21 @@ Database**.
 - `your Supabase account has no organization yet`: open <https://supabase.com>,
   create an organisation (any name, free plan), then run
   `uv run tracker setup supabase`.
-- If Supabase refuses to create the project, your free plan may already have as
-  many active projects as it allows. Run `uv run tracker setup supabase` again
-  and answer yes to use an existing project, or pause a project you no longer
-  use in Supabase first.
-- `'name' is paused`: the set-up no longer skips a paused project quietly. Open
-  the project in Supabase and click **Restore project**, then run
-  `uv run tracker setup supabase` again, or let it create a new project.
+- `Supabase would not create a new project`: your free plan already has as
+  many active projects as it allows (two). The set-up lists your projects and
+  asks `Use one of these projects for Threadline?`. Answer yes and type a
+  number only for a project that holds nothing else you need: Threadline adds
+  its own tables to it. Otherwise answer no, pause a project you no longer use
+  in Supabase, and run `uv run tracker setup` again.
+- `Your project 'threadline' is paused`: it may hold your Threadline data, so
+  the set-up asks `Create a new project instead of restoring it?` (Enter means
+  no). Open the project in Supabase and click **Restore project**, then run
+  `uv run tracker setup` again. (Run on its own, the step names every paused
+  project the same way.)
 - `the project 'name' is still being set up after 5 minutes`: the project is
-  already created, so do not create another. Run `uv run tracker setup supabase`
-  again in a while and pick it from the list (Enter picks it).
+  already created, so do not create another. Run `uv run tracker setup` again
+  in a while: it carries on with it (run on its own, the step lists it and
+  Enter picks it).
 - `a project may already have been created`: the request to create it was lost
   on the way. Run the step again and look at the list before creating anything.
 - `The project does not answer yet` (a new project that is silent after about
@@ -371,7 +391,8 @@ Database**.
   complete project: it says `Your .env already points to the Supabase project
   <ref>.` and asks `Keep it?` (Enter keeps it) before it asks you to sign in.
 
-**If you prefer** to create the project yourself, answer **n** at step 1. The
+**If you prefer** to create the project yourself, run
+`uv run tracker setup supabase` and answer **n** to its first question. The
 set-up then opens your Supabase projects and asks for the project address, the
 publishable key and the secret key (under **Project Settings → API Keys**, tab
 **Publishable and secret API keys**), checking each one as you paste it. The
@@ -432,16 +453,23 @@ an hour**, and **only to the address your Supabase account was registered with
 signed up to Supabase with. (Another address needs your own e-mail sending
 service, called "custom SMTP" in Supabase. This guide does not cover it.)
 
-**What the set-up does for you:** it creates your login, records it as the only
-owner, and switches off sign-ups in Supabase with the sign-in from part 2.
+**What the set-up does for you:** it reads the address of your Supabase
+account (with the sign-in from part 2), creates your login for it, records it
+as the only owner, and switches off sign-ups in Supabase. It says which
+address it is: `Your dashboard login is you@example.com, the address of your
+Supabase account`. Note it: that is where the sign-in link goes.
 
-**What you do:** type the e-mail address you signed up to Supabase with, and
-press Enter. If you signed in to Supabase with GitHub, it is the main e-mail
-address of your GitHub account; Supabase shows it under **Account →
-Preferences**.
+**What you do:** nothing, usually. If the set-up could not read that address
+(for example when you carry on a set-up started earlier), it asks `E-mail
+address for the dashboard` once: type the address you signed up to Supabase
+with, and press Enter. If you signed in to Supabase with GitHub, it is the main
+e-mail address of your GitHub account; Supabase shows it under **Account →
+Preferences**. Run on its own (`uv run tracker setup login`), the step always
+asks, offering your Supabase account's address.
 
 **✅ Check:** you see `… can now sign in to the dashboard, and nobody else can
-read it.` and then `Sign-ups are now switched off: nobody else can create a
+read it.` A later run that finds the login done says
+`Your dashboard login: …` under `Already done`. and then `Sign-ups are now switched off: nobody else can create a
 login.` (or `Sign-ups are switched off` if they already were).
 
 **If not:** if Supabase would not change the setting (also after a Supabase server
@@ -454,14 +482,15 @@ pressing Enter.
 ### 3b. Your categories (`tracker setup categories`)
 
 Threadline puts each person you talk to in a category, such as "Startup" or
-"Investor". Here you choose those categories. This step is optional: skip it
-and you keep the job-search categories, which you can change any time on the
-dashboard's **Settings** page.
+"Investor". The full run keeps the job-search categories without asking
+(`Kept the usual job-search categories.`); change them any time on the
+dashboard's **Settings** page, or run `uv run tracker setup categories`, which
+asks the questions below.
 
 **What the set-up does for you:** it saves your categories to your database and
 tells the AI helper about them.
 
-**What you do:**
+**What you do** (when the step is run on its own, or with `--ask-everything`):
 
 1. Answer **y** to "Choose your categories now?" (or **n** to skip; it won't
    ask again, and `uv run tracker setup categories` brings it back).
@@ -478,6 +507,7 @@ tells the AI helper about them.
 5. Look at the list it shows, then press Enter to save it.
 
 **✅ Check:** you should now see `Saved … categories, 'Not known' included.`
+(or, in the full run, `Kept the usual job-search categories.`)
 Once your dashboard is ready (part 5), its **Settings** page shows the same
 categories.
 
@@ -487,18 +517,20 @@ answered **n** by mistake, run `uv run tracker setup categories` again.
 
 ### 3c. Your time zone (`tracker setup timezone`)
 
-**What the set-up does for you:** it reads the time zone your computer uses and
-offers it, such as `Your time zone [Europe/Paris]:`. If it cannot tell (a Windows
-zone name it does not know, for example), it says "I could not tell your time
-zone", offers nothing and waits for you to type it. Your time zone decides what
+**What the set-up does for you:** it reads the time zone your computer uses and,
+in the full run, takes it without asking: `Your time zone: Europe/Paris.` Only
+if it cannot tell (a Windows zone name it does not know, for example) does it
+say "I could not tell your time zone" and wait for you to type it. Run on its
+own (`uv run tracker setup timezone`), the step offers the zone, such as
+`Your time zone [Europe/Paris]:`, and asks for your name too. Your time zone decides what
 "today" is for due dates and the summary, and the daily run's time (part 6) is
 read in it. It is saved as `OWNER_TIME_ZONE` and later sent to GitHub with your
 other settings. When the zone differs from the one in the daily run's workflow
 file (`.github/workflows/threadline-run.yml`), it writes the new zone there
-too, keeping the time, shows the line it changed and offers to send it to
-your copy on GitHub, as in part 6a.
+too, keeping the time, and sends it to your copy on GitHub (run on its own,
+the step shows the line it changed and asks first, as in part 6a).
 
-**What you do:**
+**What you do** (when the step is run on its own, or with `--ask-everything`):
 
 1. Press Enter (or type `y`) to keep the zone offered, or type yours in the
    same form (`America/New_York`, `Asia/Tokyo`, `UTC`). When no zone is
@@ -508,7 +540,8 @@ your copy on GitHub, as in part 6a.
    is optional: it helps only when your e-mail address does not spell your name
    (`jd123@…`). Leave it empty and press Enter to skip it.
 
-**✅ Check:** you see `Saved OWNER_TIME_ZONE=…` with your zone.
+**✅ Check:** you see `Your time zone: …` (full run) or `Saved OWNER_TIME_ZONE=…`
+with your zone.
 
 **If not:** "that is not a time-zone name" means it was typed in another form:
 use the region and the city with a slash, such as `Europe/Rome`. To change it
@@ -528,10 +561,16 @@ mail, but not your Google Calendar.
 
 ### 4a. Choose your mailbox (`tracker setup mailbox`)
 
-The set-up asks: *Which mailbox should Threadline read? gmail, outlook, icloud,
-yahoo, fastmail or other*. Type one word and press Enter.
+The set-up asks one thing: *Your e-mail address*. Type it and press Enter. It
+tells the provider from the address (`From the address, your mailbox is
+Gmail.`): gmail.com, outlook.com, hotmail, live, msn.com, icloud.com, me.com,
+yahoo and fastmail addresses are recognised. For any other address, such as a
+company's own domain, it then asks: *Which mailbox should Threadline read?
+gmail, outlook, icloud, yahoo, fastmail or other*. Type one word and press
+Enter. (Run on its own, `uv run tracker setup mailbox` asks that question
+first, then your address.)
 
-- **outlook** (also for Hotmail and Live): go on to
+- **Outlook** (also Hotmail, Live and MSN): go on to
   [4c](#4c-outlook-mailbox-and-calendar-tracker-setup-microsoft). Good to know
   now rather than in part 6: with Outlook alone, the run on GitHub cannot
   e-mail you the morning summary, because Microsoft allows no app password for
@@ -540,8 +579,8 @@ yahoo, fastmail or other*. Type one word and press Enter.
   [Claude cloud route](#8c-the-claude-cloud-route-tracker-setup-cloud).
 - **anything else**: follow 4b below for your provider.
 
-**✅ Check:** the set-up either asks for your address (4b) or says the Microsoft
-step signs you in (4c).
+**✅ Check:** the set-up either opens your provider's app password page (4b) or
+says the Microsoft sign-in comes next (4c).
 
 **If not:** if it says "please answer gmail, outlook, …", type one of those
 words exactly.
@@ -553,13 +592,13 @@ password. Instead you make an **app password**: a separate password just for
 Threadline, which you can remove at any time. Your normal password is never
 given to Threadline.
 
-**What the set-up does for you:** it asks for your address, explains app
-passwords, opens your provider's page, and waits for you to paste the new
-password (nothing is shown while you paste). Then it **checks it live**: it
-signs in, opens your inbox read-only, counts the messages of the last 30 days
-and looks for your Sent folder. Only then does it store the password,
-encrypted, in your database, **never in `.env`**, and offer to add the address
-to your own addresses.
+**What the set-up does for you:** it explains app passwords, opens your
+provider's page, and waits for you to paste the new password (nothing is shown
+while you paste). Then it **checks it live**: it signs in, opens your inbox
+read-only, counts the messages of the last 30 days and looks for your Sent
+folder. Only then does it store the password, encrypted, in your database,
+**never in `.env`**, and add the address to your own addresses, so your own
+messages count as yours (run on its own, the step asks first).
 
 **✅ Check (for every provider):** the terminal shows
 `Connected. Your inbox has … messages from the last 30 days.`, then
@@ -582,8 +621,8 @@ which folder your mail program saves sent mail in.
 
    **If not:** finish Google's steps; app passwords appear only once it is on.
 
-2. **Make the app password.** Type `gmail` and your Gmail address in the
-   terminal. The set-up opens <https://myaccount.google.com/apppasswords>. Sign
+2. **Make the app password.** Type your Gmail address in the terminal. The
+   set-up opens <https://myaccount.google.com/apppasswords>. Sign
    in if asked, type a name such as `Threadline`, and create it. The page may
    look slightly different.
 
@@ -618,7 +657,7 @@ password**: see "Renew a mailbox app password" in
 
    **If not:** turn on two-factor authentication on your iPhone or Mac first.
 
-2. **Make the password.** Type `icloud` and your iCloud address. The set-up
+2. **Make the password.** Type your iCloud address. The set-up
    opens <https://account.apple.com>. Sign in, open **Sign-In and Security** →
    **App-Specific Passwords** → **Generate an app-specific password**, name it
    `Threadline`, and follow the steps. The page may look slightly different.
@@ -643,7 +682,7 @@ app-specific password.
 
 #### Yahoo Mail
 
-1. **Make the app password.** Type `yahoo` and your Yahoo address. The set-up
+1. **Make the app password.** Type your Yahoo address. The set-up
    opens <https://login.yahoo.com/account/security>. Under **External
    connections**, click **Create app password**, type `Threadline`, then
    **Generate password**. The page may look slightly different.
@@ -667,7 +706,7 @@ old ones yourself on the same page.
 
 IMAP needs a paid Fastmail plan above Basic.
 
-1. **Make the app password.** Type `fastmail` and your Fastmail address. The
+1. **Make the app password.** Type your Fastmail address. The
    set-up opens Fastmail's help page about app passwords. In Fastmail, open
    **Settings** → **Privacy & Security** → **Connected apps & API tokens** →
    **Manage app passwords and access** → **New app password**. Choose a name,
@@ -697,8 +736,9 @@ IMAP needs a paid Fastmail plan above Basic.
    normal password; Threadline stores it encrypted the same way, but an app
    password is safer because you can remove it on its own.
 
-2. Type `other`, then the server, the port (press Enter for 993), the name
-   you sign in with (usually your address), and paste the password.
+2. Type your address, then `other`, then the server, the port (press Enter
+   for 993), the name you sign in with (Enter keeps your address), and paste
+   the password.
 
 3. Once your mailbox is saved, the set-up asks for the **sending server**
    (SMTP), which it needs to e-mail you the morning summary from this mailbox
@@ -729,10 +769,11 @@ IMAP needs a paid Fastmail plan above Basic.
 
 ### 4c. Outlook mailbox and calendar (`tracker setup microsoft`)
 
-If you chose another mailbox in 4a, this step asks first whether to connect
-Outlook as well. Answer **no** to skip it: the set-up remembers that and won't
-ask again (it says `Skipped earlier`). You can add it later with
-`uv run tracker setup microsoft`.
+If you chose another mailbox in 4a, the full run leaves Outlook out without
+asking: `Outlook left out. To add it or its calendar: uv run tracker setup
+microsoft`. Run that command to add it later. (With `--ask-everything` the
+step asks `Connect Outlook as well?`; a **no** is remembered, and it says
+`Skipped earlier` next time.)
 
 **What the set-up does for you:** it asks Microsoft for a short one-time code,
 opens Microsoft's page, waits while you sign in, stores the resulting key
@@ -745,8 +786,8 @@ From then on the key renews itself every day.
 2. Sign in with your Outlook.com or Hotmail account.
 3. Microsoft lists the permissions: **read your mail**, **read your calendars**,
    and **keep access**. All are read-only. Click **Accept** (or **Yes**).
-4. Back in the terminal, answer **yes** when it offers to save the signed-in
-   address as one of your own.
+4. Back in the terminal, the set-up adds the signed-in address to your own
+   addresses (run on its own, the step asks first: answer **yes**).
 
 **✅ Check:** you see `Signed in as you@example.com.` with your own address.
 
@@ -792,19 +833,20 @@ shared dashboard and gives you your **personal link**. That link opens your own
 dashboard. It carries your database's public address, nothing secret. The
 set-up saves it, so every morning summary e-mail carries it too.
 
-**What you do:**
-
-1. When the set-up offers the shared dashboard, press Enter (yes).
-2. Write down the personal link it shows. It starts with
-   `https://app.threadlineapp.com`.
+**What you do:** write down the personal link it shows. It starts with
+`https://app.threadlineapp.com`. The full run takes the shared dashboard
+without asking; run on its own (`uv run tracker setup dashboard`), the step
+offers it first: press Enter (yes).
 
 **✅ Check:** on your phone, open your personal link, type your e-mail, and
 click the link in the e-mail Supabase sends. The dashboard opens (it is empty
 until the first run).
 
 **If not:** "This address cannot sign in" on the dashboard means you typed
-another address than your dashboard login: use the one you typed in part 3a,
-usually your Supabase address. "Too many links were asked for" means waiting as
+another address than your dashboard login: use the one the set-up named in
+part 3a (`Your dashboard login is …`), usually your Supabase address. The end
+of the set-up names it again, and any later `uv run tracker setup` says it
+under `Already done`. "Too many links were asked for" means waiting as
 long as it says. Supabase's own message "Email address not authorized" means
 the address is not the one of your Supabase account (see part 3a). A link that
 opens `localhost` means the sign-in link was not connected: run
@@ -844,21 +886,22 @@ other mailbox as well in part 4 (Threadline can read both), or use the
 sends through Claude's Gmail connector.
 
 The GitHub step checks this before it does anything. If no mailbox with an app
-password is connected, it says so plainly and offers to run the mailbox step
-right then (answer yes and connect Gmail, or another mailbox, as in part 4).
-If you still have none, the first run is **not** offered by default and nothing
-promises you an e-mail: the dashboard is updated every morning, but no summary
+password is connected, it says so plainly (run on its own, it also offers to
+run the mailbox step right then). The first run still starts, to fill the
+dashboard, but nothing promises you an e-mail: the dashboard is updated every morning, but no summary
 e-mail arrives until you connect a mailbox (`uv run tracker setup mailbox`, then
 `uv run tracker setup github`) or switch to the cloud route.
 
 ### 6a. The daily time (`tracker setup schedule`)
 
-**What the set-up does for you:** it asks what time the run should start, reads
-it in the time zone you gave in part 3c, writes both into the workflow file
-`.github/workflows/threadline-run.yml`, and shows you the two lines it changed.
+**What the set-up does for you:** in the full run, it keeps the time already
+set, 07:00 unless you chose another before, and says how to change it
+(`To change the time: uv run tracker setup schedule`). The time is read in the
+time zone of part 3c and written, with the zone, into the workflow file
+`.github/workflows/threadline-run.yml`, then sent to your copy on GitHub.
 GitHub follows your summer and winter time by itself.
 
-**What you do:**
+**What you do** (when the step is run on its own, or with `--ask-everything`):
 
 1. Type the time on the 24-hour clock, such as `07:07`, or press Enter to keep
    the one offered (07:00 unless you chose another before). GitHub's own timer
@@ -869,7 +912,7 @@ GitHub follows your summer and winter time by itself.
    (yes). GitHub only uses the new time once the change is uploaded.
 
 **✅ Check:** you see `Committed and pushed. GitHub will use the new time from
-now on.`
+now on.`, or `The daily run already starts at …` when nothing needed changing.
 
 **If not:** if you answered **n**, run the `git` lines the set-up printed
 (they work from any folder of the project), or run
@@ -898,15 +941,17 @@ settings go into your copy's **secrets** (hidden in every log) and
 key that lets it use your Claude subscription. The set-up makes that key for
 you with Claude Code, which the install line added.
 
-**What you do:**
-
-1. On a Mac or Linux, it asks `Make the Claude key now? A Claude page opens in
-   your browser: click Authorize`. Press Enter for yes.
-2. A Claude page opens. Sign in if asked, with the account of your Claude plan,
-   and click **Authorize**. The key goes straight to GitHub: you never see or
-   copy it. It lasts one year. The set-up waits up to 5 minutes for the click.
-3. When it asks `Save … secrets and … variables in … with the GitHub CLI now?`,
-   press Enter for yes.
+**What you do:** on a Mac or Linux, a Claude page opens by itself. Sign in if
+asked, with the account of your Claude plan, and click **Authorize**. The key
+goes straight to GitHub: you never see or copy it. It lasts one year. The
+window shows only the set-up's own lines. If no page opens, it shows the
+address to open (`If no page opened, open this address: …`). If the Claude
+page shows a code instead, paste it in the set-up's window and press Enter
+(after half a minute the set-up says so too). The
+set-up waits up to 5 minutes for the click, then saves your settings on GitHub
+(`Saving … secrets and … variables in … with the GitHub CLI.`). Run on its own
+(`uv run tracker setup github`), the step asks before each of these: press
+Enter for yes.
 
 Running this step again later, it asks `GitHub already has a Claude key. Make
 a new one now?`. Enter keeps the key GitHub has; type `y` for a new one, for
@@ -972,10 +1017,10 @@ not at the end.
 ### 6c. The first run starts by itself
 
 Right after saving, and once it has seen that GitHub holds your Claude key, the
-set-up asks `Start the first daily run on GitHub now?`. Press Enter for yes. It
-makes sure GitHub Actions and the workflow are switched on in your copy, then
-starts the run. (When no summary e-mail can be sent from GitHub, the question
-says so and Enter means no. You may still answer yes to fill the dashboard.)
+set-up makes sure GitHub Actions and the workflow are switched on in your copy,
+then starts the run, without asking. (Run on its own, the step asks `Start the
+first daily run on GitHub now?` first: press Enter for yes. When no summary
+e-mail can be sent from GitHub, the question says so and Enter means no.)
 
 The set-up then watches the run for up to two minutes, to catch a problem
 early (`Watching it for up to 2 minutes, to catch a problem early...`).
@@ -1045,11 +1090,19 @@ GitHub's timer allows; with Refresh now switched on (part 8b), exactly on time.
 
 ## 7. The final check
 
+Just before the end, the set-up asks once `Connect LinkedIn now? It works if
+your LinkedIn profile is located in the EEA or Switzerland (about 5 minutes)`.
+Type `y` to connect it now (part 8a shows every click), or press Enter to
+leave it for later. A LinkedIn problem never undoes the rest: the set-up still
+ends as below.
+
 The set-up ends by saying `Set-up done.`, then your dashboard's personal link
 and the e-mail address that can sign in to it (`Sign in there with …`: write
 both down). It then says how the first run was left (and, when it was started and an
-e-mail can be sent, when the first summary e-mail will arrive), the daily time,
-and how to add the extras. Then it checks every connection once and prints one
+e-mail can be sent, when the first summary e-mail will arrive) and the daily
+time. Then it lists what was chosen for you, one line each with the command
+that changes it (`What was chosen, and the command that changes each:`), and
+how to add the extras. Then it checks every connection once and prints one
 line for each. The technical details of the whole set-up are in
 `backend/setup.log`, if anyone helping you needs them.
 
@@ -1082,8 +1135,9 @@ something.
 ## 8. Extras (optional, later)
 
 Three extras can be added at any time. None of them is needed for the morning
-summary, though Refresh now also makes it arrive on time. To go through all
-three in order, each one skippable:
+summary, though Refresh now also makes it arrive on time. The full set-up
+already offers LinkedIn at its end; if you said yes there, it is done. To go
+through all three in order, each one skippable:
 
 ```bash
 uv run tracker setup extras
@@ -1114,15 +1168,16 @@ decide, here is what to expect:
   messages runs one to two days behind (measured on 24 September 2026), so a
   message you receive on LinkedIn today shows up in Threadline tomorrow or the
   day after. Nothing is lost; it only arrives later.
-- **The first time takes about ten minutes.** When the key expires, you run
-  one command and click **Allow** once (see
+- **The first time takes about five minutes.** The key then works for about a
+  year (LinkedIn shows "Token time to live duration: about 1 year" for this
+  product). When it expires, you run one command and click **Allow** once (see
   [When the key expires](#when-the-key-expires) below).
 
 <!-- The one-to-two-day delay is recorded beside LINKEDIN_OVERLAP_DAYS in
      backend/src/tracker/shared/constants/collection.py. -->
 
-**What the set-up does for you:** it takes you through three stages in order
-and opens the right LinkedIn page for each one. In the last stage it puts the
+**What the set-up does for you:** it takes you through two stages in order
+and opens LinkedIn's page for the first one. In the second it puts the
 address you need on your clipboard, opens LinkedIn's **Allow** page, catches
 LinkedIn's answer on your own computer, and reads from LinkedIn the day the
 key expires, so you never copy the key or type a date. It makes one small call
@@ -1130,54 +1185,52 @@ to LinkedIn with the new key and saves it only if LinkedIn accepts it. The
 application's Client Secret is kept encrypted in your Supabase database, never
 in a plain file.
 
-**What you do:** answer **yes** to "Connect LinkedIn now?" (or press Enter to
-skip LinkedIn), then follow the stages below as the pages open.
+**What you do:** at the end of the full set-up, type `y` at `Connect LinkedIn
+now? It works if your LinkedIn profile is located in the EEA or Switzerland
+(about 5 minutes)`. On its own (`uv run tracker setup linkedin`), answer
+**yes** to "Connect LinkedIn now?" (or press Enter to skip LinkedIn). Then
+follow the two stages below as the pages open.
 
-#### Stage 1 of 3: create the developer application
+#### Stage 1 of 2: create the application and request its product
 
 The set-up opens LinkedIn's "Create an app" form,
 <https://www.linkedin.com/developers/apps/new>. Sign in to LinkedIn if it asks.
 
 1. **App name:** anything, for example `Threadline`.
-2. **LinkedIn Page:** type `Member Data Portability` and choose the page
-   LinkedIn suggests for this product, **Member Data Portability (Member)
-   Default Company**. Do **not** create a new page.
-3. If the form asks for an **App logo**, upload any small square picture (a
-   screenshot works).
-4. Tick the terms and click **Create app**.
-5. Go back to the terminal and press Enter.
+2. **LinkedIn Page:** type `Member Data Portability` and pick **Member Data
+   Portability (Member-Only Default Company Page)**: the one with LinkedIn's
+   own blue "in" logo. The list shows several pages with almost the same name
+   (no logo, other industries): those are not it. Do **not** create a new page.
+3. **App logo** (LinkedIn requires one): upload Threadline's own logo. It is
+   in your copy, at `website/public/icons/icon-512.png` (the set-up shows the
+   full path, for example `/Users/you/threadline/website/public/icons/icon-512.png`).
+   On a Mac, in the file window, press ⌘ + Shift + G and paste that path.
+4. Tick the terms and click **Create app**. Your application's page opens,
+   with tabs such as **Settings**, **Auth** and **Products**.
+5. Open its **Products** tab, find **Member Data Portability API (Member)** and
+   click **Request access**. Read and accept the terms. LinkedIn usually grants
+   it at once.
+6. Go back to the terminal and press Enter at `App created and access
+   requested?`.
 
-**✅ Check:** your new application's page opens with tabs such as **Settings**,
-**Auth** and **Products**.
+**✅ Check:** the **Products** tab lists the product under the products your
+application has (the page may look slightly different).
 
 **If not:** if LinkedIn asks you to verify the page, make sure you picked the
-default company named above. If you already created the application on an
-earlier try, do not make a second one: open
-<https://www.linkedin.com/developers/apps> and click it in the list instead.
-
-#### Stage 2 of 3: add the Member Data Portability product
-
-Stay on your application's page, the one stage 1 ended on.
-
-1. Open its **Products** tab.
-2. Find **Member Data Portability API (Member)** and click **Request access**.
-3. Read and accept the terms.
-4. In the terminal, answer **yes** to "Did LinkedIn let you request access?"
-   (or press Enter).
-
-**✅ Check:** the product is listed under the products your application has
-(the page may look slightly different).
-
-**If not:** if LinkedIn says the product is not available to you, your profile
-is most likely not located in the EEA or Switzerland. Answer **no**. The set-up
-says `Skipped: …`, saves nothing, and Threadline carries on without LinkedIn.
+page with the blue logo named above. If you already created the application on
+an earlier try, do not make a second one: open
+<https://www.linkedin.com/developers/apps> and click it in the list instead. If
+LinkedIn says the product is not available to you, your profile is most likely
+not located in the EEA or Switzerland: type `n`. The set-up says
+`Skipped: …`, saves nothing, and Threadline carries on without LinkedIn.
 
 <a id="stage-3-of-3-make-the-key"></a>
+<a id="stage-3-of-3-connect-the-application-to-threadline"></a>
 
-#### Stage 3 of 3: connect the application to Threadline
+#### Stage 2 of 2: connect the application to Threadline
 
 Stay on your application's page. You do this stage once; later keys need only
-the **Allow** click in step 6.
+the **Allow** click in step 5.
 
 1. Open its **Auth** tab.
 2. Under **OAuth 2.0 settings**, click the pencil next to **Authorized
@@ -1189,20 +1242,20 @@ the **Allow** click in step 6.
    http://localhost:8746/linkedin
    ```
 
-4. Go back to the terminal and press Enter.
-5. At the top of the same **Auth** tab, under **Application credentials**:
+4. At the top of the same **Auth** tab, under **Application credentials**:
    copy the **Client ID**, paste it in the terminal and press Enter. Then click
    the eye icon next to **Primary Client Secret**, copy it, paste it in the
    terminal and press Enter. Nothing appears as you paste the secret; that is on
    purpose.
-6. LinkedIn's page opens and asks to let your application read your data.
+5. LinkedIn's page opens and asks to let your application read your data.
    Sign in if asked and click **Allow**. The tab then says
    `Threadline has LinkedIn's answer. You can close this tab and go back to the set-up.`
-7. The first time only, paste your profile address
+6. The first time only, paste your profile address
    (`https://www.linkedin.com/in/…`) in the terminal.
 
-**✅ Check:** you see `LinkedIn made a new key. It works until …` with a date,
-then `LinkedIn accepted the key.`, then `Saved LINKEDIN_CLIENT_ID in .env.`,
+**✅ Check:** you see `LinkedIn made a new key. It works until …` with a date
+about a year away, then `LinkedIn accepted the key.`, then
+`Saved LINKEDIN_CLIENT_ID in .env.`,
 `Saved the Client Secret, encrypted, in your Supabase database.` and the same
 `Saved …` line for `LINKEDIN_ACCESS_TOKEN`, `LINKEDIN_TOKEN_EXPIRES_ON` and
 `OWNER_LINKEDIN_PROFILE_URL`.
@@ -1211,8 +1264,8 @@ then `LinkedIn accepted the key.`, then `Saved LINKEDIN_CLIENT_ID in .env.`,
 `Try again?` and the set-up opens LinkedIn's page again (up to three tries).
 
 - LinkedIn's own page shows **"The redirect_uri does not match the registered
-  value"**: the address in step 3 is not exactly the one above. Fix it on the
-  **Auth** tab. After two minutes the terminal asks
+  value"**: the address in step 3 is not saved yet, or not exactly the one
+  above. Fix it on the **Auth** tab. After two minutes the terminal asks
   `No answer from LinkedIn yet. Keep waiting?`: answer **n**, then **y** to
   `Try again?`. When it asks for the Client ID and Client Secret again, press
   Enter to keep what you typed.
@@ -1220,8 +1273,9 @@ then `LinkedIn accepted the key.`, then `Saved LINKEDIN_CLIENT_ID in .env.`,
   copied whole. Do as in the line above and type the Client ID again.
 - `LinkedIn did not accept the Client ID or the Client Secret`: copy both
   again from the **Auth** tab when the set-up asks.
-- `LinkedIn has not given your application the … product yet`: check the
-  **Products** tab (stage 2). Wait a few minutes after requesting it.
+- `LinkedIn has not given your application the … product`: LinkedIn offers it
+  only to profiles located in the EEA or Switzerland. If yours is, check the
+  **Products** tab (stage 1, step 5) and wait a few minutes after requesting it.
 - `LinkedIn says the sign-in was cancelled`: you clicked **Cancel** or did not
   sign in. Try again and click **Allow**.
 - `Another program on this computer is using port 8746`: another set-up is
@@ -1247,7 +1301,7 @@ page instead?`), and on a renewal when you answer **n** to `Set that up now?`.
 4. Click **Request access token**, sign in if asked, and click **Allow**.
 5. Copy the token LinkedIn shows. It is shown only once. Paste it in the
    terminal and press Enter. Nothing appears as you paste; that is on purpose.
-6. If you typed the Client ID and Client Secret in stage 3, the set-up asks
+6. If you typed the Client ID and Client Secret in stage 2, the set-up asks
    LinkedIn when the key expires and shows `LinkedIn says this key works
    until …`. Otherwise it asks you for that day: open **Docs and tools → OAuth
    Token Tools → Token Inspector** on the same LinkedIn page, pick your
@@ -1260,7 +1314,7 @@ page instead?`), and on a renewal when you answer **n** to `Set that up now?`.
 `Saved LINKEDIN_ACCESS_TOKEN in .env.` and the same line for
 `LINKEDIN_TOKEN_EXPIRES_ON`.
 
-**If not:** if **Request access token** is greyed out, the product from stage 2
+**If not:** if **Request access token** is greyed out, the product from stage 1
 has not been approved yet: wait a few minutes and reload. "wrong or has
 expired": make a new token (steps 2 to 5) and paste that one; the set-up asks
 up to three times. "lacks the data portability permission": you ticked a
@@ -1295,20 +1349,20 @@ Seven days before the key stops working, the morning summary says so. Run:
 uv run tracker setup linkedin
 ```
 
-A key is already saved, so the set-up skips stages 1 and 2. If your
-application is connected (stage 3), LinkedIn's page opens at once: click
+A key is already saved, so the set-up skips stage 1. If your
+application is connected (stage 2), LinkedIn's page opens at once: click
 **Allow** (if you are still signed in, LinkedIn may not even ask), then press
 Enter to send the new key to GitHub. That is all.
 
 If you connected LinkedIn by hand, before this one-click way existed, the
 set-up offers it once: answer **yes** to `Set that up now?` and do steps 1 to
-6 of [stage 3](#stage-3-of-3-connect-the-application-to-threadline). Answer
+5 of [stage 2](#stage-2-of-2-connect-the-application-to-threadline). Answer
 **n** to keep [making the key by hand](#making-the-key-by-hand).
 
 **✅ Check:** you see `LinkedIn made a new key. It works until …` and
 `secret LINKEDIN_ACCESS_TOKEN saved`.
 
-**If not:** the same lines as in stage 3's **If not** apply.
+**If not:** the same lines as in stage 2's **If not** apply.
 
 ### 8b. Refresh now (`tracker setup refresh`)
 

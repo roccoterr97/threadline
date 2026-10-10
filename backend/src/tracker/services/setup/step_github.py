@@ -6,9 +6,9 @@ decides which. It first makes sure a private copy exists on GitHub (``github_cop
 the settings are saved into it. With the GitHub CLI signed in, the step saves them all after one
 yes, handing each value to ``gh`` on its standard input, then offers once to delete
 the settings emptied in ``.env`` that GitHub still holds, and last starts the
-first daily run (``first_run``). Without it, the step lists the names and opens
-the page, can copy each value to the clipboard, and says where to press 'Run
-workflow' by hand.
+first daily run (``first_run``); an express run saves and starts without asking.
+Without it, the step lists the names and opens the page, can copy each value to
+the clipboard, and says where to press 'Run workflow' by hand.
 
 The Claude subscription key from ``claude setup-token`` is made here when
 Claude Code is on this computer (``claude_key_maker``), or else asked for
@@ -83,10 +83,8 @@ class GitHubStep:
             offer_unsent_change(ctx)
         ctx.io.say("It needs your settings: secret ones as 'secrets', the rest as 'variables'.")
         token = claude_key_for_github(ctx, repository)
-        if repository is not None and ctx.io.confirm(
-            f"Save {len(secrets) + (token is not None)} secrets and {len(variables)} variables "
-            f"in {repository} with the GitHub CLI now?",
-            default=True,
+        if repository is not None and _save_wanted(
+            ctx, repository, len(secrets) + (token is not None), len(variables)
         ):
             self.first_run = await _save_with_cli(
                 ctx, repository, secrets, variables, token, by_email
@@ -97,6 +95,15 @@ class GitHubStep:
         self.first_run = FirstRun(
             started=False, page=workflow_page(repository), summary_by_email=by_email
         )
+
+
+def _save_wanted(ctx: SetupContext, repository: str, secrets: int, variables: int) -> bool:
+    """Whether to save with the GitHub CLI now: asked, except in an express run."""
+    what = f"{secrets} secrets and {variables} variables in {repository}"
+    if ctx.session.express:
+        ctx.io.say(f"Saving {what} with the GitHub CLI.")
+        return True
+    return ctx.io.confirm(f"Save {what} with the GitHub CLI now?", default=True)
 
 
 def split_settings(ctx: SetupContext) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -137,7 +144,7 @@ async def _settle_summary_route(ctx: SetupContext) -> bool:
     _say_github_cannot_send(ctx)
     if MailSource.IMAP in (saved_sources(ctx) or ()):
         return False
-    if ctx.io.confirm(
+    if not ctx.session.express and ctx.io.confirm(
         "Connect a Gmail (or other) mailbox with an app password now, so the e-mail can come?",
         default=True,
     ):

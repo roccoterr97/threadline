@@ -9,6 +9,7 @@ wizard's closing words read how it went from :class:`FirstRun`.
 The run does nothing without the Claude key on GitHub, and sends no e-mail
 without a mailbox that has an app password, so the step starts it only when
 the key is there, and offers it with a default of no when no e-mail can come.
+An express run starts it without asking, since it fills the dashboard either way.
 
 Once started, the run is followed for up to two minutes. It is found by its
 title and by when it was made, so a refresh or an on-time start that GitHub
@@ -127,7 +128,7 @@ async def start_first_run(
         if summary_by_email
         else "Start the first daily run on GitHub now? It fills the dashboard, but no e-mail comes"
     )
-    if not io.confirm(question, default=summary_by_email):
+    if not ctx.session.express and not io.confirm(question, default=summary_by_email):
         say_first_run_by_hand(ctx, repository)
         return FirstRun(started=False, page=page, summary_by_email=summary_by_email)
     earlier = _runs_before(ctx, repository)

@@ -3,7 +3,8 @@
 GitHub reads the time from two lines of ``.github/workflows/threadline-run.yml``:
 a ``cron`` line and a ``timezone`` line, which lets GitHub follow the owner's
 summer and winter time. Both the schedule step and the time-zone step change
-them, show what changed, and run ``git`` only when the owner says yes.
+them, show what changed, and run ``git`` only when the owner says yes, or
+without asking in an express run, where yes is the usual answer.
 """
 
 from __future__ import annotations
@@ -93,7 +94,9 @@ def write_schedule(text: str, schedule: Schedule) -> str:
 
 
 def show_changes(ctx: SetupContext, before: str, after: str) -> None:
-    """Show the changed lines, the way git would."""
+    """Show the changed lines, the way git would; an express run leaves them out."""
+    if ctx.session.express:
+        return
     ctx.io.say(f"The change to {WORKFLOW_PATH}:")
     diff = difflib.unified_diff(
         before.splitlines(), after.splitlines(), WORKFLOW_PATH, WORKFLOW_PATH, n=0, lineterm=""
@@ -113,7 +116,9 @@ def offer_push(ctx: SetupContext, *, committed: bool = False) -> None:
         _offer_commit(ctx)
         return
     ctx.io.say("GitHub uses the new time once this file is committed and pushed.")
-    if ctx.io.confirm("Send the new time to your copy on GitHub now?", default=True):
+    if ctx.session.express or ctx.io.confirm(
+        "Send the new time to your copy on GitHub now?", default=True
+    ):
         if committed:
             ctx.gateways.git.push()
         else:
@@ -150,7 +155,9 @@ def _offer_commit(ctx: SetupContext) -> None:
         f"nothing to push to. The GitHub step ('uv run tracker setup {StepName.GITHUB}') "
         "makes that copy."
     )
-    if ctx.io.confirm("Save this change in git now, so it goes up with your copy?", default=True):
+    if ctx.session.express or ctx.io.confirm(
+        "Save this change in git now, so it goes up with your copy?", default=True
+    ):
         ctx.gateways.git.commit(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)
         ctx.io.say("Saved in git. It goes to GitHub when your copy is made.")
         return

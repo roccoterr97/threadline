@@ -1,6 +1,7 @@
 """Step 4b: your categories, chosen from a preset and your own.
 
 It can be skipped; the skip is remembered, so a later full run does not ask again.
+An express run does not ask: the usual list stays, and it says how to choose.
 """
 
 from __future__ import annotations
@@ -27,6 +28,10 @@ class CategoriesStep:
         if skipped_earlier(ctx, self.name, "To choose them"):
             return
         io = ctx.io
+        if ctx.session.express:
+            io.say("Kept the usual job-search categories. To choose others: the dashboard's")
+            io.say(f"Settings page, or uv run tracker setup {self.name}")
+            return
         io.say("Threadline puts each person you talk to in a category, such as")
         io.say("'Startup' or 'Investor'. You pick a list that fits what you track,")
         io.say("keep the categories you use, and add your own.")

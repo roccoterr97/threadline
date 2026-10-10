@@ -35,10 +35,8 @@ PASTE_GAP_SECONDS: Final[float] = 0.2
 #: Most bytes read from the terminal at once: well over one pasted line.
 TERMINAL_READ_BYTES: Final[int] = 4096
 
-#: Puts back the window's ordinary behaviour after a program that drew in it
-#: (``claude setup-token``) ends, even one stopped before it could: the cursor
-#: shown, colours reset, and the keyboard and paste modes it may have switched
-#: on turned off. A window that never had a mode ignores the code for it.
-TERMINAL_RESTORE_SEQUENCE: Final[str] = (
-    "\x1b[0m\x1b[?25h\x1b[?2004l\x1b[?1004l\x1b[<u\x1b[>4;0m\r\n"
+#: One terminal control sequence: a colour, a cursor movement, erasing a line,
+#: a link around some text, or a two-character code.
+TERMINAL_CONTROL_PATTERN: Final[str] = (
+    r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]"
 )

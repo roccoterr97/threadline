@@ -1,11 +1,13 @@
 """Step 6: LinkedIn, optional and only for members in the EEA or Switzerland.
 
-A first connection is walked through three stages, each on the page it
-happens on: create the application, add the product, then connect the
-application to Threadline. That last stage adds Threadline's address on this
-computer to the application once; from then on the set-up opens LinkedIn's
-"Allow" page, catches LinkedIn's answer itself and saves the key with its
-expiry date, so a renewal is one command and one click.
+A first connection is walked through two stages, each with one stop: create
+the application and request its product, then connect the application to
+Threadline. That second stage adds Threadline's address on this computer to
+the application once and goes straight on to its Client ID; from then on the
+set-up opens LinkedIn's "Allow" page, catches LinkedIn's answer itself and
+saves the key with its expiry date, so a renewal is one command and one click.
+A full ``tracker setup`` offers this step in one question at its end
+(``wants_linkedin_now``); ``tracker setup linkedin`` runs it alone.
 
 Making the key by hand on LinkedIn's token page stays available whenever the
 one-click way does not work.
@@ -27,6 +29,7 @@ from tracker.services.setup.step_mailbox import store_access
 from tracker.services.summary.wording import format_day
 from tracker.shared.constants.linkedin_sign_in import CLIENT_ID_SETTING, REDIRECT_URL
 from tracker.shared.constants.setup import (
+    LINKEDIN_APP_LOGO,
     LINKEDIN_DEFAULT_COMPANY,
     LINKEDIN_DEVELOPER_APPS_PAGE,
     LINKEDIN_GUIDE_SECTION,
@@ -49,31 +52,44 @@ TOKEN: Final[str] = "LINKEDIN_ACCESS_TOKEN"
 EXPIRES_ON: Final[str] = "LINKEDIN_TOKEN_EXPIRES_ON"
 PROFILE: Final[str] = "OWNER_LINKEDIN_PROFILE_URL"
 
-_INTRODUCTION: Final[tuple[str, ...]] = (
+#: The one question a full run ends with: LinkedIn is what most owners want
+#: next, so it is offered there rather than left among the extras.
+LINKEDIN_OFFER: Final[str] = (
+    "Connect LinkedIn now? It works if your LinkedIn profile is located in the EEA or "
+    "Switzerland (about 5 minutes)"
+)
+
+_WHERE: Final[tuple[str, ...]] = (
     "LinkedIn is optional. It works only if your LinkedIn profile is located in the",
     "European Economic Area or Switzerland (the location on your profile, not your citizenship).",
+)
+
+_WHAT_TO_EXPECT: Final[tuple[str, ...]] = (
     "LinkedIn's copy of your messages runs one to two days behind, so LinkedIn",
     "messages reach Threadline a day or two late.",
-    f"The first time takes about ten minutes, in three stages; {LINKEDIN_GUIDE_SECTION}",
+    f"The first time takes about five minutes, in two stages; {LINKEDIN_GUIDE_SECTION}",
     "shows every click. After that, a new key takes one command and one click.",
 )
 
 _CREATE_APPLICATION: Final[tuple[str, ...]] = (
     "",
-    "Stage 1 of 3 - create a developer application (guide, part 8a, stage 1).",
+    "Stage 1 of 2 - create the application and request its product (guide, part 8a, stage 1).",
     "On the LinkedIn page that opens, fill in 'App name' with any name, such as Threadline.",
-    f"For 'LinkedIn Page', type 'Member Data Portability' and choose '{LINKEDIN_DEFAULT_COMPANY}'",
-    "- do not create a new page. If it asks for an 'App logo', upload any small picture.",
-    "Tick the terms and click 'Create app'.",
+    "For 'LinkedIn Page', type 'Member Data Portability' and pick",
+    f"'{LINKEDIN_DEFAULT_COMPANY}': the one with LinkedIn's",
+    "blue 'in' logo. Pages with almost the same name but no logo are not it. Do not create",
+    "a new page.",
+    "For 'App logo', upload Threadline's logo, which is in your copy:",
+    f"  {LINKEDIN_APP_LOGO}",
+    "Tick the terms and click 'Create app'. Then, on your application's page, open the",
+    f"'Products' tab and click 'Request access' next to '{LINKEDIN_PRODUCT}'.",
+    "Accept the terms.",
     f"(Made one on an earlier try? Open it from {LINKEDIN_DEVELOPER_APPS_PAGE} instead.)",
 )
 
-_ADD_PRODUCT: Final[tuple[str, ...]] = (
-    "",
-    "Stage 2 of 3 - add the product (guide, part 8a, stage 2).",
-    "Stay on your application's page. Open its 'Products' tab, find",
-    f"'{LINKEDIN_PRODUCT}' and click 'Request access'. Accept the terms.",
-    "If LinkedIn says the product is not available to you, answer no below.",
+_BOTH_DONE: Final[str] = (
+    "App created and access requested? (Answer n if LinkedIn says the product is not "
+    "available to you)"
 )
 
 _PRODUCT_UNAVAILABLE: Final[str] = (
@@ -82,7 +98,7 @@ _PRODUCT_UNAVAILABLE: Final[str] = (
 )
 
 _FIRST_CONNECTION: Final[str] = (
-    "Stage 3 of 3 - connect the application to Threadline (guide, part 8a, stage 3)."
+    "Stage 2 of 2 - connect the application to Threadline (guide, part 8a, stage 2)."
 )
 
 _ADD_ADDRESS: Final[tuple[str, ...]] = (
@@ -93,8 +109,8 @@ _ADD_ADDRESS: Final[tuple[str, ...]] = (
 )
 
 _COPY_CREDENTIALS: Final[tuple[str, ...]] = (
-    "At the top of the same tab, under 'Application credentials', copy the 'Client ID',",
-    "then the 'Primary Client Secret' (click the eye icon to show it).",
+    "Then, at the top of the same tab, under 'Application credentials', copy the",
+    "'Client ID', then the 'Primary Client Secret' (click the eye icon to show it).",
 )
 
 _ALLOW: Final[tuple[str, ...]] = (
@@ -111,7 +127,7 @@ _OFFER_ONE_CLICK: Final[tuple[str, ...]] = (
     "address on this computer. Setting that up takes about two minutes, once.",
 )
 
-_CONNECT_LATER: Final[str] = "Connect the application to Threadline (guide, part 8a, stage 3)."
+_CONNECT_LATER: Final[str] = "Connect the application to Threadline (guide, part 8a, stage 2)."
 
 _MAKE_KEY: Final[tuple[str, ...]] = (
     "",
@@ -183,28 +199,46 @@ class LinkedInStep:
         await _save_signed_in(ctx, app, grant)
 
 
+def wants_linkedin_now(ctx: SetupContext) -> bool:
+    """Ask the one question a full run ends with, and remember a yes for the step.
+
+    Returns:
+        Whether to run the LinkedIn step now.
+    """
+    ctx.io.say("")
+    if not ctx.io.confirm(LINKEDIN_OFFER, default=False):
+        _say_skipped(ctx)
+        return False
+    ctx.session.linkedin_wanted = True
+    return True
+
+
 def _prepare_first_connection(ctx: SetupContext) -> bool:
-    """Create the application and add the product, each on its own page.
+    """Create the application and request its product, in one stop.
 
     Returns:
         Whether LinkedIn is ready for the application to be connected. ``False``
         when the person skipped LinkedIn or LinkedIn does not offer them the product.
     """
     io = ctx.io
-    _say(ctx, _INTRODUCTION)
-    if not io.confirm("Connect LinkedIn now?", default=False):
-        io.say("Skipped. Run 'uv run tracker setup linkedin' whenever you want it.")
-        return False
+    if ctx.session.linkedin_wanted:
+        _say(ctx, _WHAT_TO_EXPECT)
+    else:
+        _say(ctx, (*_WHERE, *_WHAT_TO_EXPECT))
+        if not io.confirm("Connect LinkedIn now?", default=False):
+            _say_skipped(ctx)
+            return False
     _say(ctx, _CREATE_APPLICATION)
     io.open_page(LINKEDIN_NEW_APP_PAGE)
-    io.pause("Once your application's own page is open")
-    # No page is opened here: the Products tab has no address of its own, and
-    # the application's page is already open from the stage before.
-    _say(ctx, _ADD_PRODUCT)
-    if not io.confirm("Did LinkedIn let you request access?", default=True):
+    if not io.confirm(_BOTH_DONE, default=True):
         io.say(_PRODUCT_UNAVAILABLE)
         return False
     return True
+
+
+def _say_skipped(ctx: SetupContext) -> None:
+    """Say LinkedIn was left out, and the command that adds it later."""
+    ctx.io.say("Skipped. Run 'uv run tracker setup linkedin' whenever you want it.")
 
 
 async def _saved_app(ctx: SetupContext) -> LinkedInApp | None:
@@ -228,12 +262,16 @@ async def _saved_app(ctx: SetupContext) -> LinkedInApp | None:
 
 
 def _connect_application(ctx: SetupContext) -> LinkedInApp:
-    """Add Threadline's address on the Auth tab, then ask for the application's two values."""
+    """Say to add Threadline's address on the Auth tab, then ask for the application's values.
+
+    No stop comes between the two: both are on the same tab, and an address
+    not saved yet shows up on LinkedIn's own page at the sign-in, which offers
+    to try again.
+    """
     io = ctx.io
     _say(ctx, _ADD_ADDRESS)
     if io.copy(REDIRECT_URL):
         io.say("(It is already on your clipboard.)")
-    io.pause("Once the address is saved")
     return _ask_app(ctx, None)
 
 

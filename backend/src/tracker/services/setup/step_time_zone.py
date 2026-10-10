@@ -6,6 +6,9 @@ it is usually enough; when the computer cannot name its zone, nothing is offered
 and the owner types it. The name is optional: it helps only when your
 addresses do not spell it (``jd123@`` rather than ``sam.rivera@``).
 
+An express run asks neither: it takes the computer's zone (asking only when
+the computer cannot name one), leaves the name out, and says how to change both.
+
 A new zone is also written into the GitHub Actions workflow's ``timezone``
 line, so the daily run keeps starting at the owner's chosen hour, and into the
 database, where the on-time morning start reads it.
@@ -34,6 +37,9 @@ from tracker.shared.time_zones import canonical_zone_name
 OWNER_TIME_ZONE: Final[str] = "OWNER_TIME_ZONE"
 OWNER_DISPLAY_NAME: Final[str] = "OWNER_DISPLAY_NAME"
 TIME_ZONE_PROMPT: Final[str] = "Your time zone"
+
+#: The command that changes the zone and the name.
+_CHANGE_COMMAND: Final[str] = f"uv run tracker setup {StepName.TIME_ZONE}"
 TIME_ZONE_OFFER_NOTICE: Final[str] = (
     "The one this computer uses is offered; keep it unless it is wrong."
 )
@@ -58,6 +64,9 @@ class TimeZoneStep:
         ctx.io.say("run starts.")
         zone = ask_time_zone(ctx)
         _follow_in_workflow(ctx, zone)
+        if ctx.session.express:
+            ctx.io.say(f"To change it, or add the name people write you by: {_CHANGE_COMMAND}")
+            return
         _ask_display_name(ctx)
 
 
@@ -72,6 +81,8 @@ def ask_time_zone(ctx: SetupContext) -> str:
     """
     saved = saved_time_zone(ctx)
     offered = saved or ctx.gateways.local_time_zone()
+    if ctx.session.express and offered is not None:
+        return _take_offered_zone(ctx, offered, saved=saved)
     ctx.io.say(TIME_ZONE_UNKNOWN_NOTICE if offered is None else TIME_ZONE_OFFER_NOTICE)
     zone = ctx.ask_until_valid(
         lambda: ctx.io.ask(TIME_ZONE_PROMPT, default=offered), values.time_zone
@@ -79,6 +90,19 @@ def ask_time_zone(ctx: SetupContext) -> str:
     if zone != saved:
         ctx.env.set(OWNER_TIME_ZONE, zone)
         ctx.io.say(f"Saved {OWNER_TIME_ZONE}={zone} in .env.")
+    return zone
+
+
+def _take_offered_zone(ctx: SetupContext, offered: str, *, saved: str | None) -> str:
+    """Use the saved or the computer's zone without asking, and say which it is."""
+    try:
+        zone = values.time_zone(offered)
+    except ValidationFailedError:
+        ctx.io.say(TIME_ZONE_UNKNOWN_NOTICE)
+        zone = ctx.ask_until_valid(lambda: ctx.io.ask(TIME_ZONE_PROMPT), values.time_zone)
+    if zone != saved:
+        ctx.env.set(OWNER_TIME_ZONE, zone)
+    ctx.io.say(f"Your time zone: {zone}.")
     return zone
 
 

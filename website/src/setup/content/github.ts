@@ -1,6 +1,12 @@
 import type { SetupPart } from '../types';
 import { GITHUB_CLI_PAGE } from './addresses';
-import { CLAUDE_TOKEN_COMMAND, DOCTOR_COMMAND, SETUP_COMMAND, STEP_COMMAND } from './commands';
+import {
+  ASK_EVERYTHING_COMMAND,
+  CLAUDE_TOKEN_COMMAND,
+  DOCTOR_COMMAND,
+  SETUP_COMMAND,
+  STEP_COMMAND,
+} from './commands';
 
 /**
  * Mirrors part 6 of docs/setup-your-accounts.md, "Run it every day on
@@ -24,7 +30,7 @@ export const GITHUB: SetupPart = {
     },
     {
       kind: 'paragraph',
-      text: `The GitHub step checks this before it does anything. If no mailbox with an app password is connected, it says so plainly and offers to run the mailbox step right then (answer yes and connect Gmail, or another mailbox). If you still have none, the first run is **not** offered by default and nothing promises you an e-mail: the dashboard is updated every morning, but no summary e-mail arrives until you connect a mailbox (\`${STEP_COMMAND.mailbox}\`, then \`${STEP_COMMAND.github}\`) or switch to the cloud route.`,
+      text: `The GitHub step checks this before it does anything. If no mailbox with an app password is connected, it says so plainly (run on its own, it also offers to run the mailbox step right then). The first run still starts, to fill the dashboard, but nothing promises you an e-mail: the dashboard is updated every morning, but no summary e-mail arrives until you connect a mailbox (\`${STEP_COMMAND.mailbox}\`, then \`${STEP_COMMAND.github}\`) or switch to the cloud route.`,
     },
   ],
   steps: [
@@ -35,10 +41,14 @@ export const GITHUB: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: '**What the set-up does for you:** it asks what time the run should start, reads it in the time zone you gave earlier, writes both into the workflow file `.github/workflows/threadline-run.yml`, and shows you the two lines it changed. GitHub follows your summer and winter time by itself.',
+          text: `**What the set-up does for you:** it keeps the time already set, 07:00 unless you chose another before, and says how to change it (\`To change the time: ${STEP_COMMAND.schedule}\`). The time is read in the time zone you gave earlier and written, with the zone, into the workflow file \`.github/workflows/threadline-run.yml\`, then sent to your copy on GitHub. GitHub follows your summer and winter time by itself.`,
         },
       ],
       youDo: [
+        {
+          kind: 'paragraph',
+          text: `Nothing during the first set-up. When you run \`${STEP_COMMAND.schedule}\` (or the whole set-up with \`${ASK_EVERYTHING_COMMAND}\`):`,
+        },
         {
           kind: 'steps',
           items: [
@@ -50,7 +60,7 @@ export const GITHUB: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `Committed and pushed. GitHub will use the new time from now on.`',
+          text: 'You see `Committed and pushed. GitHub will use the new time from now on.`, or `The daily run already starts at …` when nothing needed changing.',
         },
       ],
       ifNot: [
@@ -87,15 +97,15 @@ export const GITHUB: SetupPart = {
           kind: 'steps',
           platforms: ['mac', 'linux'],
           items: [
-            'It asks `Make the Claude key now? A Claude page opens in your browser: click Authorize`. Press Enter for yes.',
-            'A Claude page opens. Sign in if asked, with the account of your Claude plan, and click **Authorize**. The key goes straight to GitHub: you never see or copy it. It lasts one year.',
-            'When it asks `Save … secrets and … variables in … with the GitHub CLI now?`, press Enter for yes.',
+            'A Claude page opens by itself. Sign in if asked, with the account of your Claude plan, and click **Authorize**. The key goes straight to GitHub: you never see or copy it. It lasts one year.',
+            'The window shows only the set-up\'s own lines. If no page opened, it shows the address to open. If the Claude page shows a code instead, paste it in the set-up\'s window and press Enter.',
+            'The set-up then saves your settings on GitHub without asking (`Saving … secrets and … variables in … with the GitHub CLI.`).',
           ],
         },
         {
           kind: 'paragraph',
           platforms: ['mac', 'linux'],
-          text: 'Running this step again later, it asks `GitHub already has a Claude key. Make a new one now?`. Enter keeps the key GitHub has.',
+          text: `Run on its own (\`${STEP_COMMAND.github}\`), the step asks before each of these: press Enter for yes. When GitHub already has a Claude key, it asks \`GitHub already has a Claude key. Make a new one now?\`. Enter keeps the key GitHub has.`,
         },
         {
           kind: 'paragraph',
@@ -105,7 +115,7 @@ export const GITHUB: SetupPart = {
         {
           kind: 'paragraph',
           platforms: ['windows'],
-          text: 'On Windows you make the key yourself and paste it. Then, when it asks `Save … secrets and … variables in … with the GitHub CLI now?`, press Enter for yes. To make and paste the key:',
+          text: 'On Windows you make the key yourself and paste it; the set-up then saves your settings on GitHub. To make and paste the key:',
         },
         {
           kind: 'steps',
@@ -150,19 +160,14 @@ export const GITHUB: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'Right after saving, and once it has seen that GitHub holds your Claude key, the set-up asks `Start the first daily run on GitHub now?`. It makes sure GitHub Actions and the workflow are switched on in your copy, then starts the run. (When no summary e-mail can be sent from GitHub, the question says so and Enter means no. You may still answer yes to fill the dashboard.)',
+          text: `Right after saving, and once it has seen that GitHub holds your Claude key, the set-up makes sure GitHub Actions and the workflow are switched on in your copy, then starts the run, without asking. (Run on its own, \`${STEP_COMMAND.github}\` asks \`Start the first daily run on GitHub now?\` first: press Enter for yes. When no summary e-mail can be sent from GitHub, the question says so and Enter means no.)`,
         },
         {
           kind: 'paragraph',
           text: 'The set-up then watches the run for up to two minutes, to catch a problem early (`Watching it for up to 2 minutes, to catch a problem early...`).',
         },
       ],
-      youDo: [
-        {
-          kind: 'steps',
-          items: ['Press Enter for yes when it asks `Start the first daily run on GitHub now?`.'],
-        },
-      ],
+      youDo: [{ kind: 'paragraph', text: 'Nothing. Watch for the lines below.' }],
       check: [
         {
           kind: 'paragraph',

@@ -127,6 +127,50 @@ def test_a_private_copy_made_from_the_template_is_used() -> None:
     assert result.stderr == ""
 
 
+def find_copy_when_github_answers(answer: str) -> subprocess.CompletedProcess[str]:
+    """Run the installer's copy look-up with ``gh repo view`` answering ``answer``."""
+    script = "\n".join(
+        [
+            'TEMPLATE_REPOSITORY="roccoterr97/threadline"',
+            'COPY_NAME="threadline"',
+            installer_function("stop"),
+            installer_function("lowercase"),
+            installer_function("copy_facts"),
+            installer_function("existing_copy"),
+            installer_function("check_existing_copy"),
+            f"gh() {{ echo '{answer}'; }}",
+            "copy_has_content() { return 0; }",
+            'existing_copy; echo "found $?"',
+            'check_existing_copy; echo "usable $?"',
+        ]
+    )
+    return run_shell(script)
+
+
+@needs_posix_shell
+def test_a_repository_renamed_from_threadline_is_not_taken_for_the_copy() -> None:
+    result = find_copy_when_github_answers(
+        "someone/threadline-test-0-9 true ADMIN roccoterr97/threadline"
+    )
+
+    assert result.stdout.splitlines() == ["found 1", "usable 1"]
+    assert result.stderr == ""
+
+
+@needs_posix_shell
+def test_the_copy_under_its_own_name_is_found_in_any_letter_case() -> None:
+    result = find_copy_when_github_answers("someone/Threadline true ADMIN roccoterr97/threadline")
+
+    assert result.stdout.splitlines() == ["someone/Threadline", "found 0", "usable 0"]
+
+
+def test_the_windows_installer_also_checks_the_name_github_answers_with() -> None:
+    windows = WINDOWS_INSTALLER.read_text()
+
+    assert "--json name,owner," in windows
+    assert "if ($Facts.name -ne $CopyName)" in windows
+
+
 def install_claude_code_with(
     tmp_path: Path, *, found: bool, downloads: bool = True, installs: bool = True
 ) -> subprocess.CompletedProcess[str]:

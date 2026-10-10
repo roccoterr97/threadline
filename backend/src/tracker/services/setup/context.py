@@ -32,11 +32,19 @@ class SetupSession:
         build_dashboard_here: Build the dashboard on this computer with Node.js
             instead of downloading the ready-made one; only asked for with
             ``tracker setup dashboard --build-here``.
+        express: Take the usual answer to every question that has one, and say
+            in one line what was chosen and how to change it. Set for a full
+            ``tracker setup`` run without ``--ask-everything``; a step run by
+            name, or the extras, asks every question.
+        linkedin_wanted: The owner already said yes to connecting LinkedIn,
+            at the end of a full run, so the LinkedIn step does not ask again.
     """
 
     supabase_token: SecretStr | None = None
     supabase_token_name: str | None = None
     build_dashboard_here: bool = False
+    express: bool = False
+    linkedin_wanted: bool = False
 
 
 @dataclass(frozen=True, slots=True)

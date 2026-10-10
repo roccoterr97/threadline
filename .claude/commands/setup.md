@@ -175,11 +175,12 @@ address into a window signed in to the right account.
    will come (the dashboard still updates), unless they pick the Claude cloud
    route (`uv run tracker setup extras`, guide 8c).
 
-LinkedIn (part 8a) only works for members in the EEA or Switzerland and takes
-about ten minutes of clicking the first time: it is an extra, so say it can be
-added any day later with `uv run tracker setup linkedin --browser`. After that
-first time, a new key is that same command and one click on LinkedIn's
-**Allow** button.
+LinkedIn (part 8a) only works for members whose LinkedIn profile is located in
+the EEA or Switzerland and takes about five minutes of clicking the first time.
+The wizard offers it in one question at its end (part 4); it can also be added
+any day later with `uv run tracker setup linkedin --browser`. After that first
+time, a new key is that same command and one click on LinkedIn's **Allow**
+button, about once a year.
 
 **Check:** they can sign in at <https://supabase.com>; the app password
 exists. No Netlify account is needed: the dashboard is shared (part 4 below).
@@ -199,6 +200,14 @@ called Threadline set-up has opened in your browser. It asks one question at a
 time; answer there, not here. Keys go into hidden fields. I see the questions
 it asks, not your answers. Ask me whenever something is unclear."*
 
+It asks only what they must do: the Supabase code, their e-mail address and
+its app password (or the Microsoft sign-in for Outlook). Everything else takes
+the usual answer by itself (the Supabase project `threadline`, the computer's
+time zone, the usual categories, the shared dashboard, 07:00) and is said in
+one line with the command that changes it; the end lists every choice again.
+Someone who wants to answer every question runs
+`uv run tracker setup --browser --ask-everything` instead.
+
 The first lines it prints include that page's full address. The part after
 `#` is the page's own access key, so you do see it: never open, fetch or
 answer the page yourself, and never repeat the address in the chat. If the
@@ -217,17 +226,28 @@ matching part (2a signing in to Supabase and the project, 2c database, 3a
 login, 3b categories, 3c time zone, 4 mailbox, 4c Microsoft, 5 your dashboard,
 6a daily time, 6b GitHub, 6c first run).
 
-Three moments need a word from you:
+Six moments need a word from you:
 
-- **Supabase** (the first step). The set-up page asks how to sign in: choose
-  `1. Sign in to Supabase in your browser (easiest)`. A Supabase page opens
-  (it may mention the "Supabase CLI": expected). Tell them: sign in if
-  asked, click **Authorize**, then type the short code the page shows into the
-  set-up page. Not into this chat. If they would rather paste a token, the
-  set-up offers that too: guide 2a says how it is made (the small **Create
-  legacy token** link).
-- **Your dashboard.** The set-up offers the shared dashboard at
-  `https://app.threadlineapp.com`: yes. It then shows their **personal link**,
+- **Supabase** (the first step). A Supabase page opens by itself (it may
+  mention the "Supabase CLI": expected). Tell them: sign in if asked, click
+  **Authorize**, then type the short code the page shows into the set-up page.
+  Not into this chat. The set-up then uses their project named `threadline`,
+  or creates it. If the browser sign-in does not work, the set-up asks for a
+  pasted token instead: guide 2a says how it is made (the small **Create
+  legacy token** link). If Supabase will not create a project (the free plan
+  allows two active ones), the set-up lists theirs and asks before using one:
+  help them choose one that holds nothing else, or pause one in Supabase.
+- **The dashboard login.** The set-up makes it for the address of their
+  Supabase account and says which address that is. Repeat it to them: it is
+  the address the sign-in link is e-mailed to. If it could not read that
+  address, the page asks for it once: the address they signed up to Supabase
+  with.
+- **The mailbox.** The page asks `Your e-mail address` and tells the provider
+  from it (it asks which one only for a company's own domain). Then it opens
+  the page where the app password is made, or, for Outlook, the Microsoft
+  sign-in comes next.
+- **Your dashboard.** The set-up takes the shared dashboard at
+  `https://app.threadlineapp.com` by itself. It then shows their **personal link**,
   which opens their own dashboard. It holds only their database's public
   address, nothing secret, so you may repeat it in the chat. Tell them to keep
   it: it is also in every morning e-mail, and on a new phone they open it once,
@@ -235,11 +255,13 @@ Three moments need a word from you:
   safe: their data stays in their own Supabase database, and only their e-mail
   address can sign in. If they would rather have their own copy on Netlify,
   that is optional and comes later (guide 8d).
-- **The Claude key** (the GitHub step). The set-up page asks `Make the Claude
-  key now?`: yes (when it says GitHub already has one, the default no keeps
-  it). A Claude page opens. Tell them: sign
+- **The Claude key** (the GitHub step). The set-up makes it by itself (it asks
+  first only when GitHub already has one, and the default no keeps that one).
+  A Claude page opens. Tell them: sign
   in if asked, with the account of their Claude plan, and click **Authorize**.
-  The key goes straight to GitHub; nobody sees it. If the set-up page asks
+  The key goes straight to GitHub; nobody sees it. If no Claude page opens,
+  the set-up page shows the address to open (`If no page opened, open this
+  address: …`); give them that line. If the set-up page asks
   them to paste the key instead: open the **Terminal** app (on a Mac:
   ⌘ + Space, type Terminal, Return), type `claude setup-token`, press Return,
   sign in in the browser, come back to Terminal, copy the long key that starts
@@ -251,6 +273,22 @@ Three moments need a word from you:
   then run `uv run tracker setup github --browser` again. If GitHub ends up
   with no key, the wizard does not start the first run and says what is
   missing: run `uv run tracker setup github --browser` again.
+- **LinkedIn** (the one question at the end, `Connect LinkedIn now? It works if
+  your LinkedIn profile is located in the EEA or Switzerland (about 5
+  minutes)`). Ask whether their profile is located there; if not, or they
+  would rather wait, they answer no. On yes, guide 8a: a LinkedIn page opens.
+  Tell them: app name `Threadline`; for **LinkedIn Page** type `Member Data
+  Portability` and pick **Member Data Portability (Member-Only Default Company
+  Page)**, the one with LinkedIn's blue "in" logo (look-alikes without it are
+  not it); for **App logo** upload Threadline's logo from the path the set-up
+  page shows (`…/website/public/icons/icon-512.png` in their copy); **Create
+  app**; then on the **Products** tab, **Request access** next to **Member Data
+  Portability API (Member)**, and answer yes on the set-up page. Next it shows
+  an address to add on the **Auth** tab (already on their clipboard) and asks
+  for the **Client ID** and **Client Secret** from that same tab, which they
+  type into the set-up page, not this chat. Then they click **Allow** on
+  LinkedIn. A LinkedIn problem does not undo the set-up: it says how to carry
+  on with `uv run tracker setup linkedin --browser`.
 
 The page's own last words ("All done", "Stopped before the end") are shown on
 the page only. The terminal does print the `Stopped: …` line when a step
@@ -292,8 +330,8 @@ expected until part 5 below.
    - `The first run is not started yet: GitHub still needs your Claude key.` —
      run `uv run tracker setup github --browser` again and do the Claude key
      moment of part 4.
-1. The GitHub step switches Actions on and starts the first run by itself
-   after a yes; it says `The first run has started.` with the run's page. If
+1. The GitHub step saves the settings, switches Actions on and starts the
+   first run by itself; it says `The first run has started.` with the run's page. If
    it said it could not, start it: with gh,
    `gh workflow run threadline-run.yml -f mode=daily` from `~/threadline`.
    Without gh: tell them **Actions → Threadline run → Run workflow → Run
@@ -325,7 +363,8 @@ doctor's **On-time morning start** line says `ok`.
 
 Say, in five lines at most: the dashboard's personal link and the e-mail
 address that signs in to it (the wizard's last screen names both after
-`Set-up done.`; tell them to write the link down); that they may now delete
+`Set-up done.`, then lists every choice with the command that changes it;
+tell them to write the link down); that they may now delete
 the Supabase key named `threadline-setup-…` under **Account → Access
 Tokens**; that the summary comes every day at the time they chose; that `docs/operations.md` is the page for
 later (renewing keys, pausing); that nothing is ever sent to anybody but them;

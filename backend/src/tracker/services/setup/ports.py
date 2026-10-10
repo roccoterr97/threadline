@@ -24,7 +24,11 @@ from tracker.domain.supabase import (
     SealedAccessToken,
     SupabaseProject,
 )
-from tracker.infrastructure.claude_setup_token import ClaudeCodeState, ClaudeKeyScreen
+from tracker.infrastructure.claude_setup_token import (
+    ClaudeCodeState,
+    ClaudeKeyListener,
+    ClaudeKeyScreen,
+)
 from tracker.infrastructure.github_cli import GitHubRepository, WorkflowRun
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
@@ -44,6 +48,7 @@ __all__ = [
     "AuthSettings",
     "ChoiceStore",
     "ClaudeCodeState",
+    "ClaudeKeyListener",
     "ClaudeKeyMakerPort",
     "ClaudeKeyScreen",
     "EnvStore",
@@ -170,6 +175,10 @@ class PlatformPort(Protocol):
 
     async def organizations(self, token: SecretStr) -> tuple[Organization, ...]:
         """List the organizations the token's owner belongs to; proves the token."""
+        ...
+
+    async def account_email(self, token: SecretStr) -> str | None:
+        """Read the Supabase account's own address; ``None`` when Supabase does not say."""
         ...
 
     async def projects(self, token: SecretStr) -> tuple[SupabaseProject, ...]:
@@ -473,8 +482,8 @@ class ClaudeKeyMakerPort(Protocol):
         """Tell whether the key can be made on this computer."""
         ...
 
-    def make_key(self) -> ClaudeKeyScreen:
-        """Run it until it ends; the key it printed is in what comes back, never shown."""
+    def make_key(self, listener: ClaudeKeyListener) -> ClaudeKeyScreen:
+        """Run it until it ends, its screen unseen; the key is in what comes back."""
         ...
 
 

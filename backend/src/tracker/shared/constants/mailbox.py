@@ -131,6 +131,30 @@ IMAP_PRESETS: Final[dict[ImapProvider, ImapPreset]] = {
 
 #: Name under which a mailbox's app password is stored, encrypted, in the
 #: database; the mailbox's address follows the colon, so several can coexist.
+#: Address endings that name their mailbox provider exactly.
+MAILBOX_PROVIDER_BY_DOMAIN: Final[dict[str, MailSource | ImapProvider]] = {
+    "gmail.com": ImapProvider.GMAIL,
+    "googlemail.com": ImapProvider.GMAIL,
+    "msn.com": MailSource.OUTLOOK,
+    "icloud.com": ImapProvider.ICLOUD,
+    "me.com": ImapProvider.ICLOUD,
+    "mac.com": ImapProvider.ICLOUD,
+    "ymail.com": ImapProvider.YAHOO,
+}
+
+#: Providers whose addresses are their name and a country ending: hotmail.co.uk, yahoo.fr.
+MAILBOX_PROVIDER_BY_NAME: Final[dict[str, MailSource | ImapProvider]] = {
+    "outlook": MailSource.OUTLOOK,
+    "hotmail": MailSource.OUTLOOK,
+    "live": MailSource.OUTLOOK,
+    "yahoo": ImapProvider.YAHOO,
+    "fastmail": ImapProvider.FASTMAIL,
+}
+
+#: The longest part of such an ending (``com``, ``co``, ``uk``, ``fm``); a
+#: longer one means a company's own domain, such as ``live.example.org``.
+MAILBOX_ENDING_PART_MAX_LENGTH: Final[int] = 3
+
 IMAP_PASSWORD_SECRET_PREFIX: Final[str] = "imap_app_password:"
 
 # --- Sending the summary ------------------------------------------------------

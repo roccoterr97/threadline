@@ -1,5 +1,5 @@
 import type { SetupPart } from '../types';
-import { STEP_COMMAND } from './commands';
+import { ASK_EVERYTHING_COMMAND, STEP_COMMAND } from './commands';
 
 /**
  * Mirrors part 3 of docs/setup-your-accounts.md, "Your login, categories and
@@ -27,21 +27,19 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: '**What the set-up does for you:** it creates your login, records it as the only owner, and switches off sign-ups in Supabase with your Supabase sign-in.',
+          text: '**What the set-up does for you:** it reads the address of your Supabase account (with your Supabase sign-in), creates your login for it, records it as the only owner, and switches off sign-ups in Supabase. It says which address it is: `Your dashboard login is you@example.com, the address of your Supabase account`. Note it: that is where the sign-in link goes.',
         },
       ],
       youDo: [
         {
-          kind: 'steps',
-          items: [
-            'Type the e-mail address you signed up to Supabase with, and press Enter. If you signed in to Supabase with GitHub, it is the main e-mail address of your GitHub account; Supabase shows it under **Account → Preferences**.',
-          ],
+          kind: 'paragraph',
+          text: `Nothing, usually. If the set-up could not read that address (for example when you carry on a set-up started earlier), it asks \`E-mail address for the dashboard\` once: type the address you signed up to Supabase with, and press Enter. If you signed in to Supabase with GitHub, it is the main e-mail address of your GitHub account; Supabase shows it under **Account → Preferences**. Run on its own (\`${STEP_COMMAND.login}\`), the step always asks, offering your Supabase account's address.`,
         },
       ],
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `… can now sign in to the dashboard, and nobody else can read it.` and then `Sign-ups are now switched off: nobody else can create a login.` (or `Sign-ups are switched off` if they already were).',
+          text: 'You see `… can now sign in to the dashboard, and nobody else can read it.` and then `Sign-ups are now switched off: nobody else can create a login.` (or `Sign-ups are switched off` if they already were). A later run that finds the login done says `Your dashboard login: …` under `Already done`.',
         },
       ],
       ifNot: [
@@ -59,7 +57,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'Threadline puts each person you talk to in a category, such as "Startup" or "Investor". Here you choose those categories. This step is optional: skip it and you keep the job-search categories, which you can change any time on the dashboard\'s **Settings** page.',
+          text: `Threadline puts each person you talk to in a category, such as "Startup" or "Investor". The set-up keeps the job-search categories without asking (\`Kept the usual job-search categories.\`). Change them any time on the dashboard's **Settings** page, or run \`${STEP_COMMAND.categories}\`, which asks the questions below.`,
         },
         {
           kind: 'paragraph',
@@ -67,6 +65,10 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
         },
       ],
       youDo: [
+        {
+          kind: 'paragraph',
+          text: `Nothing during the first set-up. When you run \`${STEP_COMMAND.categories}\` (or the whole set-up with \`${ASK_EVERYTHING_COMMAND}\`):`,
+        },
         {
           kind: 'steps',
           items: [
@@ -81,7 +83,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `Saved … categories, \'Not known\' included.` Once your dashboard is ready, its **Settings** page shows the same categories.',
+          text: 'You see `Kept the usual job-search categories.` during the first set-up, or `Saved … categories, \'Not known\' included.` after choosing. Once your dashboard is ready, its **Settings** page shows the same categories.',
         },
       ],
       ifNot: [
@@ -98,14 +100,18 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: '**What the set-up does for you:** it reads the time zone your computer uses and offers it, such as `Your time zone [Europe/Paris]:`. If it cannot tell (a Windows zone name it does not know, for example), it says "I could not tell your time zone", offers nothing and waits for you to type it.',
+          text: `**What the set-up does for you:** it reads the time zone your computer uses and takes it without asking: \`Your time zone: Europe/Paris.\` Only if it cannot tell (a Windows zone name it does not know, for example) does it say "I could not tell your time zone" and wait for you to type it. Run on its own (\`${STEP_COMMAND.timezone}\`), the step offers the zone, such as \`Your time zone [Europe/Paris]:\`, and asks for your name too.`,
         },
         {
           kind: 'paragraph',
-          text: 'Your time zone decides what "today" is for due dates and the summary, and the daily run\'s time (the GitHub part) is read in it. It is saved as `OWNER_TIME_ZONE` and later sent to GitHub with your other settings. When the zone differs from the one in the daily run\'s workflow file (`.github/workflows/threadline-run.yml`), it writes the new zone there too, keeping the time, shows the line it changed and offers to send it to your copy on GitHub.',
+          text: 'Your time zone decides what "today" is for due dates and the summary, and the daily run\'s time (the GitHub part) is read in it. It is saved as `OWNER_TIME_ZONE` and later sent to GitHub with your other settings. When the zone differs from the one in the daily run\'s workflow file (`.github/workflows/threadline-run.yml`), it writes the new zone there too, keeping the time, and sends it to your copy on GitHub (run on its own, the step shows the line it changed and asks first).',
         },
       ],
       youDo: [
+        {
+          kind: 'paragraph',
+          text: `Nothing during the first set-up, unless it asks you to type your zone. When you run \`${STEP_COMMAND.timezone}\` (or the whole set-up with \`${ASK_EVERYTHING_COMMAND}\`):`,
+        },
         {
           kind: 'steps',
           items: [
@@ -114,7 +120,12 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
           ],
         },
       ],
-      check: [{ kind: 'paragraph', text: 'You see `Saved OWNER_TIME_ZONE=…` with your zone.' }],
+      check: [
+        {
+          kind: 'paragraph',
+          text: 'You see `Your time zone: …` with your zone (or `Saved OWNER_TIME_ZONE=…` when the step is run on its own).',
+        },
+      ],
       ifNot: [
         {
           kind: 'paragraph',

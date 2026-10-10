@@ -10,6 +10,8 @@ The owner may publish their own copy on Netlify instead (``netlify_publish``),
 which an owner who already has a Netlify site is offered first, so running the
 step again publishes the newest dashboard to the same address. An owner who
 hosts it elsewhere types its address, which is opened once before it is saved.
+An express run takes the shared dashboard without asking, unless the owner
+already has a Netlify site.
 """
 
 from __future__ import annotations
@@ -32,6 +34,9 @@ from tracker.shared.errors import (
 )
 
 ADDRESS: Final[str] = "DASHBOARD_BASE_URL"
+
+#: The step that changes the dashboard, as typed after ``tracker setup``.
+ADDRESS_STEP: Final[str] = StepName.DASHBOARD.value
 
 #: First status that counts as "the page did not open".
 FIRST_ERROR_STATUS: Final[int] = 400
@@ -103,6 +108,10 @@ async def _chosen_address(ctx: SetupContext) -> str:
         if _shared_wanted(ctx):
             return HOSTED_DASHBOARD_URL
         return await _hosted_elsewhere(ctx)
+    if ctx.session.express:
+        io.say("You get Threadline's shared dashboard: nothing to create, and only you can")
+        io.say(f"sign in to your data. Your own copy instead: uv run tracker setup {ADDRESS_STEP}")
+        return HOSTED_DASHBOARD_URL
     if _shared_wanted(ctx):
         return HOSTED_DASHBOARD_URL
     if io.confirm(
@@ -215,9 +224,13 @@ async def point_supabase_at(ctx: SetupContext, address: str) -> None:
 
 async def _pointed_through_the_api(ctx: SetupContext, ref: str, address: str) -> bool:
     """Set the Site URL and add the Redirect URL; ``False`` when that did not happen."""
-    if ctx.session.supabase_token is None and not ctx.io.confirm(
-        "Point Supabase's sign-in at it with a Supabase access token (used now, not saved)?",
-        default=True,
+    if (
+        ctx.session.supabase_token is None
+        and not ctx.session.express
+        and not ctx.io.confirm(
+            "Point Supabase's sign-in at it with a Supabase access token (used now, not saved)?",
+            default=True,
+        )
     ):
         return False
     entry = f"{address}/**"

@@ -9,6 +9,9 @@ export const BACKEND_FOLDER_LINE = 'cd ~/threadline/backend';
 /** Carries on with the guided set-up where it stopped. */
 export const SETUP_COMMAND = 'uv run tracker setup';
 
+/** The whole set-up, asking every question instead of taking the usual answers. */
+export const ASK_EVERYTHING_COMMAND = `${SETUP_COMMAND} --ask-everything`;
+
 /** The same questions on a page in the browser instead of the terminal. */
 export const SETUP_BROWSER_COMMAND = `${SETUP_COMMAND} --browser`;
 

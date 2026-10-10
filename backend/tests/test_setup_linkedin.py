@@ -17,10 +17,11 @@ from tests.setup_world import (
 from tracker.domain.linkedin_sign_in import SignInProblem
 from tracker.services.setup import values
 from tracker.services.setup.models import StepName
-from tracker.services.setup.step_linkedin import LinkedInStep
+from tracker.services.setup.step_linkedin import LINKEDIN_OFFER, LinkedInStep
 from tracker.services.setup.wizard import SetupWizard, default_steps
 from tracker.shared.constants.linkedin_sign_in import REDIRECT_URL
 from tracker.shared.constants.setup import (
+    LINKEDIN_APP_LOGO,
     LINKEDIN_GUIDE_SECTION,
     LINKEDIN_NEW_APP_PAGE,
     LINKEDIN_TOKEN_GENERATOR_PAGE,
@@ -39,7 +40,7 @@ _TODAY = date(2026, 9, 29)
 _CONSENT_PAGE = f"https://www.linkedin.com/oauth/v2/authorization?client_id={GOOD_CLIENT_ID}"
 _TRY_LATER = "Skipped. Run 'uv run tracker setup linkedin' to try again."
 
-#: Yes to connecting, yes to the product: the answers before stage 3.
+#: Yes to connecting, yes to the app made and its product requested: the answers before stage 2.
 _FIRST_TWO_STAGES: list[str | bool] = [True, True]
 #: The two values from the Auth tab.
 _APP: list[str | bool] = [GOOD_CLIENT_ID, GOOD_CLIENT_SECRET]
@@ -152,25 +153,50 @@ async def test_first_connection_names_each_stage_in_order_with_exact_clicks() ->
 
     said = world.io.said
     order = [
-        said.index("Stage 1 of 3 - create a developer application (guide, part 8a, stage 1)."),
-        said.index("[paused] Once your application's own page is open"),
-        said.index("Stage 2 of 3 - add the product (guide, part 8a, stage 2)."),
         said.index(
-            "Stage 3 of 3 - connect the application to Threadline (guide, part 8a, stage 3)."
+            "Stage 1 of 2 - create the application and request its product "
+            "(guide, part 8a, stage 1)."
+        ),
+        said.index(
+            "Stage 2 of 2 - connect the application to Threadline (guide, part 8a, stage 2)."
         ),
         said.index(f"  {REDIRECT_URL}"),
-        said.index("[paused] Once the address is saved"),
         said.index("LinkedIn accepted the key."),
     ]
     assert order == sorted(order)
     text = world.io.text()
-    assert "'Member Data Portability (Member) Default Company'" in text
-    assert "do not create a new page" in text
+    assert "'Member Data Portability (Member-Only Default Company Page)'" in text
+    assert "blue 'in' logo. Pages with almost the same name but no logo are not it." in text
+    assert "Do not create" in text
     assert "'Member Data Portability API (Member)'" in text
     assert "'Authorized redirect URLs for your app'" in text
     assert "'Primary Client Secret'" in text
     assert "click 'Allow'" in text
     assert "(It is already on your clipboard.)" in text
+
+
+async def test_first_connection_stops_once_before_the_client_id() -> None:
+    world = _first_time(_PROFILE, False)
+
+    await LinkedInStep().run(world.context())
+
+    assert not any(line.startswith("[paused]") for line in world.io.said)
+    assert world.io.asked[:3] == [
+        "Connect LinkedIn now?",
+        "App created and access requested? (Answer n if LinkedIn says the product is not "
+        "available to you)",
+        "Client ID",
+    ]
+
+
+async def test_the_app_logo_named_is_threadlines_own_in_the_copy() -> None:
+    world = _first_time(_PROFILE, False)
+
+    await LinkedInStep().run(world.context())
+
+    assert f"  {LINKEDIN_APP_LOGO}" in world.io.said
+    assert LINKEDIN_APP_LOGO.is_file()
+    assert LINKEDIN_APP_LOGO.as_posix().endswith("website/public/icons/icon-512.png")
 
 
 async def test_without_a_clipboard_the_address_is_shown_to_copy_by_hand() -> None:
@@ -409,7 +435,7 @@ async def test_renewal_without_a_saved_application_offers_one_click_once() -> No
 
     await LinkedInStep().run(world.context())
 
-    assert "Connect the application to Threadline (guide, part 8a, stage 3)." in world.io.said
+    assert "Connect the application to Threadline (guide, part 8a, stage 2)." in world.io.said
     assert world.io.opened == [_CONSENT_PAGE]
     assert world.env.values["LINKEDIN_CLIENT_ID"] == GOOD_CLIENT_ID
     assert world.linkedin.saved_secret == GOOD_CLIENT_SECRET
@@ -584,3 +610,59 @@ async def test_a_new_key_is_kept_when_linkedin_cannot_be_reached_to_try_it() -> 
     assert world.env.values["LINKEDIN_ACCESS_TOKEN"] == GOOD_LINKEDIN
     assert world.env.values["LINKEDIN_TOKEN_EXPIRES_ON"] == "2027-09-24"
     assert any("could not be reached to try the new key" in line for line in world.io.said)
+
+
+# --- Offered at the end of a full run ------------------------------------------------
+
+
+async def test_a_full_run_ends_by_offering_linkedin_and_a_yes_connects_it() -> None:
+    world = _first_time(_PROFILE, False)
+    world.io.answers.appendleft(True)
+
+    finished = await SetupWizard(world.context(), [LinkedInStep()]).run_core()
+
+    assert finished
+    assert world.io.asked[:2] == [
+        LINKEDIN_OFFER,
+        "App created and access requested? (Answer n if LinkedIn says the product is not "
+        "available to you)",
+    ]
+    assert world.env.values["LINKEDIN_ACCESS_TOKEN"] == GOOD_LINKEDIN
+    assert "LinkedIn is optional" not in world.io.text()
+    assert "messages reach Threadline a day or two late." in world.io.said
+    assert "Extras you can add any time: the dashboard's Refresh now button, which also" in (
+        world.io.said
+    )
+
+
+async def test_a_full_run_where_linkedin_is_declined_names_it_among_the_extras() -> None:
+    world = make_world([False], configured_env())
+
+    assert await SetupWizard(world.context(), [LinkedInStep()]).run_core()
+
+    assert world.io.asked == [LINKEDIN_OFFER]
+    assert world.linkedin.sign_ins == []
+    assert "Skipped. Run 'uv run tracker setup linkedin' whenever you want it." in world.io.said
+    assert any(line.startswith("Extras you can add any time: LinkedIn") for line in world.io.said)
+
+
+async def test_a_full_run_does_not_offer_linkedin_once_it_is_connected() -> None:
+    world = make_world([], _saved_key(with_app=True))
+
+    assert await SetupWizard(world.context(), [LinkedInStep()]).run_core()
+
+    assert world.io.asked == []
+
+
+async def test_linkedin_stopping_at_the_end_of_a_full_run_still_ends_it_as_done() -> None:
+    world = _first_time()
+    world.io.answers.appendleft(True)
+    world.linkedin.key = "linkedin-unreadable"
+
+    finished = await SetupWizard(world.context(), [LinkedInStep()]).run_core()
+
+    assert finished
+    assert "Fix that, then run 'uv run tracker setup linkedin' - finished steps are kept." in (
+        world.io.said
+    )
+    assert "Set-up done." in world.io.said

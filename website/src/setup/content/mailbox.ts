@@ -25,15 +25,15 @@ const CHOOSE_MAILBOX: SetupStep = {
   intro: [
     {
       kind: 'paragraph',
-      text: 'The set-up asks: "Which mailbox should Threadline read? gmail, outlook, icloud, yahoo, fastmail or other".',
+      text: 'The set-up asks one thing: "Your e-mail address". It tells the provider from the address (`From the address, your mailbox is Gmail.`): gmail.com, outlook.com, hotmail, live, msn.com, icloud.com, me.com, yahoo and fastmail addresses are recognised. For any other address, such as a company\'s own domain, it then asks: "Which mailbox should Threadline read? gmail, outlook, icloud, yahoo, fastmail or other".',
     },
   ],
   youDo: [
     {
       kind: 'steps',
       items: [
-        'Type one word and press Enter.',
-        '**outlook** (also for Hotmail and Live): go on to the Outlook step at the end of this part.',
+        'Type your e-mail address and press Enter. If it asks which mailbox, type one word and press Enter.',
+        '**Outlook** (also Hotmail, Live and MSN): go on to the Outlook step at the end of this part.',
         '**anything else**: do the step for your provider below (Gmail, iCloud, Yahoo, Fastmail or any other mailbox), and skip the others.',
       ],
     },
@@ -45,7 +45,7 @@ const CHOOSE_MAILBOX: SetupStep = {
   check: [
     {
       kind: 'paragraph',
-      text: 'The set-up either asks for your address (Gmail and the others) or says the Microsoft step signs you in (Outlook).',
+      text: 'The set-up either opens the page where you make the app password (Gmail and the others) or says the Microsoft sign-in comes next (Outlook).',
     },
   ],
   ifNot: [
@@ -63,7 +63,7 @@ const APP_PASSWORD_INTRO = [
   },
   {
     kind: 'paragraph',
-    text: '**What the set-up does for you:** it asks for your address, explains app passwords, opens your provider\'s page, and waits for you to paste the new password (nothing is shown while you paste). Then it **checks it live**: it signs in, opens your inbox read-only, counts the messages of the last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database, **never in `.env`**, and offer to add the address to your own addresses.',
+    text: '**What the set-up does for you:** it explains app passwords, opens your provider\'s page, and waits for you to paste the new password (nothing is shown while you paste). Then it **checks it live**: it signs in, opens your inbox read-only, counts the messages of the last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database, **never in `.env`**, and add the address to your own addresses, so your own messages count as yours.',
   },
 ] as const;
 
@@ -89,7 +89,7 @@ const GMAIL: SetupStep = {
       kind: 'steps',
       items: [
         `**Turn on 2-Step Verification.** Open [myaccount.google.com/security](${GOOGLE_SECURITY_PAGE}), find **2-Step Verification** and follow Google's steps (you need your phone). The page may look slightly different. Check: the Security page shows 2-Step Verification as **on**. If not, finish Google's steps; app passwords appear only once it is on.`,
-        `**Make the app password.** Type \`gmail\` and your Gmail address in the terminal. The set-up opens [myaccount.google.com/apppasswords](${GOOGLE_APP_PASSWORDS_PAGE}). Sign in if asked, type a name such as \`Threadline\`, and create it. The page may look slightly different. Check: Google shows a 16-character password. Copy it now: Google shows it only once.`,
+        `**Make the app password.** Type your Gmail address in the terminal. The set-up opens [myaccount.google.com/apppasswords](${GOOGLE_APP_PASSWORDS_PAGE}). Sign in if asked, type a name such as \`Threadline\`, and create it. The page may look slightly different. Check: Google shows a 16-character password. Copy it now: Google shows it only once.`,
         '**Paste it in the terminal** and press Enter. Spaces do not matter.',
       ],
     },
@@ -129,7 +129,7 @@ const ICLOUD: SetupStep = {
       kind: 'steps',
       items: [
         `**Two-factor authentication** must be on for your Apple Account (it usually is). Check: at [account.apple.com](${APPLE_ACCOUNT_PAGE}), **Sign-In and Security** lists **App-Specific Passwords**. If not, turn on two-factor authentication on your iPhone or Mac first.`,
-        `**Make the password.** Type \`icloud\` and your iCloud address. The set-up opens [account.apple.com](${APPLE_ACCOUNT_PAGE}). Sign in, open **Sign-In and Security** → **App-Specific Passwords** → **Generate an app-specific password**, name it \`Threadline\`, and follow the steps. The page may look slightly different. Check: Apple shows the new password. If not, check you are signed in with the Apple Account that owns the mailbox.`,
+        `**Make the password.** Type your iCloud address. The set-up opens [account.apple.com](${APPLE_ACCOUNT_PAGE}). Sign in, open **Sign-In and Security** → **App-Specific Passwords** → **Generate an app-specific password**, name it \`Threadline\`, and follow the steps. The page may look slightly different. Check: Apple shows the new password. If not, check you are signed in with the Apple Account that owns the mailbox.`,
         '**Paste it in the terminal.**',
       ],
     },
@@ -160,7 +160,7 @@ const YAHOO: SetupStep = {
     {
       kind: 'steps',
       items: [
-        `**Make the app password.** Type \`yahoo\` and your Yahoo address. The set-up opens [login.yahoo.com/account/security](${YAHOO_SECURITY_PAGE}). Under **External connections**, click **Create app password**, type \`Threadline\`, then **Generate password**. The page may look slightly different. Check: Yahoo shows a new password.`,
+        `**Make the app password.** Type your Yahoo address. The set-up opens [login.yahoo.com/account/security](${YAHOO_SECURITY_PAGE}). Under **External connections**, click **Create app password**, type \`Threadline\`, then **Generate password**. The page may look slightly different. Check: Yahoo shows a new password.`,
         '**Paste it in the terminal**, then click **Done** on Yahoo\'s page.',
       ],
     },
@@ -190,7 +190,7 @@ const FASTMAIL: SetupStep = {
     {
       kind: 'steps',
       items: [
-        '**Make the app password.** Type `fastmail` and your Fastmail address. The set-up opens Fastmail\'s help page about app passwords. In Fastmail, open **Settings** → **Privacy & Security** → **Connected apps & API tokens** → **Manage app passwords and access** → **New app password**. Choose a name, set the access to **Mail (IMAP/POP/SMTP)**, then **Generate password**. The page may look slightly different. Check: Fastmail shows a 16-character password.',
+        '**Make the app password.** Type your Fastmail address. The set-up opens Fastmail\'s help page about app passwords. In Fastmail, open **Settings** → **Privacy & Security** → **Connected apps & API tokens** → **Manage app passwords and access** → **New app password**. Choose a name, set the access to **Mail (IMAP/POP/SMTP)**, then **Generate password**. The page may look slightly different. Check: Fastmail shows a 16-character password.',
         '**Paste it in the terminal.** Wait for the check to pass before clicking **Done** on Fastmail\'s page.',
       ],
     },
@@ -224,7 +224,7 @@ const OTHER_MAILBOX: SetupStep = {
       kind: 'steps',
       items: [
         'In your provider\'s help pages, find its **IMAP server** name (such as `imap.example.com`) and port (almost always `993`), and how to make an **app password**. If your provider offers no app passwords, it may accept your normal password; Threadline stores it encrypted the same way, but an app password is safer because you can remove it on its own.',
-        'Type `other`, then the server, the port (press Enter for 993), the name you sign in with (usually your address), and paste the password.',
+        'Type your address, then `other`, then the server, the port (press Enter for 993), the name you sign in with (Enter keeps your address), and paste the password.',
         'Once your mailbox is saved, the set-up asks for the **sending server** (SMTP), which it needs to e-mail you the morning summary from this mailbox (it skips this when you chose another way to send the summary). Your provider\'s help pages list it next to the IMAP server. It suggests a name (for `imap.example.com` it offers `smtp.example.com`): press Enter to accept it, or type the right one. Then type the port, **465** or **587** (press Enter for 465). The set-up signs in to that server once with the same app password, to catch a wrong server now rather than every morning. It sends nothing.',
       ],
     },
@@ -252,7 +252,7 @@ const OUTLOOK: SetupStep = {
   intro: [
     {
       kind: 'paragraph',
-      text: `If you chose another mailbox, this step asks first whether to connect Outlook as well. Answer **no** to skip it: the set-up remembers that and won't ask again (it says \`Skipped earlier\`). You can add it later with \`${STEP_COMMAND.microsoft}\`.`,
+      text: `If you chose another mailbox, the set-up leaves Outlook out without asking (\`Outlook left out. To add it or its calendar: ${STEP_COMMAND.microsoft}\`). Run that command to add it later.`,
     },
     {
       kind: 'paragraph',
@@ -270,7 +270,7 @@ const OUTLOOK: SetupStep = {
         'Type the code shown in the terminal on the Microsoft page that opens.',
         'Sign in with your Outlook.com or Hotmail account.',
         'Microsoft lists the permissions: **read your mail**, **read your calendars**, and **keep access**. All are read-only. Click **Accept** (or **Yes**).',
-        'Back in the terminal, answer **yes** when it offers to save the signed-in address as one of your own.',
+        'Back in the terminal, the set-up adds the signed-in address to your own addresses (run on its own, the step asks first: answer **yes**).',
       ],
     },
   ],

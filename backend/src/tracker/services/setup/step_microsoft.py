@@ -2,10 +2,13 @@
 
 Outlook is optional once another mailbox is read: the step then asks before
 signing in, because only an Outlook mailbox or the Outlook calendar needs it.
-A "no" is remembered, so a later full run does not ask again.
+A "no" is remembered, so a later full run does not ask again. An express run
+does not ask: it leaves Outlook out and says how to add it.
 """
 
 from __future__ import annotations
+
+from typing import Final
 
 from pydantic import SecretStr
 
@@ -17,6 +20,9 @@ from tracker.services.setup.ports import MicrosoftAccess
 from tracker.services.setup.skipped_steps import remember_skip, skipped_earlier
 from tracker.shared.constants.collection import MICROSOFT_CLIENT_ID, MICROSOFT_DEFAULT_TENANT
 from tracker.shared.constants.mailbox import MailSource
+
+#: How the owner types the set-up.
+_COMMAND: Final[str] = "uv run tracker setup"
 
 
 class MicrosoftStep:
@@ -51,6 +57,9 @@ def _wanted(ctx: SetupContext) -> bool:
     """Ask whether to connect Outlook too, unless the owner said no on an earlier run."""
     io = ctx.io
     if skipped_earlier(ctx, StepName.MICROSOFT, "To add it"):
+        return False
+    if ctx.session.express:
+        io.say(f"Outlook left out. To add it or its calendar: {_COMMAND} {StepName.MICROSOFT}")
         return False
     io.say("Outlook is optional: Threadline already reads another mailbox. It is")
     io.say("only needed for an Outlook or Hotmail mailbox, or for your Outlook calendar.")

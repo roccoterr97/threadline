@@ -7,6 +7,7 @@ import signal
 import threading
 from collections.abc import Coroutine, Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from types import FrameType
 from typing import Annotated, Final
 
@@ -35,6 +36,9 @@ _NOT_FINISHED: Final[str] = (
 )
 #: How the owner types the set-up.
 _COMMAND: Final[str] = "uv run tracker setup"
+
+#: The option that brings back every question of a full run.
+ASK_EVERYTHING_OPTION: Final[str] = "--ask-everything"
 
 TargetArgument = Annotated[
     str | None,
@@ -67,10 +71,33 @@ BuildHereOption = Annotated[
     ),
 ]
 
+AskEverythingOption = Annotated[
+    bool,
+    typer.Option(
+        ASK_EVERYTHING_OPTION,
+        help="Ask every question, as the set-up did before, instead of taking the usual "
+        "answer where there is one (the computer's time zone, 07:00, the shared dashboard, "
+        "the usual categories). A step run by name always asks its questions.",
+    ),
+]
+
 #: What the set-up says when it stops, so whoever helps can see the details.
 _DETAILS: Final[str] = (
     "If you ask someone for help, show them the file {name} in the project's backend folder."
 )
+
+
+@dataclass(frozen=True, slots=True)
+class RunOptions:
+    """How a run goes, beside what it runs.
+
+    Attributes:
+        build_here: Build the dashboard on this computer instead of downloading it.
+        express: Take the usual answer to every question that has one.
+    """
+
+    build_here: bool
+    express: bool
 
 
 def register(cli: typer.Typer) -> None:
@@ -86,23 +113,25 @@ def setup(
     target: TargetArgument = None,
     browser: BrowserOption = False,
     build_here: BuildHereOption = False,
+    ask_everything: AskEverythingOption = False,
 ) -> None:
     """Set up every connection, checking each one live before saving it.
 
     The core steps, run in order without an argument: supabase, encryption,
     database, login, categories, timezone, mailbox, microsoft, dashboard,
-    schedule and github, which starts the first daily run. Running it again
-    carries on where it stopped. 'extras' runs the optional steps: linkedin,
-    refresh (the dashboard's Refresh now button and the on-time daily start)
-    and cloud (the alternative to GitHub). A step's name runs that step alone.
+    schedule and github, which starts the first daily run. Only what you must
+    do is asked; every other choice takes the usual answer and is listed at
+    the end with the command that changes it. Running it again carries on
+    where it stopped. 'extras' runs the optional steps: linkedin, refresh (the
+    dashboard's Refresh now button and the on-time daily start) and cloud (the
+    alternative to GitHub). A step's name runs that step alone.
     """
     request = parse_target(target)
     _check_build_here(request, build_here=build_here)
+    options = RunOptions(build_here=build_here, express=is_express(request, ask_everything))
     with logs_kept_in(config.SETUP_LOG_FILE):
         finished = (
-            _run_with_page(request, build_here=build_here)
-            if browser
-            else _run_in_terminal(request, build_here=build_here)
+            _run_with_page(request, options) if browser else _run_in_terminal(request, options)
         )
     if not finished:
         typer.echo(_DETAILS.format(name=config.SETUP_LOG_FILE.name))
@@ -123,11 +152,25 @@ def _check_build_here(request: StepName | StepGroup, *, build_here: bool) -> Non
         raise typer.BadParameter(message)
 
 
-def _run_with_page(request: StepName | StepGroup, *, build_here: bool) -> bool:
+def is_express(request: StepName | StepGroup, ask_everything: bool) -> bool:
+    """Whether a run takes the usual answers: a full run, unless every question is wanted.
+
+    Args:
+        request: What runs: the core steps, the extras or one step.
+        ask_everything: Whether ``--ask-everything`` was given.
+
+    Returns:
+        ``True`` only for the core steps without ``--ask-everything``; a step
+        run by name, or the extras, asks every question.
+    """
+    return request is StepGroup.CORE and not ask_everything
+
+
+def _run_with_page(request: StepName | StepGroup, options: RunOptions) -> bool:
     """Run on a page in the browser, which shows the last word before it closes."""
     form = open_setup_form(typer.echo)
     try:
-        finished = _run_with(form.io, request, build_here=build_here)
+        finished = _run_with(form.io, request, options)
         form.finish(ok=finished, message=_ending(request, finished=finished))
     finally:
         form.close()
@@ -156,9 +199,9 @@ def parse_target(target: str | None) -> StepName | StepGroup:
     raise typer.BadParameter(message)
 
 
-def _run_in_terminal(request: StepName | StepGroup, *, build_here: bool) -> bool:
+def _run_in_terminal(request: StepName | StepGroup, options: RunOptions) -> bool:
     """Run here, with the final check printed after the core steps."""
-    if not run_interruptible(_run(request, build_here=build_here)):
+    if not run_interruptible(_run(request, build_here=options.build_here, express=options.express)):
         return False
     if request is not StepGroup.CORE:
         return True
@@ -168,9 +211,11 @@ def _run_in_terminal(request: StepName | StepGroup, *, build_here: bool) -> bool
     return print_doctor_report()
 
 
-def _run_with(io: SetupIO, request: StepName | StepGroup, *, build_here: bool) -> bool:
+def _run_with(io: SetupIO, request: StepName | StepGroup, options: RunOptions) -> bool:
     """Run through the page, with the final check shown there after the core steps."""
-    if not run_interruptible(_run(request, io, build_here=build_here)):
+    if not run_interruptible(
+        _run(request, io, build_here=options.build_here, express=options.express)
+    ):
         return False
     if request is not StepGroup.CORE:
         return True
@@ -233,11 +278,17 @@ def _ending(request: StepName | StepGroup, *, finished: bool) -> str:
 
 
 async def _run(
-    request: StepName | StepGroup, io: SetupIO | None = None, *, build_here: bool = False
+    request: StepName | StepGroup,
+    io: SetupIO | None = None,
+    *,
+    build_here: bool = False,
+    express: bool = False,
 ) -> bool:
     """Run the wizard on real clients."""
     async with SupabasePlatform() as platform:
-        ctx = build_context(config.ENV_FILE, platform, io, build_dashboard_here=build_here)
+        ctx = build_context(
+            config.ENV_FILE, platform, io, build_dashboard_here=build_here, express=express
+        )
         wizard = SetupWizard(ctx, default_steps())
         if request is StepGroup.CORE:
             return await wizard.run_core()

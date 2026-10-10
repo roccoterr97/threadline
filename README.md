@@ -186,21 +186,28 @@ What happens next:
    the guided set-up. The first time, it may also download Python itself, which can take a
    few minutes and needs the internet. Pasting the line again carries on where
    it stopped.
-2. The set-up runs 11 steps. You click **Authorize** on a Supabase page and
-   type the code it shows; it then creates your project, builds the database,
-   creates your dashboard login and switches sign-ups off. It asks for your
-   categories, time zone and mailbox, points the sign-in at the shared
-   dashboard and gives you your personal link to it, and asks for the daily
-   time.
+2. The set-up runs 11 steps and asks only what you must do. You click
+   **Authorize** on a Supabase page and type the code it shows; it then
+   creates your project (or reuses the one named `threadline`), builds the
+   database, makes your dashboard login for your Supabase account's address
+   and switches sign-ups off. It asks your e-mail address, tells the provider
+   from it, and opens the page where you make the app password (Outlook signs
+   in with Microsoft instead). The rest takes the usual answer, each said in
+   one line with the command that changes it: your computer's time zone, the
+   usual categories, the shared dashboard (with your personal link) and 07:00
+   for the daily run. `uv run tracker setup --ask-everything` asks every
+   question instead.
 3. Last, you click **Authorize** on a Claude page: the key that lets GitHub use
    your plan goes straight to GitHub (on some computers you paste it instead).
    It saves your settings on GitHub, starts the first run and watches it for
    two minutes (so a problem is said at once), and checks every connection.
    Its last screen names your personal link and the e-mail address that signs
-   in. The first summary e-mail arrives about ten minutes later, then every day
+   in, and lists every choice with the command that changes it. The first summary e-mail arrives about ten minutes later, then every day
    at the time you chose (this needs a mailbox with an app password; with
    Outlook alone the set-up tells you the options).
-4. LinkedIn, the dashboard's Refresh now button and the Claude cloud route are
+4. At the end, one question offers LinkedIn (`Connect LinkedIn now?`, for
+   profiles located in the EEA or Switzerland, about 5 minutes). LinkedIn,
+   the dashboard's Refresh now button and the Claude cloud route are
    optional extras: `uv run tracker setup extras`, any time. Your own copy of
    the dashboard on Netlify is optional too (`uv run tracker setup dashboard`).
    Refresh now also switches on the on-time morning start: GitHub often starts
@@ -231,14 +238,15 @@ information.
 
 | Command | What it does |
 |---------|--------------|
-| `tracker setup` | The guided set-up: every unfinished core step in order, then a final check of every connection. Running it again carries on where it stopped |
+| `tracker setup` | The guided set-up: every unfinished core step in order, then a final check of every connection. It asks only what you must do (the Supabase code, your e-mail address and its app password) and takes the usual answer for the rest, listing every choice at the end with the command that changes it. Running it again carries on where it stopped |
+| `tracker setup --ask-everything` | The same, asking every question instead of taking the usual answers |
 | `tracker setup extras` | The optional steps, in order, each skippable: `linkedin`, `refresh` and `cloud` |
-| `tracker setup <step>` | Run one step alone, even if it was done before. The core steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `dashboard`, `schedule` and `github`; the extras are `linkedin`, `refresh` and `cloud` |
+| `tracker setup <step>` | Run one step alone, even if it was done before, asking all its questions. The core steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `dashboard`, `schedule` and `github`; the extras are `linkedin`, `refresh` and `cloud` |
 | `tracker setup [<step>] --browser` | The same, asked on a page in your web browser instead of the terminal; what is said and asked is still shown in the terminal, answers never are |
 | `tracker setup supabase` | Sign in to Supabase in the browser (or paste an access token), create your project (or reuse one), and save its address and keys; the sign-in is never saved. Typing an existing project's address and keys is also offered |
-| `tracker setup mailbox` | Choose the mailbox to read; for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
+| `tracker setup mailbox` | Choose the mailbox to read (the full run asks only the address and tells the provider from it); for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
 | `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow, and into the database for the on-time morning start; commit and push the workflow only after a yes |
-| `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. With `gh` it then switches the workflow on and starts the first daily run after a yes. It only ever uses your own private copy |
+| `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. With `gh` it then switches the workflow on and starts the first daily run after a yes (the full run does both without asking). It only ever uses your own private copy |
 | `tracker setup refresh` | Switch on the dashboard's Refresh now button: deploy the `refresh-now` function and its settings through Supabase's Management API, with a GitHub key that can only start your workflow. It also switches on the on-time morning start: a timer in your database that starts the daily run at its time, every 15 minutes checking whether it is due |
 | `tracker setup cloud` | The Claude cloud route, the alternative to GitHub: what a Claude cloud routine needs |
 | `tracker doctor` | Check that every account and setting is in order |

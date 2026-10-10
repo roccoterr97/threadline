@@ -34,13 +34,57 @@ without. Only two accounts are needed now, GitHub and Supabase.
 
 ### Changed
 
+- `tracker setup` asks only what the owner must do: the Supabase code, the
+  e-mail address and its app password (or the Microsoft sign-in). It reuses
+  the Supabase project named `threadline` or creates it in the region nearest
+  the time zone, and never takes a project of another name unasked (when the
+  free plan is full it lists them and asks). It tells the mail provider from
+  the address, makes the dashboard login for the Supabase account's address
+  (read with `GET /v1/profile`), adds the mailbox to the owner's own
+  addresses, makes the Claude key, saves the GitHub settings and starts the
+  first run without asking. The time zone, categories, Outlook, the shared
+  dashboard and the daily time take the usual answer, each said in one line
+  with the command that changes it, and the end lists every choice.
+  `tracker setup --ask-everything` asks every question as before; a step run
+  by name still asks all of its own. A later run that finds the login done
+  names its address.
 - The set-up guide, the Claude-run recipe and the website wizard describe the
   shorter set-up. Netlify moved to an optional extra; old saved progress on
   the website still works.
+- A full `tracker setup` ends with one question, `Connect LinkedIn now? It
+  works if your LinkedIn profile is located in the EEA or Switzerland (about
+  5 minutes)`, and runs the LinkedIn step on a yes. A LinkedIn problem there
+  says how to carry on and the run still ends as done. `tracker setup
+  linkedin` still runs it alone.
+- The first LinkedIn connection has two stages and stops once before the
+  Client ID: create the app and request **Member Data Portability API
+  (Member)** (LinkedIn granted it at once in the live test), press Enter, then
+  add the redirect address and go straight on to the Client ID. The page to
+  pick is named as LinkedIn lists it, **Member Data Portability (Member-Only
+  Default Company Page)**, the one with LinkedIn's blue logo, and the app
+  logo LinkedIn requires is Threadline's own, at
+  `website/public/icons/icon-512.png` in the copy (the set-up shows the full
+  path). A missing product now says that LinkedIn offers it only in the EEA
+  and Switzerland. The guide and the website say the key works for about a
+  year.
+- While the set-up makes the Claude key, Claude's own screen is no longer
+  shown (drawn for a window 1,000 characters wide, it was a mess in a normal
+  terminal). Only Threadline's lines appear: the sign-in address once, as
+  `If no page opened, open this address: …`, and after 30 seconds without a
+  key, `If the Claude page shows a code, paste it here and press Enter.`
+  Typing still reaches Claude.
 
 - The official demo lives at <https://demo.threadlineapp.com>. The old
   address, `try-threadline.vercel.app`, still opens it. `frontend/vercel.json`
   now lets search engines list the new address instead of the old one.
+
+### Fixed
+
+- The installers no longer take a repository renamed from `threadline` for
+  the copy. GitHub answers for a renamed repository through its old name, so
+  the installer downloaded the old, renamed one. Both installers now accept
+  the answer only when GitHub names the repository `threadline`, and
+  otherwise make a new copy from the template.
 
 ## [0.9.0] - 2026-10-09
 

@@ -499,17 +499,24 @@ sign_in_to_github() {
 
 # Prints the copy's full name (you/threadline) when it exists on GitHub.
 existing_copy() {
-  gh repo view "$COPY_NAME" --json nameWithOwner --jq .nameWithOwner 2>/dev/null
+  copy_found="$(copy_facts)" || return 1
+  printf '%s\n' "${copy_found%% *}"
 }
 
 # Prints what matters about the repository called "threadline" on this
 # GitHub account, as: full-name is-private your-permission template-it-came-from.
-# Prints nothing when there is no such repository.
+# Prints nothing when there is no such repository. GitHub also answers for a
+# repository renamed from "threadline", through its old name: that one is
+# another repository now, so it counts as none and a new copy is made.
 copy_facts() {
-  gh repo view "$COPY_NAME" --json nameWithOwner,isPrivate,viewerPermission,templateRepository \
-    --jq '[.nameWithOwner, (.isPrivate | tostring), .viewerPermission,
+  repository_found="$(gh repo view "$COPY_NAME" \
+    --json name,owner,isPrivate,viewerPermission,templateRepository \
+    --jq '[.owner.login + "/" + .name, (.isPrivate | tostring), .viewerPermission,
       ((.templateRepository // {}) | ((.owner.login // "") + "/" + (.name // "")))] | join(" ")' \
-    2>/dev/null
+    2>/dev/null)" || return 1
+  repository_full_name="${repository_found%% *}"
+  [ "$(lowercase "${repository_full_name#*/}")" = "$(lowercase "$COPY_NAME")" ] || return 1
+  printf '%s\n' "$repository_found"
 }
 
 lowercase() {

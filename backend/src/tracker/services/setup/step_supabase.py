@@ -50,7 +50,9 @@ class SupabaseStep:
         if replacing and _keep_saved_project(ctx):
             return
         io.say("You need a free Supabase account; the set-up creates the project in it.")
-        if io.confirm("Create the project (or pick an existing one) for you?", default=True):
+        if ctx.session.express or io.confirm(
+            "Create the project (or pick an existing one) for you?", default=True
+        ):
             url, publishable, secret = await _from_the_account(ctx)
         else:
             url, publishable, secret = await _typed_by_hand(ctx)

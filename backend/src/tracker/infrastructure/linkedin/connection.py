@@ -167,8 +167,9 @@ def _code_from(answer: CallbackAnswer) -> str:
         raise LinkedInSignInError(message, SignInProblem.CANCELLED)
     if error in SCOPE_ERRORS:
         message = (
-            f"LinkedIn has not given your application the '{LINKEDIN_PRODUCT}' product "
-            "yet. Check its Products tab"
+            f"LinkedIn has not given your application the '{LINKEDIN_PRODUCT}' product. "
+            "LinkedIn offers it only to profiles located in the EEA or Switzerland; if "
+            "yours is, check that the application's Products tab lists it"
         )
         raise LinkedInSignInError(message, SignInProblem.PRODUCT_MISSING)
     said = " ".join((answer.error_description or error or "no reason given").split())

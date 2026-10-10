@@ -51,14 +51,20 @@ CLAUDE_KEY_SCREEN_ROWS: Final[int] = 50
 #: After that ``claude setup-token`` is stopped and the key is pasted instead.
 CLAUDE_KEY_WAIT_SECONDS: Final[float] = 300.0
 
+#: Seconds without a key before the owner is told they can paste a sign-in
+#: code, which the Claude page shows when it cannot hand the sign-in back itself.
+CLAUDE_KEY_CODE_HINT_SECONDS: Final[float] = 30.0
+
+#: Most characters of Claude's screen kept while looking for its sign-in
+#: address: far more than the address, so it is never cut, and the screen,
+#: redrawn many times a second, is never kept whole.
+CLAUDE_SIGN_IN_ADDRESS_WINDOW: Final[int] = 8192
+
 #: Seconds between two looks at the screen and the keyboard while waiting.
 CLAUDE_KEY_POLL_SECONDS: Final[float] = 0.1
 
 #: Seconds ``claude setup-token`` is given to end after its screen closed.
 CLAUDE_KEY_EXIT_SECONDS: Final[float] = 5.0
-
-#: What the person sees where ``claude setup-token`` printed the key.
-CLAUDE_KEY_HIDDEN: Final[str] = "[key hidden: Threadline sends it to GitHub]"
 
 #: The title of the one line the workflow writes when Claude stopped with an
 #: error. ``.github/workflows/threadline-run.yml`` repeats it; a test keeps both equal.

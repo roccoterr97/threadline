@@ -10,7 +10,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
-from tracker.infrastructure.claude_setup_token import PtyClaudeKeyMaker, write_to_terminal
+from tracker.infrastructure.claude_setup_token import PtyClaudeKeyMaker
 from tracker.infrastructure.database import connect
 from tracker.infrastructure.env_file import EnvFile
 from tracker.infrastructure.github_api import GitHubApi
@@ -56,6 +56,7 @@ def build_context(
     io: SetupIO | None = None,
     *,
     build_dashboard_here: bool = False,
+    express: bool = False,
 ) -> SetupContext:
     """Put the real terminal, ``.env`` file and clients together.
 
@@ -64,6 +65,7 @@ def build_context(
         platform: An open Supabase platform client.
         io: The conversation; the terminal when omitted.
         build_dashboard_here: Build the dashboard here instead of downloading it.
+        express: Take the usual answer to every question that has one.
 
     Returns:
         The context every step works with.
@@ -103,16 +105,16 @@ def build_context(
         io=io or TerminalIO(),
         env=EnvFile(env_path),
         gateways=gateways,
-        session=SetupSession(build_dashboard_here=build_dashboard_here),
+        session=SetupSession(build_dashboard_here=build_dashboard_here, express=express),
     )
 
 
 def claude_key_maker(*, in_terminal: bool) -> PtyClaudeKeyMaker:
     """Build what runs ``claude setup-token`` for the set-up.
 
-    In a terminal, Claude's screen is shown there (the key blanked) and typing
-    reaches it. On the set-up's page there is no screen to show it on: the
-    browser sign-in alone finishes it.
+    Claude's own screen is never shown. In a terminal, typing reaches it, so a
+    sign-in code can be pasted; on the set-up's page the browser sign-in
+    alone finishes it.
 
     Args:
         in_terminal: Whether the set-up talks to the person in this terminal.
@@ -120,10 +122,8 @@ def claude_key_maker(*, in_terminal: bool) -> PtyClaudeKeyMaker:
     Returns:
         The key maker.
     """
-    if not in_terminal:
-        return PtyClaudeKeyMaker(screen=None, keyboard=None)
-    keyboard = sys.stdin.fileno() if sys.stdin.isatty() else None
-    return PtyClaudeKeyMaker(screen=write_to_terminal, keyboard=keyboard)
+    keyboard = sys.stdin.fileno() if in_terminal and sys.stdin.isatty() else None
+    return PtyClaudeKeyMaker(keyboard=keyboard)
 
 
 def choice_saver(url: str, key: SecretStr, clock: Clock) -> ChoiceSaver:

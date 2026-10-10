@@ -9,7 +9,7 @@ import {
 import { DOCTOR_COMMAND, STEP_COMMAND } from './commands';
 
 /**
- * Mirrors part 8a of docs/setup-your-accounts.md, "LinkedIn": the three
+ * Mirrors part 8a of docs/setup-your-accounts.md, "LinkedIn": the two
  * stages that connect a LinkedIn developer application to Threadline, making
  * the key by hand as the fallback, sending the key to GitHub, and the
  * one-command renewal (also "Renew the LinkedIn key" in docs/operations.md).
@@ -17,7 +17,7 @@ import { DOCTOR_COMMAND, STEP_COMMAND } from './commands';
 
 const CREATE_APPLICATION: SetupStep = {
   id: 'linkedin-create-application',
-  title: 'Stage 1 of 3: create the developer application',
+  title: 'Stage 1 of 2: create the application and request its product',
   optional: true,
   intro: [
     {
@@ -30,70 +30,40 @@ const CREATE_APPLICATION: SetupStep = {
       kind: 'steps',
       items: [
         '**App name:** anything, for example `Threadline`.',
-        '**LinkedIn Page:** type `Member Data Portability` and choose the page LinkedIn suggests for this product, **Member Data Portability (Member) Default Company**. Do **not** create a new page.',
-        'If the form asks for an **App logo**, upload any small square picture (a screenshot works).',
-        'Tick the terms and click **Create app**.',
-        'Go back to the terminal and press Enter.',
+        '**LinkedIn Page:** type `Member Data Portability` and pick **Member Data Portability (Member-Only Default Company Page)**: the one with LinkedIn\'s own blue "in" logo. The list shows several pages with almost the same name (no logo, other industries): those are not it. Do **not** create a new page.',
+        '**App logo** (LinkedIn requires one): upload Threadline\'s own logo. It is in your copy, at `website/public/icons/icon-512.png` (the set-up shows the full path). On a Mac, in the file window, press ⌘ + Shift + G and paste that path.',
+        'Tick the terms and click **Create app**. Your application\'s page opens, with tabs such as **Settings**, **Auth** and **Products**.',
+        'Open its **Products** tab, find **Member Data Portability API (Member)** and click **Request access**. Read and accept the terms. LinkedIn usually grants it at once.',
+        'Go back to the terminal and press Enter at `App created and access requested?`.',
       ],
     },
   ],
   check: [
     {
       kind: 'paragraph',
-      text: 'Your new application\'s page opens with tabs such as **Settings**, **Auth** and **Products**.',
+      text: 'The **Products** tab lists the product under the products your application has (the page may look slightly different).',
     },
   ],
   ifNot: [
     {
       kind: 'paragraph',
-      text: `If LinkedIn asks you to verify the page, make sure you picked the default company named above. If you already created the application on an earlier try, do not make a second one: open [linkedin.com/developers/apps](${LINKEDIN_APPS_PAGE}) and click it in the list instead.`,
+      text: `If LinkedIn asks you to verify the page, make sure you picked the page with the blue logo named above. If you already created the application on an earlier try, do not make a second one: open [linkedin.com/developers/apps](${LINKEDIN_APPS_PAGE}) and click it in the list instead.`,
     },
-  ],
-};
-
-const ADD_PRODUCT: SetupStep = {
-  id: 'linkedin-add-product',
-  title: 'Stage 2 of 3: add the Member Data Portability product',
-  optional: true,
-  intro: [
     {
       kind: 'paragraph',
-      text: 'Stay on your application\'s page, the one stage 1 ended on.',
-    },
-  ],
-  youDo: [
-    {
-      kind: 'steps',
-      items: [
-        'Open its **Products** tab.',
-        'Find **Member Data Portability API (Member)** and click **Request access**.',
-        'Read and accept the terms.',
-        'In the terminal, answer **yes** to "Did LinkedIn let you request access?" (or press Enter).',
-      ],
-    },
-  ],
-  check: [
-    {
-      kind: 'paragraph',
-      text: 'The product is listed under the products your application has (the page may look slightly different).',
-    },
-  ],
-  ifNot: [
-    {
-      kind: 'paragraph',
-      text: 'If LinkedIn says the product is not available to you, your profile is most likely not located in the EEA or Switzerland. Answer **no**. The set-up says `Skipped: …`, saves nothing, and Threadline carries on without LinkedIn.',
+      text: 'If LinkedIn says the product is not available to you, your profile is most likely not located in the EEA or Switzerland: type `n`. The set-up says `Skipped: …`, saves nothing, and Threadline carries on without LinkedIn.',
     },
   ],
 };
 
 const CONNECT_APPLICATION: SetupStep = {
   id: 'linkedin-connect-application',
-  title: 'Stage 3 of 3: connect the application to Threadline',
+  title: 'Stage 2 of 2: connect the application to Threadline',
   optional: true,
   intro: [
     {
       kind: 'paragraph',
-      text: 'Stay on your application\'s page. You do this stage once; later keys need only the **Allow** click in step 6.',
+      text: 'Stay on your application\'s page. You do this stage once; later keys need only the **Allow** click in step 5.',
     },
   ],
   youDo: [
@@ -103,7 +73,6 @@ const CONNECT_APPLICATION: SetupStep = {
         'Open its **Auth** tab.',
         'Under **OAuth 2.0 settings**, click the pencil next to **Authorized redirect URLs for your app**, then **+ Add redirect URL**.',
         'Paste the address below, exactly as it is, and click **Update**. The set-up has already put it on your clipboard.',
-        'Go back to the terminal and press Enter.',
         'At the top of the same **Auth** tab, under **Application credentials**: copy the **Client ID**, paste it in the terminal and press Enter. Then click the eye icon next to **Primary Client Secret**, copy it, paste it in the terminal and press Enter. Nothing appears as you paste the secret; that is on purpose.',
         'LinkedIn\'s page opens and asks to let your application read your data. Sign in if asked and click **Allow**. The tab then says `Threadline has LinkedIn\'s answer. You can close this tab and go back to the set-up.`',
         'The first time only, paste your profile address (`https://www.linkedin.com/in/…`) in the terminal.',
@@ -118,7 +87,7 @@ const CONNECT_APPLICATION: SetupStep = {
   check: [
     {
       kind: 'paragraph',
-      text: 'You see `LinkedIn made a new key. It works until …` with a date, then `LinkedIn accepted the key.`, then `Saved LINKEDIN_CLIENT_ID in .env.`, `Saved the Client Secret, encrypted, in your Supabase database.` and the same `Saved …` line for `LINKEDIN_ACCESS_TOKEN`, `LINKEDIN_TOKEN_EXPIRES_ON` and `OWNER_LINKEDIN_PROFILE_URL`.',
+      text: 'You see `LinkedIn made a new key. It works until …` with a date about a year away, then `LinkedIn accepted the key.`, then `Saved LINKEDIN_CLIENT_ID in .env.`, `Saved the Client Secret, encrypted, in your Supabase database.` and the same `Saved …` line for `LINKEDIN_ACCESS_TOKEN`, `LINKEDIN_TOKEN_EXPIRES_ON` and `OWNER_LINKEDIN_PROFILE_URL`.',
     },
   ],
   ifNot: [
@@ -129,10 +98,10 @@ const CONNECT_APPLICATION: SetupStep = {
     {
       kind: 'bullets',
       items: [
-        'LinkedIn\'s own page shows **"The redirect_uri does not match the registered value"**: the address in step 3 is not exactly the one above. Fix it on the **Auth** tab. After two minutes the terminal asks `No answer from LinkedIn yet. Keep waiting?`: answer **n**, then **y** to `Try again?`. When it asks for the Client ID and Client Secret again, press Enter to keep what you typed.',
+        'LinkedIn\'s own page shows **"The redirect_uri does not match the registered value"**: the address in step 3 is not saved yet, or not exactly the one above. Fix it on the **Auth** tab. After two minutes the terminal asks `No answer from LinkedIn yet. Keep waiting?`: answer **n**, then **y** to `Try again?`. When it asks for the Client ID and Client Secret again, press Enter to keep what you typed.',
         'LinkedIn\'s own page shows **"invalid client_id"**: the Client ID was not copied whole. Do as in the line above and type the Client ID again.',
         '`LinkedIn did not accept the Client ID or the Client Secret`: copy both again from the **Auth** tab when the set-up asks.',
-        '`LinkedIn has not given your application the … product yet`: check the **Products** tab (stage 2). Wait a few minutes after requesting it.',
+        '`LinkedIn has not given your application the … product`: LinkedIn offers it only to profiles located in the EEA or Switzerland. If yours is, check the **Products** tab (stage 1, step 5) and wait a few minutes after requesting it.',
         '`LinkedIn says the sign-in was cancelled`: you clicked **Cancel** or did not sign in. Try again and click **Allow**.',
         '`Another program on this computer is using port 8746`: another set-up is probably still open in a different terminal window. Close it and try again.',
       ],
@@ -163,7 +132,7 @@ const BY_HAND: SetupStep = {
         'Tick the permission (scope) whose name starts with **`r_dma_portability`**. LinkedIn\'s own pages name it slightly differently in different places.',
         'Click **Request access token**, sign in if asked, and click **Allow**.',
         'Copy the token LinkedIn shows. It is shown only once. Paste it in the terminal and press Enter. Nothing appears as you paste; that is on purpose.',
-        'If you typed the Client ID and Client Secret in stage 3, the set-up asks LinkedIn when the key expires and shows `LinkedIn says this key works until …`. Otherwise it asks you for that day: open **Docs and tools → OAuth Token Tools → Token Inspector** on the same LinkedIn page, pick your application, paste the token, click **Inspect** and type the expiry date it shows. `2027-09-24`, `24 Sep 2027`, `24 September 2027` and `Sep 24, 2027` all work. A date with only numbers and slashes, such as `03/04/2027`, is refused, because it could mean two different days.',
+        'If you typed the Client ID and Client Secret in stage 2, the set-up asks LinkedIn when the key expires and shows `LinkedIn says this key works until …`. Otherwise it asks you for that day: open **Docs and tools → OAuth Token Tools → Token Inspector** on the same LinkedIn page, pick your application, paste the token, click **Inspect** and type the expiry date it shows. `2027-09-24`, `24 Sep 2027`, `24 September 2027` and `Sep 24, 2027` all work. A date with only numbers and slashes, such as `03/04/2027`, is refused, because it could mean two different days.',
       ],
     },
   ],
@@ -177,7 +146,7 @@ const BY_HAND: SetupStep = {
     {
       kind: 'bullets',
       items: [
-        'If **Request access token** is greyed out, the product from stage 2 has not been approved yet: wait a few minutes and reload.',
+        'If **Request access token** is greyed out, the product from stage 1 has not been approved yet: wait a few minutes and reload.',
         '"wrong or has expired": make a new token (steps 2 to 5) and paste that one; the set-up asks up to three times.',
         '"lacks the data portability permission": you ticked a different permission in step 3.',
         '"that date has already passed": type the day the key **expires**, not the day it was made.',
@@ -226,11 +195,11 @@ const RENEW: SetupStep = {
   intro: [
     {
       kind: 'paragraph',
-      text: 'The key that lets Threadline read your LinkedIn messages works until a date LinkedIn sets; the set-up saved that date when you made the key. Seven days before it, every morning summary carries a "LinkedIn key" line with the exact date. Renewing it takes about a minute.',
+      text: 'The key that lets Threadline read your LinkedIn messages works until a date LinkedIn sets, about a year after you made it; the set-up saved that date when you made the key. Seven days before it, every morning summary carries a "LinkedIn key" line with the exact date. Renewing it takes about a minute.',
     },
     {
       kind: 'paragraph',
-      text: 'A key is already saved, so the set-up skips stages 1 and 2. If your application is connected (stage 3), LinkedIn\'s page opens at once. You copy nothing and type no date.',
+      text: 'A key is already saved, so the set-up skips stage 1. If your application is connected (stage 2), LinkedIn\'s page opens at once. You copy nothing and type no date.',
     },
   ],
   youDo: [
@@ -248,7 +217,7 @@ const RENEW: SetupStep = {
     },
     {
       kind: 'paragraph',
-      text: 'If you connected LinkedIn by hand, before this one-click way existed, the set-up offers it once: answer **yes** to `Set that up now?` and do steps 1 to 6 of stage 3 (add one address on your LinkedIn application\'s **Auth** tab and copy two values). Answer **n** to keep making the key by hand.',
+      text: 'If you connected LinkedIn by hand, before this one-click way existed, the set-up offers it once: answer **yes** to `Set that up now?` and do steps 1 to 5 of stage 2 (add one address on your LinkedIn application\'s **Auth** tab and copy two values). Answer **n** to keep making the key by hand.',
     },
     {
       kind: 'paragraph',
@@ -264,7 +233,7 @@ const RENEW: SetupStep = {
   ifNot: [
     {
       kind: 'paragraph',
-      text: 'The same lines as in stage 3\'s **if not** apply.',
+      text: 'The same lines as in stage 2\'s **if not** apply.',
     },
   ],
 };
@@ -285,16 +254,16 @@ export const LINKEDIN: SetupPart = {
         '**It is optional.** Everything else works without LinkedIn.',
         '**It depends on where your LinkedIn profile is located.** LinkedIn offers this only to members whose profile is located in the European Economic Area or Switzerland. It is the location on your profile that counts, not your citizenship. If you live elsewhere, skip LinkedIn.',
         '**LinkedIn messages appear a day or two late.** LinkedIn\'s copy of your messages runs one to two days behind (measured on 24 September 2026), so a message you receive on LinkedIn today shows up in Threadline tomorrow or the day after. Nothing is lost; it only arrives later.',
-        '**The first time takes about ten minutes.** When the key expires, you run one command and click **Allow** once.',
+        '**The first time takes about five minutes.** The key then works for about a year (LinkedIn shows "Token time to live duration: about 1 year" for this product). When it expires, you run one command and click **Allow** once.',
       ],
     },
     {
       kind: 'paragraph',
-      text: '**What the set-up does for you:** it takes you through three stages in order and opens the right LinkedIn page for each one. In the last stage it puts the address you need on your clipboard, opens LinkedIn\'s **Allow** page, catches LinkedIn\'s answer on your own computer, and reads from LinkedIn the day the key expires, so you never copy the key or type a date. It makes one small call to LinkedIn with the new key and saves it only if LinkedIn accepts it. The application\'s Client Secret is kept encrypted in your Supabase database, never in a plain file.',
+      text: '**What the set-up does for you:** it takes you through two stages in order and opens LinkedIn\'s page for the first one. In the second it puts the address you need on your clipboard, opens LinkedIn\'s **Allow** page, catches LinkedIn\'s answer on your own computer, and reads from LinkedIn the day the key expires, so you never copy the key or type a date. It makes one small call to LinkedIn with the new key and saves it only if LinkedIn accepts it. The application\'s Client Secret is kept encrypted in your Supabase database, never in a plain file.',
     },
     {
       kind: 'paragraph',
-      text: '**What you do:** answer **yes** to "Connect LinkedIn now?" (or press Enter to skip LinkedIn), then follow the stages below as the pages open.',
+      text: '**What you do:** at the end of the full set-up, type `y` at `Connect LinkedIn now? It works if your LinkedIn profile is located in the EEA or Switzerland (about 5 minutes)`. On its own, answer **yes** to "Connect LinkedIn now?" (or press Enter to skip LinkedIn). Then follow the two stages below as the pages open.',
     },
     {
       kind: 'command',
@@ -302,5 +271,5 @@ export const LINKEDIN: SetupPart = {
       what: 'Runs the LinkedIn step on its own, any time after the core set-up.',
     },
   ],
-  steps: [CREATE_APPLICATION, ADD_PRODUCT, CONNECT_APPLICATION, BY_HAND, SEND_TO_GITHUB, RENEW],
+  steps: [CREATE_APPLICATION, CONNECT_APPLICATION, BY_HAND, SEND_TO_GITHUB, RENEW],
 };

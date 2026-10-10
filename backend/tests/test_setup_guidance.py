@@ -147,7 +147,7 @@ def test_build_here_reaches_the_run_of_the_dashboard_step(
 
     setup_command.setup("dashboard", build_here=True)
 
-    assert asked == [{"step": StepName.DASHBOARD, "build_here": True}]
+    assert asked == [{"step": StepName.DASHBOARD, "build_here": True, "express": False}]
 
 
 # --- An optional step said no to is not asked again ---------------------------------------
