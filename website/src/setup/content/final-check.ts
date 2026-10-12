@@ -18,11 +18,7 @@ export const FINAL_CHECK: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'Just before the end, the set-up asks once `Connect LinkedIn now? It works if your LinkedIn profile is located in the EEA or Switzerland (about 5 minutes)`. Type `y` to connect it now (the LinkedIn part shows every click), or press Enter to leave it for later. A LinkedIn problem never undoes the rest.',
-        },
-        {
-          kind: 'paragraph',
-          text: 'The set-up ends by saying `Set-up done.`, then your dashboard\'s personal link and the e-mail address that can sign in to it (`Sign in there with …`). It then says how the first run was left (and, when it was started and an e-mail can be sent, when the first summary e-mail will arrive) and the daily time. Then it lists what was chosen for you, one line each with the command that changes it (`What was chosen, and the command that changes each:`), and how to add the extras. Then it checks every connection once and prints one line for each. The technical details of the whole set-up are in `backend/setup.log`, if anyone helping you needs them.',
+          text: 'The set-up ends by saying `Set-up done.`, then your dashboard\'s personal link and the e-mail address that can sign in to it (`Sign in there with …`). It then says how the first run was left (and, when it was started and an e-mail can be sent, when the first summary e-mail will arrive) and the daily time. Then it lists what was chosen for you, one line each with the command that changes it (`What was chosen, and the command that changes each:`), the line `LinkedIn can be added later: uv run tracker setup linkedin (about 5 minutes).` (unless LinkedIn is already connected), and how to add the other extras. Then it checks every connection once and prints one line for each. The technical details of the whole set-up are in `backend/setup.log`, if anyone helping you needs them.',
         },
       ],
       youDo: [

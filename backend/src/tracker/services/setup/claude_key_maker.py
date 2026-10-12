@@ -49,6 +49,9 @@ _WAIT_MINUTES: Final[int] = round(CLAUDE_KEY_WAIT_SECONDS / 60)
 
 #: The offer to make the key, and the same offer when GitHub already holds one.
 _OFFER: Final[str] = "Make the Claude key now? A Claude page opens in your browser: click Authorize"
+#: Asks for a new key even when GitHub has one: a step run by name asks every question.
+_NEW_KEY_COMMAND: Final[str] = "uv run tracker setup github"
+
 _OFFER_AGAIN: Final[str] = (
     "GitHub already has a Claude key. Make a new one now? A Claude page opens in your "
     "browser: click Authorize"
@@ -110,6 +113,7 @@ def claude_key_for_github(ctx: SetupContext, repository: str | None) -> SecretSt
         return made if made is not None else ask_claude_key(ctx)
     if has_key:
         ctx.io.say(f"No new key: GitHub keeps the {CLAUDE_TOKEN_SECRET} it already has.")
+        ctx.io.say(f"To make a new one: {_NEW_KEY_COMMAND}")
         return None
     return ask_claude_key(ctx)
 
@@ -147,11 +151,13 @@ def _make_claude_key(ctx: SetupContext) -> SecretStr | None:
 def _wants_new_key(ctx: SetupContext, *, has_key: bool) -> bool:
     """Ask whether to make the key now; "no" is the default when GitHub has one already.
 
-    An express run makes the first key without asking: GitHub needs it, and
-    the only other way is pasting it by hand.
+    An express run takes both usual answers without asking: it makes the first
+    key, because GitHub needs it and the only other way is pasting it by hand,
+    and it keeps a key GitHub already has, which ``tracker setup github``
+    replaces when it stops working.
     """
     if has_key:
-        return ctx.io.confirm(_OFFER_AGAIN, default=False)
+        return not ctx.session.express and ctx.io.confirm(_OFFER_AGAIN, default=False)
     return ctx.session.express or ctx.io.confirm(_OFFER, default=True)
 
 

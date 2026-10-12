@@ -94,6 +94,21 @@ async def test_a_first_express_run_asks_only_the_code_the_address_and_the_app_pa
 
 
 @pytest.mark.asyncio
+async def test_with_a_watched_clipboard_the_app_password_is_not_even_pasted() -> None:
+    # The Supabase code and the e-mail address; the copied app password is picked up.
+    world = make_world([GOOD_CODE, GMAIL_ADDRESS])
+    world.io.watching = True
+    world.io.person_copies.append("wxyz wxyz wxyz wxyz")
+    world.claude.state_now = ClaudeCodeState.READY
+    world.claude.screen = MADE_SCREEN
+
+    finished = await SetupWizard(express(world), core_steps()).run_core()
+
+    assert finished, world.io.text()
+    assert world.mailbox.saved == {GMAIL_ADDRESS: GOOD_APP_PASSWORD}
+
+
+@pytest.mark.asyncio
 async def test_an_express_run_says_each_choice_it_made_and_how_to_change_it() -> None:
     world = make_world([GOOD_CODE, GMAIL_ADDRESS, GOOD_APP_PASSWORD])
     world.claude.state_now = ClaudeCodeState.READY

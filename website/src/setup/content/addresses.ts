@@ -6,7 +6,6 @@
 
 export const SUPABASE_TOKENS_PAGE = 'https://supabase.com/dashboard/account/tokens';
 
-export const GOOGLE_SECURITY_PAGE = 'https://myaccount.google.com/security';
 export const GOOGLE_APP_PASSWORDS_PAGE = 'https://myaccount.google.com/apppasswords';
 export const APPLE_ACCOUNT_PAGE = 'https://account.apple.com';
 export const YAHOO_SECURITY_PAGE = 'https://login.yahoo.com/account/security';

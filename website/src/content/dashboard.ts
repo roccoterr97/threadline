@@ -55,7 +55,7 @@ export const onYourPhone = {
 
 export const notSetUp = {
   heading: 'Not set up yet?',
-  body: 'The set-up takes about 20 minutes with GitHub and Supabase ready, about 30 without. Or look at the demo first: it is the dashboard filled with made-up people.',
+  body: 'The set-up takes about 25 minutes with nothing ready, about 15 with GitHub and Supabase ready; LinkedIn later, about 5 minutes. Or look at the demo first: it is the dashboard filled with made-up people.',
   setup: 'Set it up',
   demo: 'Try the demo',
 } as const;

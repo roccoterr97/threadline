@@ -58,6 +58,14 @@ class ImapPreset:
             upgraded with STARTTLS.
         app_password_page: Where an app password is made, or the provider's help
             page about it when there is no direct link; empty when unknown.
+        two_step_page: Where two-step sign-in is switched on, for a provider
+            that offers app passwords only after it and whose page says so;
+            empty otherwise.
+        account_parameter: The query parameter that opens the provider's pages
+            on the right account when several are signed in; empty when none.
+        copied_password_pattern: A regular expression matching a 16-letter app
+            password as copied from the provider's page, so the set-up can pick
+            it up from the clipboard; empty when its shape is not known.
     """
 
     label: str
@@ -67,6 +75,9 @@ class ImapPreset:
     smtp_host: str
     smtp_port: int
     app_password_page: str
+    two_step_page: str = ""
+    account_parameter: str = ""
+    copied_password_pattern: str = ""
 
 
 #: The port every provider below uses: IMAP over TLS from the first byte.
@@ -88,6 +99,11 @@ IMAP_PRESETS: Final[dict[ImapProvider, ImapPreset]] = {
         smtp_host="smtp.gmail.com",
         smtp_port=SMTP_TLS_PORT,
         app_password_page="https://myaccount.google.com/apppasswords",
+        two_step_page="https://myaccount.google.com/signinoptions/two-step-verification",
+        # Not documented by Google, which ignores a value it does not know.
+        account_parameter="authuser",
+        # Four groups of four small letters, with or without the spaces shown.
+        copied_password_pattern=r"[a-z]{4}(?:\s?[a-z]{4}){3}",
     ),
     ImapProvider.ICLOUD: ImapPreset(
         label="iCloud Mail",
@@ -97,6 +113,8 @@ IMAP_PRESETS: Final[dict[ImapProvider, ImapPreset]] = {
         smtp_host="smtp.mail.me.com",
         smtp_port=SMTP_STARTTLS_PORT,
         app_password_page="https://account.apple.com",
+        # Apple shows four groups of four small letters joined by hyphens.
+        copied_password_pattern=r"[a-z]{4}(?:-[a-z]{4}){3}",
     ),
     ImapProvider.YAHOO: ImapPreset(
         label="Yahoo Mail",
@@ -129,8 +147,15 @@ IMAP_PRESETS: Final[dict[ImapProvider, ImapPreset]] = {
     ),
 }
 
-#: Name under which a mailbox's app password is stored, encrypted, in the
-#: database; the mailbox's address follows the colon, so several can coexist.
+#: The name an app password is given on the provider's page.
+APP_PASSWORD_NAME: Final[str] = "Threadline"
+
+#: Answers to the app-password question meaning "the provider offers none",
+#: compared in small letters with single spaces.
+NO_APP_PASSWORD_ANSWERS: Final[frozenset[str]] = frozenset(
+    {"n", "no", "no app passwords", "not available"}
+)
+
 #: Address endings that name their mailbox provider exactly.
 MAILBOX_PROVIDER_BY_DOMAIN: Final[dict[str, MailSource | ImapProvider]] = {
     "gmail.com": ImapProvider.GMAIL,
@@ -155,6 +180,8 @@ MAILBOX_PROVIDER_BY_NAME: Final[dict[str, MailSource | ImapProvider]] = {
 #: longer one means a company's own domain, such as ``live.example.org``.
 MAILBOX_ENDING_PART_MAX_LENGTH: Final[int] = 3
 
+#: Name under which a mailbox's app password is stored, encrypted, in the
+#: database; the mailbox's address follows the colon, so several can coexist.
 IMAP_PASSWORD_SECRET_PREFIX: Final[str] = "imap_app_password:"
 
 # --- Sending the summary ------------------------------------------------------

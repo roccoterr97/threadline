@@ -37,7 +37,8 @@ class SetupSession:
             ``tracker setup`` run without ``--ask-everything``; a step run by
             name, or the extras, asks every question.
         linkedin_wanted: The owner already said yes to connecting LinkedIn,
-            at the end of a full run, so the LinkedIn step does not ask again.
+            at the end of a full ``--ask-everything`` run, so the LinkedIn
+            step does not ask again.
     """
 
     supabase_token: SecretStr | None = None

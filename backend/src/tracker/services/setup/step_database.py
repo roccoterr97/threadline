@@ -8,6 +8,8 @@ checks after each confirmation that the file really ran, and asks again if not.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import SecretStr
 
 from tracker.services.database_structure import (
@@ -130,18 +132,30 @@ async def _apply_automatically(
         _say_token_may_not_apply(ctx, error)
         ctx.io.say("Carrying on by hand instead.")
         return pending
-    sent_before = False
+    last_sent: datetime | None = None
     for index, item in enumerate(pending):
         if item.name in applied:
             continue
-        if sent_before:
-            await ctx.gateways.sleep(MIGRATION_PAUSE_SECONDS)
-        sent_before = True
+        if last_sent is not None:
+            await _pause_since(ctx, last_sent)
+        last_sent = ctx.gateways.clock.now()
         if not await _apply_one(ctx, ref, token, item):
             ctx.io.say("Carrying on by hand from that file.")
             return pending[index:]
         ctx.io.say(f"Applied {item.name}.")
     return ()
+
+
+async def _pause_since(ctx: SetupContext, last_sent: datetime) -> None:
+    """Wait until the pause has passed since the previous file was sent.
+
+    The time Supabase took to answer counts towards it, so a slow answer is
+    not followed by the whole pause again.
+    """
+    elapsed = (ctx.gateways.clock.now() - last_sent).total_seconds()
+    remaining = MIGRATION_PAUSE_SECONDS - elapsed
+    if remaining > 0:
+        await ctx.gateways.sleep(remaining)
 
 
 async def _apply_one(ctx: SetupContext, ref: str, token: SecretStr, item: MigrationFile) -> bool:

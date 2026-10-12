@@ -4,31 +4,61 @@ A hidden prompt on macOS and Linux reads every line of one paste. Python's own
 hidden prompt reads one line and throws the rest away, so a key that
 ``claude setup-token`` wraps over two lines lost its second half without a word.
 On Windows the rest stays waiting for the next prompt, which reads it.
+
+A hidden prompt can also watch the clipboard, so a password copied from a web
+page is picked up without being pasted; typing or pasting still works the
+whole time.
 """
 
 from __future__ import annotations
 
+import getpass
 import os
 import select
-import shutil
-import subprocess
 import sys
+import time
 import webbrowser
-from collections.abc import Sequence
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Final
 
 import typer
 
+from tracker.infrastructure.clipboard import copy_to_clipboard, read_clipboard
 from tracker.shared.constants.terminal import (
-    CLIPBOARD_COMMANDS,
-    CLIPBOARD_TIMEOUT_SECONDS,
+    CLIPBOARD_POLL_SECONDS,
+    CLIPBOARD_WATCH_SECONDS,
     KEEP_SUGGESTION_ANSWERS,
+    KEY_CHECK_SECONDS,
     PASTE_GAP_SECONDS,
     TERMINAL_READ_BYTES,
 )
 
 #: What a pause asks for here; the page asks for a click instead.
 PAUSE_SUFFIX: Final[str] = ", press Enter"
+
+#: Said when the clipboard is no longer watched, so a later copy is pasted.
+STOPPED_WATCHING: Final[str] = "(Stopped watching the clipboard: paste it here and press Enter.)"
+
+#: How many looks at the clipboard one watch takes at most.
+_WATCH_POLLS: Final[int] = round(CLIPBOARD_WATCH_SECONDS / CLIPBOARD_POLL_SECONDS)
+
+#: Looks at the clipboard once: the value now on it when it is the one awaited.
+LookAtClipboard = Callable[[], str | None]
+
+
+@dataclass(frozen=True, slots=True)
+class SecretAnswer:
+    """A hidden answer, and where it came from.
+
+    Attributes:
+        value: What was typed, pasted or copied. Never shown.
+        copied: Whether it was picked up from the clipboard rather than typed.
+    """
+
+    value: str
+    copied: bool
 
 
 class TerminalIO:
@@ -51,6 +81,34 @@ class TerminalIO:
         typer.echo(f"{prompt}: ", nl=False)
         try:
             return read_hidden_lines(sys.stdin.fileno())
+        finally:
+            typer.echo("")
+
+    def watches_clipboard(self) -> bool:
+        """Whether a hidden question here can pick its answer up from the clipboard."""
+        return sys.stdin.isatty() and read_clipboard() is not None
+
+    def ask_secret_or_copied(self, prompt: str, wanted: Callable[[str], bool]) -> SecretAnswer:
+        """Ask for a hidden value, or pick it up once a value ``wanted`` accepts is copied.
+
+        Without a terminal or a clipboard this is the plain hidden question.
+
+        Args:
+            prompt: The question.
+            wanted: Tells the awaited value from anything else on the clipboard.
+
+        Returns:
+            The answer, and whether it came from the clipboard.
+        """
+        before = read_clipboard() if sys.stdin.isatty() else None
+        if before is None:
+            return SecretAnswer(self.ask_secret(prompt), copied=False)
+        look = newly_copied(before, wanted, read_clipboard)
+        typer.echo(f"{prompt}: ", nl=False)
+        try:
+            if sys.platform == "win32":
+                return _windows_hidden_or_copied(look)
+            return read_hidden_or_copied(sys.stdin.fileno(), look)
         finally:
             typer.echo("")
 
@@ -95,6 +153,56 @@ def answer_or_suggestion(answer: str, suggestion: str | None) -> str:
     return answer
 
 
+def newly_copied(
+    before: str, wanted: Callable[[str], bool], read: Callable[[], str | None]
+) -> LookAtClipboard:
+    """Make a look at the clipboard that finds only a newly copied, awaited value.
+
+    What was already on the clipboard when the watch began is never taken, so
+    a password refused a moment ago is not picked up again.
+
+    Args:
+        before: The clipboard's text when the watch began.
+        wanted: Tells the awaited value from anything else.
+        read: Reads the clipboard; ``None`` when it cannot.
+    """
+
+    def look() -> str | None:
+        text = read()
+        if text is None or text == before or not wanted(text):
+            return None
+        return text
+
+    return look
+
+
+def wait_for_copy(
+    key_pressed: Callable[[float], bool],
+    look: LookAtClipboard,
+    *,
+    polls: int,
+    interval: float,
+) -> str | None:
+    """Watch the clipboard until the awaited value is copied, a key is pressed or time is up.
+
+    Args:
+        key_pressed: Waits up to the given seconds; ``True`` once the person types.
+        look: One look at the clipboard.
+        polls: How many looks at most.
+        interval: Seconds listened to the keyboard before each look.
+
+    Returns:
+        The copied value, or ``None`` when the person typed or time ran out.
+    """
+    for _ in range(polls):
+        if key_pressed(interval):
+            return None
+        copied = look()
+        if copied is not None:
+            return copied
+    return None
+
+
 def read_hidden_lines(fd: int, gap_seconds: float = PASTE_GAP_SECONDS) -> str:
     """Read one answer from a terminal without showing it, with every line of a paste.
 
@@ -112,6 +220,53 @@ def read_hidden_lines(fd: int, gap_seconds: float = PASTE_GAP_SECONDS) -> str:
     Raises:
         typer.Abort: If the terminal was closed before an answer came.
     """
+    with _echo_off(fd):
+        return _read_lines(fd, gap_seconds)
+
+
+def read_hidden_or_copied(
+    fd: int,
+    look: LookAtClipboard,
+    *,
+    polls: int = _WATCH_POLLS,
+    interval: float = CLIPBOARD_POLL_SECONDS,
+    gap_seconds: float = PASTE_GAP_SECONDS,
+) -> SecretAnswer:
+    """Read a hidden answer from a terminal, or pick it up from the clipboard.
+
+    Once the value is picked up, anything typed meanwhile is thrown away, so a
+    paste the person was about to make never lands, visible, in the next
+    question. When the watch ends without a copy the keyboard is still read.
+
+    Args:
+        fd: The terminal's file descriptor.
+        look: One look at the clipboard.
+        polls: How many looks at most.
+        interval: Seconds between two looks.
+        gap_seconds: How long to wait for another line of the same paste.
+
+    Returns:
+        The answer, and whether it came from the clipboard.
+
+    Raises:
+        typer.Abort: If the terminal was closed before an answer came.
+    """
+    with _echo_off(fd):
+        copied = wait_for_copy(
+            lambda seconds: _readable(fd, seconds), look, polls=polls, interval=interval
+        )
+        if copied is not None:
+            _drop_typed(fd)
+            return SecretAnswer(copied, copied=True)
+        if not _readable(fd, 0):
+            typer.echo("")
+            typer.echo(STOPPED_WATCHING)
+        return SecretAnswer(_read_lines(fd, gap_seconds), copied=False)
+
+
+@contextmanager
+def _echo_off(fd: int) -> Iterator[None]:
+    """Keep the terminal from showing what is typed, and restore it afterwards."""
     if sys.platform == "win32":  # pragma: no cover - termios exists on macOS and Linux only
         message = "Windows reads a hidden answer with its own prompt"
         raise OSError(message)
@@ -122,51 +277,73 @@ def read_hidden_lines(fd: int, gap_seconds: float = PASTE_GAP_SECONDS) -> str:
     quiet[3] &= ~termios.ECHO
     termios.tcsetattr(fd, termios.TCSANOW, quiet)
     try:
-        chunks = [os.read(fd, TERMINAL_READ_BYTES)]
-        if not chunks[0]:
-            raise typer.Abort
-        while select.select([fd], [], [], gap_seconds)[0]:
-            chunk = os.read(fd, TERMINAL_READ_BYTES)
-            if not chunk:
-                break
-            chunks.append(chunk)
+        yield
     finally:
         termios.tcsetattr(fd, termios.TCSANOW, saved)
+
+
+def _read_lines(fd: int, gap_seconds: float) -> str:
+    """Read the first line typed and every further line of the same paste."""
+    chunks = [os.read(fd, TERMINAL_READ_BYTES)]
+    if not chunks[0]:
+        raise typer.Abort
+    while _readable(fd, gap_seconds):
+        chunk = os.read(fd, TERMINAL_READ_BYTES)
+        if not chunk:
+            break
+        chunks.append(chunk)
     return b"".join(chunks).decode("utf-8", errors="replace").rstrip("\r\n")
 
 
-def copy_to_clipboard(value: str) -> bool:
-    """Put a value on the clipboard with the first clipboard command that works.
-
-    The value goes on the command's standard input, never on its command
-    line, and nothing it prints is shown.
-
-    Args:
-        value: What to copy. Never shown.
-
-    Returns:
-        ``False`` when this computer has no clipboard command that worked.
-    """
-    return any(_copy_with(command, value) for command in CLIPBOARD_COMMANDS)
+def _readable(fd: int, seconds: float) -> bool:
+    """Whether a line is waiting to be read, waiting up to ``seconds`` for one."""
+    return bool(select.select([fd], [], [], seconds)[0])
 
 
-def _copy_with(command: Sequence[str], value: str) -> bool:
-    """Try one clipboard command; ``False`` when it is missing or failed."""
-    program = shutil.which(command[0])
-    if program is None:
-        return False
-    # Output goes nowhere rather than to a pipe: xclip stays behind to hold the
-    # clipboard, and waiting for its pipe to close would wait for ever.
-    try:
-        subprocess.run(
-            [program, *command[1:]],
-            input=value,
-            text=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-            timeout=CLIPBOARD_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
+def _drop_typed(fd: int) -> None:
+    """Throw away whatever was typed but not yet read."""
+    if sys.platform == "win32":  # pragma: no cover - termios exists on macOS and Linux only
+        message = "Windows drops typed keys with its own console calls"
+        raise OSError(message)
+    import termios
+
+    termios.tcflush(fd, termios.TCIFLUSH)
+
+
+def _windows_hidden_or_copied(look: LookAtClipboard) -> SecretAnswer:  # pragma: no cover
+    """Windows' version of :func:`read_hidden_or_copied`, through its console calls."""
+    if sys.platform != "win32":
+        message = "only Windows has its console calls"
+        raise OSError(message)
+    import msvcrt
+
+    copied = wait_for_copy(
+        _key_pressed_within,
+        look,
+        polls=_WATCH_POLLS,
+        interval=CLIPBOARD_POLL_SECONDS,
+    )
+    if copied is not None:
+        while msvcrt.kbhit():
+            msvcrt.getwch()
+        return SecretAnswer(copied, copied=True)
+    if not msvcrt.kbhit():
+        typer.echo("")
+        typer.echo(STOPPED_WATCHING)
+    # getpass reads the keys already pressed, and shows none of them.
+    return SecretAnswer(getpass.getpass(""), copied=False)
+
+
+def _key_pressed_within(seconds: float) -> bool:  # pragma: no cover - Windows only
+    """Wait up to ``seconds`` for a key press on the Windows console."""
+    if sys.platform != "win32":
+        message = "only Windows has its console calls"
+        raise OSError(message)
+    import msvcrt
+
+    deadline = time.monotonic() + seconds
+    while not msvcrt.kbhit():
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(KEY_CHECK_SECONDS)
     return True

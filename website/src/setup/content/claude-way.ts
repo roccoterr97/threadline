@@ -26,7 +26,7 @@ export const CLAUDE_WAY: ClaudeWay = {
     },
     {
       kind: 'paragraph',
-      text: 'It takes about 20 minutes of your own time with GitHub and Supabase accounts ready, about 30 without. The first summary e-mail follows about ten minutes later, if you have a mailbox that can send it, for example Gmail with an app password.',
+      text: 'It takes about 25 minutes of your own time with nothing ready, about 15 with GitHub and Supabase accounts ready; LinkedIn comes later, in about 5 minutes. The first summary e-mail follows about ten minutes later, if you have a mailbox that can send it, for example Gmail with an app password.',
     },
     {
       kind: 'paragraph',

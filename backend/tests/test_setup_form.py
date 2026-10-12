@@ -21,6 +21,7 @@ from tracker.infrastructure.setup_form.conversation import (
 )
 from tracker.infrastructure.setup_form.io import FormIO
 from tracker.infrastructure.setup_form.server import SetupForm, open_setup_form
+from tracker.infrastructure.terminal_io import SecretAnswer
 from tracker.shared.constants.setup import FORM_IDLE_LIMIT_SECONDS, FORM_KEY_HEADER
 from tracker.shared.errors import SetupStoppedError
 
@@ -155,6 +156,19 @@ def test_form_io_echoes_what_is_said_and_asked_but_never_an_answer() -> None:
 
     assert io.ask_secret("Secret key") == "sb_secret_x"
     assert echoed == ["Welcome", "? Secret key"]
+
+
+def test_form_io_keeps_its_paste_field_rather_than_watching_the_clipboard() -> None:
+    talk = Conversation()
+    echoed: list[str] = []
+    io = FormIO(talk, echoed.append)
+    answer_soon(talk, "wxyz wxyz wxyz wxyz")
+
+    answer = io.ask_secret_or_copied("Paste the Gmail app password", lambda _text: True)
+
+    assert io.watches_clipboard() is False
+    assert answer == SecretAnswer("wxyz wxyz wxyz wxyz", copied=False)
+    assert echoed == ["? Paste the Gmail app password"]
 
 
 def test_form_io_falls_back_to_the_default_on_an_empty_answer() -> None:

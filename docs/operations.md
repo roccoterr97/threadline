@@ -70,6 +70,10 @@ The body has the same sections every day, in the same order:
 - **Replied since yesterday** — who wrote back since the previous run.
 - **To review** — how many yes/no questions are waiting, with a link.
 - **LinkedIn key** — only in the seven days before the key expires.
+- **Add your LinkedIn messages** — one line, only while LinkedIn is not
+  connected, on the day of your first run and once a week after it for the
+  first four weeks. `uv run tracker setup linkedin` adds it (about 5 minutes,
+  for profiles located in the EEA or Switzerland).
 
 A section with nobody in it says "nobody" rather than disappearing, so you can
 tell "nothing to do" from "the e-mail is broken".

@@ -188,7 +188,8 @@ DEFAULT_REGION_GROUP: Final[RegionGroup] = RegionGroup.AMERICAS
 SIGNUP_CHECK_ATTEMPTS: Final[int] = 5
 SIGNUP_CHECK_WAIT_SECONDS: Final[float] = 3.0
 
-#: Seconds between two structure files sent to the Management API. Supabase
+#: Seconds from sending one structure file to the Management API to sending
+#: the next; the time Supabase takes to answer counts towards it. Supabase
 #: names each applied file after the current second, so two files sent within
 #: the same second collide and the second one is refused.
 MIGRATION_PAUSE_SECONDS: Final[float] = 1.5

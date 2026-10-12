@@ -6,8 +6,9 @@ All notable changes to this project are recorded here. The format follows
 
 ## [Unreleased]
 
-A shorter set-up: about 20 minutes with GitHub and Supabase ready, about 30
-without. Only two accounts are needed now, GitHub and Supabase.
+A shorter set-up: about 25 minutes with nothing ready, about 15 with GitHub
+and Supabase ready; LinkedIn comes later, in about 5 minutes. Only two
+accounts are needed now, GitHub and Supabase.
 
 ### Added
 
@@ -51,11 +52,26 @@ without. Only two accounts are needed now, GitHub and Supabase.
 - The set-up guide, the Claude-run recipe and the website wizard describe the
   shorter set-up. Netlify moved to an optional extra; old saved progress on
   the website still works.
-- A full `tracker setup` ends with one question, `Connect LinkedIn now? It
-  works if your LinkedIn profile is located in the EEA or Switzerland (about
-  5 minutes)`, and runs the LinkedIn step on a yes. A LinkedIn problem there
-  says how to carry on and the run still ends as done. `tracker setup
-  linkedin` still runs it alone.
+- A full `tracker setup` no longer asks about LinkedIn. Its last screen says
+  `LinkedIn can be added later: uv run tracker setup linkedin (about 5
+  minutes).` and that it works for profiles located in the EEA or
+  Switzerland. `tracker setup linkedin` runs the step as before, and only
+  `--ask-everything` still asks `Connect LinkedIn now? …` at the end.
+- Once the first run is in and LinkedIn is not connected, the dashboard's
+  People page shows a small card, "Add your LinkedIn messages", with the one
+  command and a **Show me how** button to the website's LinkedIn guide.
+  **Hide** puts it away on that browser. The dashboard tells from the newest
+  finished run: a run records a LinkedIn step only when LinkedIn is set up,
+  so no new setting or secret is needed.
+- While LinkedIn is not connected, the morning e-mail carries one line with
+  the same offer on the day of the first run and once a week after it, for
+  the first four weeks only.
+- A full `tracker setup` run again no longer asks whether to make a new
+  Claude key when GitHub already has one: it keeps it and names
+  `uv run tracker setup github` for a new one.
+- The database step counts the time Supabase takes to answer towards the
+  pause between two structure files, which saves about ten seconds on a new
+  database.
 - The first LinkedIn connection has two stages and stops once before the
   Client ID: create the app and request **Member Data Portability API
   (Member)** (LinkedIn granted it at once in the live test), press Enter, then
@@ -73,6 +89,19 @@ without. Only two accounts are needed now, GitHub and Supabase.
   `If no page opened, open this address: …`, and after 30 seconds without a
   key, `If the Claude page shows a code, paste it here and press Enter.`
   Typing still reaches Claude.
+- The mailbox app password is quicker to make. The set-up puts the name
+  `Threadline` on the clipboard and opens Google's app-password page straight
+  away, on the right account when several are signed in (`?authuser=` with the
+  address). Only when the owner answers `no` (Google says the setting is not
+  available) does it open the 2-Step Verification page, then the app-password
+  page again; a second `no` stops with the reason (a work or school
+  administrator may have switched app passwords off). In a terminal, a Gmail
+  or iCloud password is picked up from the clipboard as soon as it is copied
+  (watched for 5 minutes; emptied once picked up); pasting it still
+  works the whole time, and the set-up page in the browser keeps its paste
+  field. The clipboard is read with `pbpaste` on a Mac, PowerShell's
+  `Get-Clipboard` on Windows and `wl-paste`, `xclip` or `xsel` on Linux; with
+  none of them the set-up asks for the password as before.
 
 - The official demo lives at <https://demo.threadlineapp.com>. The old
   address, `try-threadline.vercel.app`, still opens it. `frontend/vercel.json`

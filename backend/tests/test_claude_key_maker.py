@@ -195,6 +195,21 @@ async def test_a_key_already_on_github_is_kept_unless_a_new_one_is_wanted() -> N
     assert "GitHub keeps the" in world.io.text()
 
 
+@pytest.mark.asyncio
+async def test_a_full_run_keeps_the_key_on_github_without_asking() -> None:
+    world = claude_world([])
+    world.github.secrets = {CLAUDE_TOKEN_SECRET: "the-old-key"}
+    ctx = world.context()
+    ctx.session.express = True
+
+    await GitHubStep().run(ctx)
+
+    assert world.claude.runs == 0
+    assert secret_on_github(world) == "the-old-key"
+    assert not any("Make a new one now?" in question for question in world.io.asked)
+    assert "To make a new one: uv run tracker setup github" in world.io.said
+
+
 # --- Finding the key on the screen ------------------------------------------------
 
 

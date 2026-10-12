@@ -134,9 +134,10 @@ Outlook-only set-ups). The design is described in
 No other paid service is needed, unless you choose a paid mailbox such as
 Fastmail. The dashboard is shared, at <https://app.threadlineapp.com>: your
 data stays in your own Supabase database, and only you can sign in. Setting it
-up takes about 20 minutes of your own time with GitHub and Supabase ready,
-about 30 without. The first summary e-mail follows about ten minutes later, if
-you have a mailbox that can send it, for example Gmail with an app password.
+up takes about 25 minutes of your own time with nothing ready, about 15 with
+GitHub and Supabase accounts ready; LinkedIn comes later, in about 5 minutes.
+The first summary e-mail follows about ten minutes later, if you have a
+mailbox that can send it, for example Gmail with an app password.
 
 ### LinkedIn: only in the EEA and Switzerland
 
@@ -149,8 +150,9 @@ LinkedIn's copy of your messages also runs one to two days behind, so a
 LinkedIn message reaches Threadline a day or two after you receive it. Mail and
 calendar entries are read as they are at the moment of the run.
 
-Connecting LinkedIn takes about ten minutes the first time: you make a small
-developer application on LinkedIn's pages and the set-up walks you through it.
+Connecting LinkedIn takes about five minutes the first time, after the rest
+of the set-up: you make a small developer application on LinkedIn's pages and
+`uv run tracker setup linkedin` walks you through it.
 When the key expires, getting a new one is one command and one click on
 LinkedIn's **Allow** button.
 
@@ -205,10 +207,12 @@ What happens next:
    in, and lists every choice with the command that changes it. The first summary e-mail arrives about ten minutes later, then every day
    at the time you chose (this needs a mailbox with an app password; with
    Outlook alone the set-up tells you the options).
-4. At the end, one question offers LinkedIn (`Connect LinkedIn now?`, for
-   profiles located in the EEA or Switzerland, about 5 minutes). LinkedIn,
-   the dashboard's Refresh now button and the Claude cloud route are
-   optional extras: `uv run tracker setup extras`, any time. Your own copy of
+4. LinkedIn is left for later, to keep the set-up short: the last screen
+   names its command (`uv run tracker setup linkedin`, about 5 minutes, for
+   profiles located in the EEA or Switzerland), and once the first summary is
+   in, the dashboard and the morning e-mail offer it too. LinkedIn, the
+   dashboard's Refresh now button and the Claude cloud route are optional
+   extras: `uv run tracker setup extras`, any time. Your own copy of
    the dashboard on Netlify is optional too (`uv run tracker setup dashboard`).
    Refresh now also switches on the on-time morning start: GitHub often starts
    its scheduled runs hours late, so your Supabase project starts the daily run

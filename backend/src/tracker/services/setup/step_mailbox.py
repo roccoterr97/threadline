@@ -6,7 +6,8 @@ provider the ending does not show. Any other run asks the provider first.
 
 Outlook is handed on to the Microsoft sign-in step. Every other mailbox is
 read over IMAP with an app password: the step explains what that is, opens
-the provider's page, tries the password live (sign in, open the inbox
+the provider's page (``app_password``), picks the password up from the
+clipboard or takes it pasted, tries it live (sign in, open the inbox
 read-only, count the recent messages) and only then stores it, encrypted, in
 the database. The password never goes into ``.env``.
 
@@ -30,6 +31,7 @@ from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.smtp import SmtpAccount
 from tracker.services.setup import values
+from tracker.services.setup.app_password import AppPasswordQuestion
 from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
 from tracker.services.setup.mail_provider import provider_for
 from tracker.services.setup.mail_sources import save_sources, saved_sources, summary_route
@@ -83,35 +85,6 @@ ADDRESS_PROMPT: Final[str] = "Your e-mail address"
 
 #: How Outlook is named when it was told from the address.
 _OUTLOOK_LABEL: Final[str] = "Outlook"
-
-#: What every provider has in common, in two plain sentences.
-_APP_PASSWORD: Final[str] = (
-    "Threadline signs in with an app password: a separate password just for "
-    "Threadline, which you can remove at any time. Your normal password is never used."
-)
-
-#: What is particular to each provider, in one or two sentences.
-_PROVIDER_NOTES: Final[dict[ImapProvider, str]] = {
-    ImapProvider.GMAIL: (
-        "Google offers app passwords only once 2-Step Verification is on. On a work "
-        "or school account your administrator may have switched them off."
-    ),
-    ImapProvider.ICLOUD: (
-        "Apple calls it an app-specific password; two-factor authentication must be on. "
-        "Sign in, then open Sign-In and Security > App-Specific Passwords."
-    ),
-    ImapProvider.YAHOO: (
-        "On Yahoo's Account Security page, choose 'Create app password' under External connections."
-    ),
-    ImapProvider.FASTMAIL: (
-        "Fastmail offers IMAP on paid plans above Basic. In Settings, open Privacy & "
-        "Security > Manage app passwords and access, and choose Mail access."
-    ),
-    ImapProvider.CUSTOM: (
-        "Your provider's help pages explain how to make one: search them for "
-        "'app password' and 'IMAP'."
-    ),
-}
 
 _DEFAULT_PORT: Final[str] = "993"
 
@@ -183,17 +156,16 @@ async def _connect_imap(ctx: SetupContext, provider: ImapProvider, address: str 
     """Describe the mailbox, check its app password live, then save everything."""
     preset = IMAP_PRESETS[provider]
     account = _account(ctx, provider, preset, address)
-    _explain(ctx, provider, preset)
+    question = AppPasswordQuestion(ctx, provider, account.username)
+    question.explain()
+    question.open_page()
     since = ctx.gateways.clock.now() - timedelta(days=INITIAL_WINDOW_DAYS)
 
     async def accept(raw: str) -> tuple[SecretStr, MailboxSurvey]:
         password = _app_password(raw)
         return password, await ctx.gateways.mailbox.check(account, password, since)
 
-    password, survey = await ctx.ask_until_accepted(
-        lambda: ctx.io.ask_secret(f"Paste the {preset.label} app password (it is not shown)"),
-        accept,
-    )
+    password, survey = await ctx.ask_until_accepted(question.ask, accept)
     _report(ctx, survey)
     same_mailbox = _is_saved_mailbox(ctx, account)
     await ctx.gateways.mailbox.save_password(store_access(ctx), account.username, password)
@@ -352,15 +324,6 @@ def _likely_smtp_host(imap_host: str) -> str | None:
 def _summary_goes_by_smtp(ctx: SetupContext) -> bool:
     """Whether the summary is sent by SMTP: the default once an IMAP mailbox is read."""
     return summary_route(ctx) is DeliveryRoute.SMTP
-
-
-def _explain(ctx: SetupContext, provider: ImapProvider, preset: ImapPreset) -> None:
-    """Say what an app password is, and open the page where it is made."""
-    ctx.io.say(_APP_PASSWORD)
-    ctx.io.say(_PROVIDER_NOTES[provider])
-    if preset.app_password_page:
-        ctx.io.say(f"Opening {preset.app_password_page} - make one there, then come back.")
-        ctx.io.open_page(preset.app_password_page)
 
 
 def _app_password(raw: str) -> SecretStr:

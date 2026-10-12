@@ -18,6 +18,9 @@ from tracker.services.summary.wording import (
     CHASE_HEADING,
     DO_TODAY_HEADING,
     KEY_HEADING,
+    LINKEDIN_OFFER,
+    LINKEDIN_OFFER_COMMAND,
+    LINKEDIN_OFFER_HOW,
     NO_QUESTIONS,
     NOBODY,
     OVERDUE_HEADING,
@@ -32,6 +35,7 @@ from tracker.services.summary.wording import (
 from tracker.shared.constants.summary import (
     DASHBOARD_REVIEW_PATH,
     DASHBOARD_RUNS_PATH,
+    LINKEDIN_GUIDE_URL,
 )
 
 __all__ = ["build_subject", "format_day", "render_email"]
@@ -109,6 +113,11 @@ def _render_text(content: SummaryContent) -> str:
     blocks.append(_text_review(content.open_questions, review))
     if content.key_reminder is not None:
         blocks.append(f"{KEY_HEADING}\n- {content.key_reminder}")
+    if content.linkedin_offer:
+        blocks.append(
+            f"{LINKEDIN_OFFER} Run '{LINKEDIN_OFFER_COMMAND}' on your computer. "
+            f"{LINKEDIN_OFFER_HOW}: {LINKEDIN_GUIDE_URL}"
+        )
     runs = content.dashboard_page(DASHBOARD_RUNS_PATH)
     if runs is not None:
         blocks.append(f"Run page: {runs}")

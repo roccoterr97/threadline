@@ -6,8 +6,9 @@ Threadline. That second stage adds Threadline's address on this computer to
 the application once and goes straight on to its Client ID; from then on the
 set-up opens LinkedIn's "Allow" page, catches LinkedIn's answer itself and
 saves the key with its expiry date, so a renewal is one command and one click.
-A full ``tracker setup`` offers this step in one question at its end
-(``wants_linkedin_now``); ``tracker setup linkedin`` runs it alone.
+A full ``tracker setup`` leaves it out and names this command at its end;
+only ``--ask-everything`` still offers it there, in one question
+(``wants_linkedin_now``). ``tracker setup linkedin`` runs it alone.
 
 Making the key by hand on LinkedIn's token page stays available whenever the
 one-click way does not work.
@@ -52,8 +53,9 @@ TOKEN: Final[str] = "LINKEDIN_ACCESS_TOKEN"
 EXPIRES_ON: Final[str] = "LINKEDIN_TOKEN_EXPIRES_ON"
 PROFILE: Final[str] = "OWNER_LINKEDIN_PROFILE_URL"
 
-#: The one question a full run ends with: LinkedIn is what most owners want
-#: next, so it is offered there rather than left among the extras.
+#: The one question a full run with ``--ask-everything`` ends with. Without
+#: that flag the run never asks: the dashboard and the morning e-mail offer
+#: LinkedIn once the first summary is in.
 LINKEDIN_OFFER: Final[str] = (
     "Connect LinkedIn now? It works if your LinkedIn profile is located in the EEA or "
     "Switzerland (about 5 minutes)"
@@ -200,7 +202,7 @@ class LinkedInStep:
 
 
 def wants_linkedin_now(ctx: SetupContext) -> bool:
-    """Ask the one question a full run ends with, and remember a yes for the step.
+    """Ask the one question a full ``--ask-everything`` run ends with; remember a yes.
 
     Returns:
         Whether to run the LinkedIn step now.

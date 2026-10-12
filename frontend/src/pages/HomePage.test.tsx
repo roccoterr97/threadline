@@ -1,5 +1,5 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchCategories } from '../api/categories';
 import { fetchUpcomingMeetings } from '../api/meetings';
 import { fetchPeople, peopleQueryKey } from '../api/people';
@@ -9,6 +9,7 @@ import { PEOPLE_MAX_ROWS } from '../constants/dashboard';
 import * as copy from '../copy/en';
 import { DataUnavailableError } from '../lib/errors';
 import { expectNoAxeViolations } from '../test/axe';
+import { installMemoryStorage } from '../test/memoryStorage';
 import {
   NOW,
   peopleWithCategories,
@@ -575,6 +576,34 @@ describe('HomePage — the run banner', () => {
     renderWithProviders(<HomePage />);
     await screen.findByRole('table', { name: copy.home.tableCaption });
     expect(screen.queryByText(copy.banner.lastRunFailed)).not.toBeInTheDocument();
+  });
+});
+
+describe('HomePage — the LinkedIn offer', () => {
+  beforeEach(() => {
+    installMemoryStorage();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('offers LinkedIn when the newest run read the mailbox but not LinkedIn', async () => {
+    const withoutLinkedIn = {
+      ...sampleRuns[0]!,
+      run_step_logs: sampleRuns[0]!.run_step_logs.filter((step) => step.step !== 'collect_linkedin'),
+    };
+    fetchRunsMock.mockResolvedValue([withoutLinkedIn]);
+    renderWithProviders(<HomePage />);
+    expect(
+      await screen.findByRole('heading', { name: copy.linkedInOffer.title }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers nothing once the daily run reads LinkedIn', async () => {
+    renderWithProviders(<HomePage />);
+    await screen.findByText(copy.banner.lastRunFailed);
+    expect(screen.queryByRole('heading', { name: copy.linkedInOffer.title })).not.toBeInTheDocument();
   });
 });
 

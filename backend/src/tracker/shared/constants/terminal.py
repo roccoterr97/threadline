@@ -19,8 +19,29 @@ CLIPBOARD_COMMANDS: Final[tuple[tuple[str, ...], ...]] = (
     ("xsel", "--clipboard", "--input"),
 )
 
+#: Commands that print the clipboard's text, tried in the same way: the Mac's,
+#: Windows' (PowerShell, present on every Windows), then Linux's.
+CLIPBOARD_READ_COMMANDS: Final[tuple[tuple[str, ...], ...]] = (
+    ("pbpaste",),
+    ("powershell", "-NoProfile", "-NonInteractive", "-Command", "Get-Clipboard -Raw"),
+    ("wl-paste", "--no-newline"),
+    ("xclip", "-selection", "clipboard", "-out"),
+    ("xsel", "--clipboard", "--output"),
+)
+
 #: Seconds a clipboard command may take before the next one is tried.
 CLIPBOARD_TIMEOUT_SECONDS: Final[float] = 5.0
+
+#: Seconds between two looks at the clipboard while a copied value is awaited.
+CLIPBOARD_POLL_SECONDS: Final[float] = 1.0
+
+#: Seconds the clipboard is watched for a copied value before only the
+#: keyboard is listened to; enough to make an app password, not to linger.
+CLIPBOARD_WATCH_SECONDS: Final[float] = 300.0
+
+#: Seconds between two checks for a key press on Windows while the clipboard
+#: is watched; short enough that typing never feels held up.
+KEY_CHECK_SECONDS: Final[float] = 0.05
 
 #: Answers to a question with a suggestion in brackets that mean "keep the
 #: suggestion": people type them out of habit from the yes/no questions.

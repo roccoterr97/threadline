@@ -16,15 +16,26 @@ from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.services.doctor.checks import ImapMailboxCheck, NotConnectedCheck, SmtpLoginCheck
 from tracker.services.doctor.models import CheckStatus
 from tracker.services.doctor.service import DoctorService
+from tracker.services.setup.app_password import page_address
 from tracker.services.setup.step_cloud import allowed_hosts
 from tracker.services.setup.step_mailbox import MailboxStep
 from tracker.services.setup.step_microsoft import MicrosoftStep
-from tracker.shared.errors import MailboxPasswordError, ValidationFailedError
+from tracker.shared.constants.mailbox import IMAP_PRESETS, ImapProvider
+from tracker.shared.errors import (
+    AppPasswordUnavailableError,
+    MailboxPasswordError,
+    ValidationFailedError,
+)
 
 pytestmark = pytest.mark.asyncio
 
 GMAIL = "sam.rivera@gmail.example"
 GMAIL_PAGE = "https://myaccount.google.com/apppasswords"
+GMAIL_ACCOUNT_PAGE = f"{GMAIL_PAGE}?authuser=sam.rivera%40gmail.example"
+TWO_STEP_ACCOUNT_PAGE = (
+    "https://myaccount.google.com/signinoptions/two-step-verification"
+    "?authuser=sam.rivera%40gmail.example"
+)
 
 
 # --- Choosing and connecting a mailbox ----------------------------------------
@@ -53,11 +64,165 @@ async def test_the_step_explains_app_passwords_and_opens_the_providers_page() ->
 
     text = world.io.text()
     assert "app password: a separate password just for Threadline" in text
-    assert "2-Step Verification" in text
-    assert world.io.opened == [GMAIL_PAGE]
+    assert world.io.opened == [GMAIL_ACCOUNT_PAGE]
+    assert "If Google says the setting is not available, answer no below." in text
+    assert "2-Step Verification" not in text
     assert "Connected. Your inbox has 42 messages from the last 30 days." in text
     assert "'[Gmail]/Sent Mail'" in text
     assert world.io.secret_prompts == ["Paste the Gmail app password (it is not shown)"]
+
+
+async def test_the_app_name_is_put_on_the_clipboard_before_the_page_opens() -> None:
+    world = make_world(["gmail", GMAIL, GOOD_APP_PASSWORD, True], configured_env())
+
+    await MailboxStep().run(world.context())
+
+    assert world.io.copied[0] == "Threadline"
+    said = world.io.said
+    assert "The name 'Threadline' is on your clipboard: paste it as the app name." in said
+
+
+async def test_without_a_clipboard_the_name_is_given_to_type() -> None:
+    world = make_world(["gmail", GMAIL, GOOD_APP_PASSWORD, True], configured_env(), clipboard=False)
+
+    await MailboxStep().run(world.context())
+
+    assert "Name it 'Threadline' when the page asks for a name." in world.io.said
+    assert world.mailbox.saved == {GMAIL: GOOD_APP_PASSWORD}
+
+
+async def test_the_google_page_names_the_account_and_other_pages_stay_as_they_are() -> None:
+    gmail, yahoo = IMAP_PRESETS[ImapProvider.GMAIL], IMAP_PRESETS[ImapProvider.YAHOO]
+
+    assert page_address(GMAIL_PAGE, gmail, "sam+jobs@gmail.com") == (
+        f"{GMAIL_PAGE}?authuser=sam%2Bjobs%40gmail.com"
+    )
+    assert page_address(GMAIL_PAGE, gmail, "sam") == GMAIL_PAGE
+    assert page_address(yahoo.app_password_page, yahoo, "sam@yahoo.com") == (
+        yahoo.app_password_page
+    )
+
+
+@pytest.mark.parametrize(
+    "copied", ["wxyz wxyz wxyz wxyz", "wxyzwxyzwxyzwxyz", " wxyz wxyz wxyz wxyz\n"]
+)
+async def test_a_copied_gmail_password_is_picked_up_without_being_pasted(copied: str) -> None:
+    world = make_world(["gmail", GMAIL, True], configured_env())
+    world.io.watching = True
+    world.io.person_copies.extend(["Threadline", "some other text", copied])
+
+    await MailboxStep().run(world.context())
+
+    assert world.mailbox.checked[0][1] == GOOD_APP_PASSWORD
+    assert world.mailbox.saved == {GMAIL: GOOD_APP_PASSWORD}
+    said = world.io.said
+    assert "Copy the 16-letter password Google shows; the set-up picks it up by itself." in said
+    assert "Picked up the password from your clipboard, and emptied the clipboard." in said
+    assert world.io.copied[-1] == ""
+    assert world.io.secret_prompts == [
+        "Waiting for the copied password, or paste it here (it is not shown)"
+    ]
+    assert not any(part in world.io.text() for part in ("wxyz", copied.strip()))
+
+
+async def test_while_the_clipboard_is_watched_a_pasted_password_still_works() -> None:
+    world = make_world(["gmail", GMAIL, "wxyz wxyz wxyz wxyz", True], configured_env())
+    world.io.watching = True
+
+    await MailboxStep().run(world.context())
+
+    assert world.mailbox.saved == {GMAIL: GOOD_APP_PASSWORD}
+    assert "Picked up the password from your clipboard." not in world.io.text()
+    assert world.io.copied == ["Threadline"]
+
+
+async def test_a_refused_copied_password_is_asked_for_again() -> None:
+    world = make_world(["gmail", GMAIL, GOOD_APP_PASSWORD, True], configured_env())
+    world.io.watching = True
+    world.io.person_copies.append("abcd efgh ijkl mnop")
+
+    await MailboxStep().run(world.context())
+
+    assert [tried for _, tried in world.mailbox.checked] == ["abcdefghijklmnop", GOOD_APP_PASSWORD]
+    assert "  Google refused the app password. Please try again." in world.io.said
+    assert world.mailbox.saved == {GMAIL: GOOD_APP_PASSWORD}
+
+
+async def test_a_copied_value_that_is_no_app_password_is_left_alone() -> None:
+    world = make_world(["gmail", GMAIL, GOOD_APP_PASSWORD, True], configured_env())
+    world.io.watching = True
+    world.io.person_copies.extend(
+        ["abcd-efgh-ijkl-mnop", "abcdefghijklmnopq", "ABCD EFGH IJKL MNOP"]
+    )
+
+    await MailboxStep().run(world.context())
+
+    assert [tried for _, tried in world.mailbox.checked] == [GOOD_APP_PASSWORD]
+
+
+async def test_an_icloud_password_is_picked_up_in_apples_shape() -> None:
+    world = make_world(["icloud", "sam@icloud.com", True], configured_env())
+    world.mailbox.good_password = "wxyz-wxyz-wxyz-wxyz"
+    world.io.watching = True
+    world.io.person_copies.append("wxyz-wxyz-wxyz-wxyz")
+
+    await MailboxStep().run(world.context())
+
+    assert world.mailbox.saved == {"sam@icloud.com": "wxyz-wxyz-wxyz-wxyz"}
+    assert world.io.opened == ["https://account.apple.com"]
+    said = world.io.said
+    assert "Copy the 16-letter password Apple shows; the set-up picks it up by itself." in said
+    assert not any("not available" in line for line in said)
+
+
+async def test_yahoo_keeps_the_pasted_password_even_where_the_clipboard_is_watched() -> None:
+    world = make_world(["yahoo", "sam@yahoo.com", GOOD_APP_PASSWORD, True], configured_env())
+    world.io.watching = True
+    world.io.person_copies.append("wxyz wxyz wxyz wxyz")
+
+    await MailboxStep().run(world.context())
+
+    assert world.io.secret_prompts == ["Paste the Yahoo Mail app password (it is not shown)"]
+    assert world.io.copied == ["Threadline"]
+    assert world.io.opened == ["https://login.yahoo.com/account/security"]
+
+
+@pytest.mark.parametrize("answer", ["no", "N", "no app passwords", "Not  available"])
+async def test_no_app_passwords_opens_two_step_verification_then_the_page_again(
+    answer: str,
+) -> None:
+    world = make_world(["gmail", GMAIL, answer, GOOD_APP_PASSWORD, True], configured_env())
+
+    await MailboxStep().run(world.context())
+
+    assert world.io.opened == [GMAIL_ACCOUNT_PAGE, TWO_STEP_ACCOUNT_PAGE, GMAIL_ACCOUNT_PAGE]
+    said = world.io.said
+    assert (
+        "Google asks you to turn on 2-Step Verification first: it texts or prompts your "
+        "phone, about 5 minutes. Then come back."
+    ) in said
+    assert "[paused] Once 2-Step Verification is on" in said
+    assert [tried for _, tried in world.mailbox.checked] == [GOOD_APP_PASSWORD]
+    assert world.mailbox.saved == {GMAIL: GOOD_APP_PASSWORD}
+
+
+async def test_no_app_passwords_after_two_step_verification_stops_with_the_reason() -> None:
+    world = make_world(["gmail", GMAIL, "no", "no"], configured_env())
+
+    with pytest.raises(AppPasswordUnavailableError, match="administrator may have switched"):
+        await MailboxStep().run(world.context())
+
+    assert world.mailbox.checked == []
+    assert world.mailbox.saved == {}
+
+
+async def test_no_is_only_a_wrong_password_for_a_provider_without_two_step_page() -> None:
+    world = make_world(["yahoo", "sam@yahoo.com", "no", GOOD_APP_PASSWORD, True], configured_env())
+
+    await MailboxStep().run(world.context())
+
+    assert [tried for _, tried in world.mailbox.checked] == ["no", GOOD_APP_PASSWORD]
+    assert world.io.opened == ["https://login.yahoo.com/account/security"]
 
 
 async def test_a_refused_password_is_asked_for_again() -> None:

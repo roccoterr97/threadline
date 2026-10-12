@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from structlog.testing import capture_logs
 
-from tracker.infrastructure import github_cli, local_time_zone, terminal_io
+from tracker.infrastructure import clipboard, github_cli, local_time_zone
 from tracker.infrastructure.env_file import EnvFile
 from tracker.infrastructure.github_cli import TextFile, run_command
 from tracker.infrastructure.local_time_zone import (
@@ -24,7 +24,7 @@ from tracker.infrastructure.local_time_zone import (
     zone_from_windows_name,
 )
 from tracker.infrastructure.terminal_io import TerminalIO
-from tracker.shared.constants.terminal import CLIPBOARD_COMMANDS
+from tracker.shared.constants.terminal import CLIPBOARD_COMMANDS, CLIPBOARD_READ_COMMANDS
 from tracker.shared.constants.windows_time_zones import WINDOWS_TO_IANA
 from tracker.shared.time_zones import canonical_zone_name
 
@@ -187,8 +187,8 @@ def test_a_tzutil_that_fails_gives_no_zone(monkeypatch: pytest.MonkeyPatch, run:
 
 def test_the_mac_clipboard_comes_first(monkeypatch: pytest.MonkeyPatch) -> None:
     run = FakeRun()
-    monkeypatch.setattr(terminal_io.shutil, "which", only_programs("pbcopy", "clip", "xclip"))
-    monkeypatch.setattr(terminal_io.subprocess, "run", run)
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("pbcopy", "clip", "xclip"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
 
     assert TerminalIO().copy("value") is True
     assert [arguments for arguments, _ in run.calls] == [["C:/Tools/pbcopy.exe"]]
@@ -197,8 +197,8 @@ def test_the_mac_clipboard_comes_first(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_windows_copies_with_clip(monkeypatch: pytest.MonkeyPatch) -> None:
     run = FakeRun()
-    monkeypatch.setattr(terminal_io.shutil, "which", only_programs("clip"))
-    monkeypatch.setattr(terminal_io.subprocess, "run", run)
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("clip"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
 
     assert TerminalIO().copy("value") is True
     assert run.calls[0][0] == ["C:/Tools/clip.exe"]
@@ -208,8 +208,8 @@ def test_linux_moves_on_to_the_next_clipboard_when_one_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = FakeRun(fail_for=frozenset({"wl-copy.exe"}))
-    monkeypatch.setattr(terminal_io.shutil, "which", only_programs("wl-copy", "xclip", "xsel"))
-    monkeypatch.setattr(terminal_io.subprocess, "run", run)
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("wl-copy", "xclip", "xsel"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
 
     assert TerminalIO().copy("value") is True
     assert [arguments for arguments, _ in run.calls] == [
@@ -222,8 +222,8 @@ def test_the_value_never_goes_on_the_command_line_and_nothing_is_shown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run = FakeRun()
-    monkeypatch.setattr(terminal_io.shutil, "which", only_programs("xsel"))
-    monkeypatch.setattr(terminal_io.subprocess, "run", run)
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("xsel"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
 
     TerminalIO().copy("hidden-value")
 
@@ -237,9 +237,9 @@ def test_when_every_clipboard_fails_copy_says_so(monkeypatch: pytest.MonkeyPatch
     names = frozenset(f"{command[0]}.exe" for command in CLIPBOARD_COMMANDS)
     run = FakeRun(fail_for=names)
     monkeypatch.setattr(
-        terminal_io.shutil, "which", only_programs(*(command[0] for command in CLIPBOARD_COMMANDS))
+        clipboard.shutil, "which", only_programs(*(command[0] for command in CLIPBOARD_COMMANDS))
     )
-    monkeypatch.setattr(terminal_io.subprocess, "run", run)
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
 
     assert TerminalIO().copy("value") is False
     assert len(run.calls) == len(CLIPBOARD_COMMANDS)
@@ -247,10 +247,91 @@ def test_when_every_clipboard_fails_copy_says_so(monkeypatch: pytest.MonkeyPatch
 
 def test_a_clipboard_that_hangs_is_given_up(monkeypatch: pytest.MonkeyPatch) -> None:
     run = FakeRun(error=subprocess.TimeoutExpired("xclip", 5))
-    monkeypatch.setattr(terminal_io.shutil, "which", only_programs("xclip"))
-    monkeypatch.setattr(terminal_io.subprocess, "run", run)
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("xclip"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
 
     assert TerminalIO().copy("value") is False
+
+
+def test_the_mac_reads_its_clipboard_with_pbpaste(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = FakeRun(stdout="abcd efgh ijkl mnop")
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("pbpaste", "powershell", "xclip"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
+
+    assert clipboard.read_clipboard() == "abcd efgh ijkl mnop"
+    assert [arguments for arguments, _ in run.calls] == [["C:/Tools/pbpaste.exe"]]
+
+
+def test_windows_reads_its_clipboard_with_powershell(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = FakeRun(stdout="abcd efgh ijkl mnop\r\n")
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("clip", "powershell"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
+
+    assert clipboard.read_clipboard() == "abcd efgh ijkl mnop\r\n"
+    assert run.calls[0][0] == [
+        "C:/Tools/powershell.exe",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        "Get-Clipboard -Raw",
+    ]
+
+
+def test_linux_reads_with_the_next_clipboard_when_one_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(stdout="Threadline", fail_for=frozenset({"wl-paste.exe"}))
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("wl-paste", "xclip", "xsel"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
+
+    assert clipboard.read_clipboard() == "Threadline"
+    assert [arguments for arguments, _ in run.calls] == [
+        ["C:/Tools/wl-paste.exe", "--no-newline"],
+        ["C:/Tools/xclip.exe", "-selection", "clipboard", "-out"],
+    ]
+
+
+def test_reading_the_clipboard_shows_nothing_and_sends_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = FakeRun(stdout="abcd efgh ijkl mnop")
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs("xsel"))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
+
+    clipboard.read_clipboard()
+
+    arguments, options = run.calls[0]
+    assert arguments == ["C:/Tools/xsel.exe", "--clipboard", "--output"]
+    assert options["capture_output"] is True
+    assert options["stdin"] == subprocess.DEVNULL
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        FakeRun(fail_for=frozenset(f"{command[0]}.exe" for command in CLIPBOARD_READ_COMMANDS)),
+        FakeRun(error=subprocess.TimeoutExpired("xclip", 5)),
+        FakeRun(error=OSError("cannot start")),
+    ],
+)
+def test_a_clipboard_that_cannot_be_read_gives_nothing(
+    monkeypatch: pytest.MonkeyPatch, run: FakeRun
+) -> None:
+    programs = (command[0] for command in CLIPBOARD_READ_COMMANDS)
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs(*programs))
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
+
+    assert clipboard.read_clipboard() is None
+    assert len(run.calls) == len(CLIPBOARD_READ_COMMANDS)
+
+
+def test_without_any_clipboard_program_nothing_is_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    run = FakeRun()
+    monkeypatch.setattr(clipboard.shutil, "which", only_programs())
+    monkeypatch.setattr(clipboard.subprocess, "run", run)
+
+    assert clipboard.read_clipboard() is None
+    assert run.calls == []
 
 
 # --- The .env file -----------------------------------------------------------------

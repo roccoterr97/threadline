@@ -210,6 +210,20 @@ describe('the set-up that asks only what the reader must do', () => {
     expect(numberedItems(stepWithId('choose-mailbox'))[0]).toContain('Type your e-mail address');
   });
 
+  it('keeps LinkedIn an extra at the address the dashboard and the e-mail point to', () => {
+    // The dashboard's card and the morning e-mail link to /setup/extra/linkedin.
+    expect(SETUP_GUIDE.extras.map((part) => part.id)).toContain('linkedin');
+    expect(SETUP_GUIDE.core.map((part) => part.id)).not.toContain('linkedin');
+  });
+
+  it('no longer says the full set-up asks about LinkedIn at its end', () => {
+    const core = SETUP_GUIDE.core.flatMap((part) => [
+      ...(part.intro ?? []),
+      ...part.steps.flatMap(blocksOfStep),
+    ]);
+    expect(core.flatMap(textsOf).some((text) => text.includes('Connect LinkedIn now?'))).toBe(false);
+  });
+
   it('names the command that brings every question back', () => {
     expect(ASK_EVERYTHING_COMMAND).toBe('uv run tracker setup --ask-everything');
     expect(ALL_TEXTS.some((text) => text.includes(ASK_EVERYTHING_COMMAND))).toBe(true);

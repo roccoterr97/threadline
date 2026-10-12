@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import stat
 import sys
+import threading
 import webbrowser
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -24,7 +25,7 @@ from typer.testing import CliRunner
 
 from tests.conftest import FakeSupabaseClient, as_client
 from tracker.cli.main import build_cli
-from tracker.infrastructure import terminal_io
+from tracker.infrastructure import clipboard, terminal_io
 from tracker.infrastructure.env_file import EnvFile
 from tracker.infrastructure.github_api import GitHubApi
 from tracker.infrastructure.linkedin.client import LinkedInSnapshotClient
@@ -660,7 +661,7 @@ def test_terminal_without_browser_or_clipboard_carries_on(
         raise webbrowser.Error(url)
 
     monkeypatch.setattr(terminal_io.webbrowser, "open", no_browser)
-    monkeypatch.setattr(terminal_io.shutil, "which", lambda name: None)
+    monkeypatch.setattr(clipboard.shutil, "which", lambda name: None)
     io = TerminalIO()
 
     io.open_page("https://example.com")
@@ -671,9 +672,9 @@ def test_terminal_without_browser_or_clipboard_carries_on(
 
 def test_terminal_copies_with_pbcopy(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[list[str], dict[str, Any]]] = []
-    monkeypatch.setattr(terminal_io.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(clipboard.shutil, "which", lambda name: f"/usr/bin/{name}")
     monkeypatch.setattr(
-        terminal_io.subprocess, "run", lambda args, **kwargs: calls.append((args, kwargs))
+        clipboard.subprocess, "run", lambda args, **kwargs: calls.append((args, kwargs))
     )
 
     assert TerminalIO().copy("value") is True
@@ -738,6 +739,154 @@ def test_without_a_terminal_an_empty_hidden_answer_is_accepted(
 
     assert TerminalIO().ask_secret("Paste the key") == ""
     assert asked == [{"default": "", "hide_input": True, "show_default": False}]
+
+
+class Clipboard:
+    """A made-up clipboard: each look reads the next value, the last one stays."""
+
+    def __init__(self, *texts: str | None) -> None:
+        self.texts = list(texts)
+        self.reads = 0
+
+    def read(self) -> str | None:
+        self.reads += 1
+        return self.texts.pop(0) if len(self.texts) > 1 else self.texts[0]
+
+
+def _sixteen_letters(text: str) -> bool:
+    return len("".join(text.split())) == 16
+
+
+def test_only_a_newly_copied_wanted_value_is_picked_up() -> None:
+    clipboard_now = Clipboard("Threadline", "a note", "abcd efgh ijkl mnop")
+    look = terminal_io.newly_copied("Threadline", _sixteen_letters, clipboard_now.read)
+
+    assert [look(), look(), look()] == [None, None, "abcd efgh ijkl mnop"]
+
+
+def test_the_value_already_on_the_clipboard_is_never_taken() -> None:
+    look = terminal_io.newly_copied(
+        "abcdefghijklmnop", _sixteen_letters, lambda: "abcdefghijklmnop"
+    )
+
+    assert look() is None
+
+
+def test_watching_stops_at_a_key_press_or_after_the_last_look() -> None:
+    clipboard_now = Clipboard("Threadline")
+    look = terminal_io.newly_copied("", _sixteen_letters, clipboard_now.read)
+
+    pressed = terminal_io.wait_for_copy(lambda _seconds: True, look, polls=5, interval=0)
+    timed_out = terminal_io.wait_for_copy(lambda _seconds: False, look, polls=3, interval=0)
+
+    assert (pressed, timed_out) == (None, None)
+    assert clipboard_now.reads == 3
+
+
+def test_a_copied_password_is_picked_up_and_what_was_typed_is_dropped() -> None:
+    if sys.platform == "win32":
+        pytest.skip(_NO_TERMINAL_ON_WINDOWS)
+    import pty
+    import termios
+
+    keyboard, terminal = pty.openpty()
+    clipboard_now = Clipboard("Threadline", "Threadline", "abcd efgh ijkl mnop")
+    try:
+        os.write(keyboard, b"half-typed")  # no Enter: the line is not complete yet
+
+        answer = terminal_io.read_hidden_or_copied(
+            terminal,
+            terminal_io.newly_copied("Threadline", _sixteen_letters, clipboard_now.read),
+            polls=10,
+            interval=0.01,
+        )
+        os.write(keyboard, b"\n")
+        left_over = terminal_io.read_hidden_lines(terminal, gap_seconds=0.01)
+        echo_after = termios.tcgetattr(terminal)[3] & termios.ECHO
+    finally:
+        os.close(keyboard)
+        os.close(terminal)
+
+    assert answer == terminal_io.SecretAnswer("abcd efgh ijkl mnop", copied=True)
+    assert left_over == ""
+    assert echo_after
+
+
+def test_a_pasted_password_is_read_while_the_clipboard_is_watched(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip(_NO_TERMINAL_ON_WINDOWS)
+    import pty
+
+    keyboard, terminal = pty.openpty()
+    clipboard_now = Clipboard("Threadline")
+    try:
+        os.write(keyboard, b"wxyz wxyz wxyz wxyz\n")
+
+        answer = terminal_io.read_hidden_or_copied(
+            terminal,
+            terminal_io.newly_copied("Threadline", _sixteen_letters, clipboard_now.read),
+            polls=10,
+            interval=0.01,
+            gap_seconds=0.01,
+        )
+    finally:
+        os.close(keyboard)
+        os.close(terminal)
+
+    assert answer == terminal_io.SecretAnswer("wxyz wxyz wxyz wxyz", copied=False)
+    assert terminal_io.STOPPED_WATCHING not in capsys.readouterr().out
+
+
+def test_after_the_watch_ends_the_keyboard_is_still_read(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip(_NO_TERMINAL_ON_WINDOWS)
+    import pty
+
+    keyboard, terminal = pty.openpty()
+    late_paste = threading.Timer(0.05, os.write, (keyboard, b"wxyz wxyz wxyz wxyz\n"))
+    try:
+        late_paste.start()
+        answer = terminal_io.read_hidden_or_copied(
+            terminal,
+            terminal_io.newly_copied("Threadline", _sixteen_letters, lambda: "Threadline"),
+            polls=2,
+            interval=0,
+            gap_seconds=0.01,
+        )
+    finally:
+        late_paste.join()
+        os.close(keyboard)
+        os.close(terminal)
+
+    assert answer == terminal_io.SecretAnswer("wxyz wxyz wxyz wxyz", copied=False)
+    assert terminal_io.STOPPED_WATCHING in capsys.readouterr().out
+
+
+def test_without_a_clipboard_the_watching_question_is_the_hidden_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[str] = []
+    monkeypatch.setattr(terminal_io.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(terminal_io, "read_clipboard", lambda: None)
+    monkeypatch.setattr(TerminalIO, "ask_secret", lambda _self, prompt: asked.append(prompt) or "x")
+    io = TerminalIO()
+
+    answer = io.ask_secret_or_copied("Paste it", _sixteen_letters)
+
+    assert answer == terminal_io.SecretAnswer("x", copied=False)
+    assert asked == ["Paste it"]
+    assert io.watches_clipboard() is False
+
+
+def test_a_terminal_with_a_clipboard_watches_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(terminal_io.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(terminal_io, "read_clipboard", lambda: "Threadline")
+
+    assert TerminalIO().watches_clipboard() is True
 
 
 # --- The commands --------------------------------------------------------------

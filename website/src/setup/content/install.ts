@@ -247,7 +247,7 @@ export const INSTALL: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: `To run one step again later, name it, for example \`${STEP_COMMAND.database}\`. A step run by name asks all its questions. At the end of the full run, one question offers LinkedIn (EEA and Switzerland only, about 5 minutes); press Enter to leave it for later. The other extras (the Refresh now button and the Claude cloud route) come later.`,
+          text: `To run one step again later, name it, for example \`${STEP_COMMAND.database}\`. A step run by name asks all its questions. The full run does not ask about LinkedIn: its last screen names the command, and once your first summary is in, the dashboard and the morning e-mail offer it too (EEA and Switzerland only, about 5 minutes). The other extras (the Refresh now button and the Claude cloud route) come later.`,
         },
       ],
       youDo: [

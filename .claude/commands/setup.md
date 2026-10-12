@@ -14,10 +14,10 @@ accounts and click where you tell them.** This file is the whole recipe.
 `first run`, `check`). With nothing, do all of them in order, skipping what is
 already done.
 
-Before you start, tell them how long it takes: about 20 minutes of their own
-time if they already have GitHub and Supabase accounts, about 30 if they create
-them as they go. The first summary e-mail follows about ten minutes after the
-end.
+Before you start, tell them how long it takes: about 15 minutes of their own
+time if they already have GitHub and Supabase accounts, about 25 if they create
+them as they go. LinkedIn comes later, in about 5 minutes. The first summary
+e-mail follows about ten minutes after the end.
 
 ## The rules
 
@@ -177,8 +177,10 @@ address into a window signed in to the right account.
 
 LinkedIn (part 8a) only works for members whose LinkedIn profile is located in
 the EEA or Switzerland and takes about five minutes of clicking the first time.
-The wizard offers it in one question at its end (part 4); it can also be added
-any day later with `uv run tracker setup linkedin --browser`. After that first
+The wizard does not ask about it, to stay short: it ends with `LinkedIn can be
+added later: uv run tracker setup linkedin (about 5 minutes).`, and the
+dashboard and the morning e-mail offer it too. Add it after the wizard (end of
+part 4) with `uv run tracker setup linkedin --browser`. After that first
 time, a new key is that same command and one click on LinkedIn's **Allow**
 button, about once a year.
 
@@ -243,9 +245,14 @@ Six moments need a word from you:
   address, the page asks for it once: the address they signed up to Supabase
   with.
 - **The mailbox.** The page asks `Your e-mail address` and tells the provider
-  from it (it asks which one only for a company's own domain). Then it opens
-  the page where the app password is made, or, for Outlook, the Microsoft
-  sign-in comes next.
+  from it (it asks which one only for a company's own domain). Then it puts
+  the name `Threadline` on their clipboard and opens the page where the app
+  password is made (for Gmail, on that Google account), or, for Outlook, the
+  Microsoft sign-in comes next. Tell them: paste the name, create the
+  password, copy it and paste it into the set-up page's hidden field. If
+  Google says the setting is not available, they answer `no` there: the set-up
+  opens Google's 2-Step Verification page (about 5 minutes, with their phone),
+  then the app-password page again.
 - **Your dashboard.** The set-up takes the shared dashboard at
   `https://app.threadlineapp.com` by itself. It then shows their **personal link**,
   which opens their own dashboard. It holds only their database's public
@@ -273,10 +280,11 @@ Six moments need a word from you:
   then run `uv run tracker setup github --browser` again. If GitHub ends up
   with no key, the wizard does not start the first run and says what is
   missing: run `uv run tracker setup github --browser` again.
-- **LinkedIn** (the one question at the end, `Connect LinkedIn now? It works if
-  your LinkedIn profile is located in the EEA or Switzerland (about 5
-  minutes)`). Ask whether their profile is located there; if not, or they
-  would rather wait, they answer no. On yes, guide 8a: a LinkedIn page opens.
+- **LinkedIn, after the wizard** (it does not ask about LinkedIn). Ask whether
+  their profile is located in the EEA or Switzerland and whether they want
+  their LinkedIn messages now; if not, skip it: they can add it any day. On
+  yes, run `uv run tracker setup linkedin --browser` and they answer yes to
+  "Connect LinkedIn now?". Guide 8a: a LinkedIn page opens.
   Tell them: app name `Threadline`; for **LinkedIn Page** type `Member Data
   Portability` and pick **Member Data Portability (Member-Only Default Company
   Page)**, the one with LinkedIn's blue "in" logo (look-alikes without it are

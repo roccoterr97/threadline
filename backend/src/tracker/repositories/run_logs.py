@@ -67,6 +67,27 @@ class RunLogRepository(SupabaseRepository[RunLog]):
         )
         return self._first(rows)
 
+    def find_first(self, triggers: Collection[RunTrigger]) -> RunLog | None:
+        """Fetch the earliest run of some kinds: the owner's first one.
+
+        Args:
+            triggers: Only runs started by one of these count.
+
+        Returns:
+            The oldest such run, or ``None`` when there is none.
+        """
+        values = [trigger.value for trigger in triggers]
+        rows = self._run(
+            lambda: self._table()
+            .select(ALL_COLUMNS)
+            .in_("trigger", values)
+            .order("started_at", desc=False)
+            .limit(1)
+            .execute(),
+            "find_first",
+        )
+        return self._first(rows)
+
     def list_recent(self, triggers: Collection[RunTrigger], *, limit: int) -> list[RunLog]:
         """Fetch the newest runs of some kinds, newest first.
 

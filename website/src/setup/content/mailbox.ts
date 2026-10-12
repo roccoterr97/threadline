@@ -3,7 +3,6 @@ import type { SetupPart, SetupStep } from '../types';
 import {
   APPLE_ACCOUNT_PAGE,
   GOOGLE_APP_PASSWORDS_PAGE,
-  GOOGLE_SECURITY_PAGE,
   YAHOO_SECURITY_PAGE,
 } from './addresses';
 import { DOCTOR_COMMAND, STEP_COMMAND } from './commands';
@@ -63,13 +62,13 @@ const APP_PASSWORD_INTRO = [
   },
   {
     kind: 'paragraph',
-    text: '**What the set-up does for you:** it explains app passwords, opens your provider\'s page, and waits for you to paste the new password (nothing is shown while you paste). Then it **checks it live**: it signs in, opens your inbox read-only, counts the messages of the last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database, **never in `.env`**, and add the address to your own addresses, so your own messages count as yours.',
+    text: '**What the set-up does for you:** it explains app passwords, puts the name `Threadline` on your clipboard, opens your provider\'s page and waits for the new password. For Gmail and iCloud it picks the password up by itself as soon as you copy it on the page (it watches the clipboard for about 5 minutes, and empties it once the password is picked up); for every provider you can also paste it in the terminal (nothing is shown while you paste). Then it **checks it live**: it signs in, opens your inbox read-only, counts the messages of the last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database, **never in `.env`**, and add the address to your own addresses, so your own messages count as yours.',
   },
 ] as const;
 
 const GENERAL_IF_NOT = {
   kind: 'paragraph',
-  text: '"refused the app password" means the password was copied wrongly, belongs to another address, or the account does not allow app passwords. The set-up lets you paste again twice. "No Sent folder was found" still works, but your own replies will not be read: tell the project which folder your mail program saves sent mail in.',
+  text: '"refused the app password" means the password was copied wrongly, belongs to another address, or the account does not allow app passwords. The set-up lets you try again twice. "No Sent folder was found" still works, but your own replies will not be read: tell the project which folder your mail program saves sent mail in.',
 } as const;
 
 const GMAIL: SetupStep = {
@@ -88,9 +87,8 @@ const GMAIL: SetupStep = {
     {
       kind: 'steps',
       items: [
-        `**Turn on 2-Step Verification.** Open [myaccount.google.com/security](${GOOGLE_SECURITY_PAGE}), find **2-Step Verification** and follow Google's steps (you need your phone). The page may look slightly different. Check: the Security page shows 2-Step Verification as **on**. If not, finish Google's steps; app passwords appear only once it is on.`,
-        `**Make the app password.** Type your Gmail address in the terminal. The set-up opens [myaccount.google.com/apppasswords](${GOOGLE_APP_PASSWORDS_PAGE}). Sign in if asked, type a name such as \`Threadline\`, and create it. The page may look slightly different. Check: Google shows a 16-character password. Copy it now: Google shows it only once.`,
-        '**Paste it in the terminal** and press Enter. Spaces do not matter.',
+        `**Make the app password.** Type your Gmail address in the terminal. The set-up puts the name \`Threadline\` on your clipboard and opens [myaccount.google.com/apppasswords](${GOOGLE_APP_PASSWORDS_PAGE}) on that Google account. Sign in if asked, paste the name and click **Create**. The page may look slightly different. Check: Google shows a 16-letter password. Google shows it only once.`,
+        '**Copy the password** on Google\'s page. The set-up picks it up by itself and says `Picked up the password from your clipboard, and emptied the clipboard.` You can also paste it in the terminal and press Enter (or in the field, on the set-up page in your browser). Spaces do not matter.',
       ],
     },
   ],
@@ -104,8 +102,9 @@ const GMAIL: SetupStep = {
     {
       kind: 'bullets',
       items: [
-        'If Google says the app-password setting is not available, one of these is true: 2-Step Verification is off; you sign in only with security keys; Advanced Protection is on; or it is a work or school account whose administrator switched app passwords (or IMAP) off. Only the administrator can change the last one: use Outlook instead, or ask them.',
-        'If the set-up refused the password, make a new app password and paste that one.',
+        'If Google says the setting is not available, answer `no` in the terminal. Google asks you to turn on **2-Step Verification** first: the set-up opens that page, you follow Google\'s steps (it texts or prompts your phone, about 5 minutes), press Enter in the terminal, and the app-password page opens again.',
+        'If Google still says it is not available, answer `no` again and the set-up stops: you sign in only with security keys, Advanced Protection is on, or it is a work or school account whose administrator switched app passwords (or IMAP) off. Only the administrator can change the last one: use Outlook instead, or ask them.',
+        'If nothing happens after you copy, paste it in the terminal. If the set-up refused the password, make a new app password and copy that one.',
       ],
     },
     GENERAL_IF_NOT,
@@ -129,8 +128,8 @@ const ICLOUD: SetupStep = {
       kind: 'steps',
       items: [
         `**Two-factor authentication** must be on for your Apple Account (it usually is). Check: at [account.apple.com](${APPLE_ACCOUNT_PAGE}), **Sign-In and Security** lists **App-Specific Passwords**. If not, turn on two-factor authentication on your iPhone or Mac first.`,
-        `**Make the password.** Type your iCloud address. The set-up opens [account.apple.com](${APPLE_ACCOUNT_PAGE}). Sign in, open **Sign-In and Security** → **App-Specific Passwords** → **Generate an app-specific password**, name it \`Threadline\`, and follow the steps. The page may look slightly different. Check: Apple shows the new password. If not, check you are signed in with the Apple Account that owns the mailbox.`,
-        '**Paste it in the terminal.**',
+        `**Make the password.** Type your iCloud address. The set-up opens [account.apple.com](${APPLE_ACCOUNT_PAGE}). Sign in, open **Sign-In and Security** → **App-Specific Passwords** → **Generate an app-specific password**, paste the name \`Threadline\` (it is on your clipboard), and follow the steps. The page may look slightly different. Check: Apple shows the new password. If not, check you are signed in with the Apple Account that owns the mailbox.`,
+        '**Copy the password** on Apple\'s page: the set-up picks it up by itself. Or paste it in the terminal.',
       ],
     },
   ],
@@ -160,7 +159,7 @@ const YAHOO: SetupStep = {
     {
       kind: 'steps',
       items: [
-        `**Make the app password.** Type your Yahoo address. The set-up opens [login.yahoo.com/account/security](${YAHOO_SECURITY_PAGE}). Under **External connections**, click **Create app password**, type \`Threadline\`, then **Generate password**. The page may look slightly different. Check: Yahoo shows a new password.`,
+        `**Make the app password.** Type your Yahoo address. The set-up opens [login.yahoo.com/account/security](${YAHOO_SECURITY_PAGE}). Under **External connections**, click **Create app password**, paste \`Threadline\` (it is on your clipboard), then **Generate password**. The page may look slightly different. Check: Yahoo shows a new password.`,
         '**Paste it in the terminal**, then click **Done** on Yahoo\'s page.',
       ],
     },
@@ -190,7 +189,7 @@ const FASTMAIL: SetupStep = {
     {
       kind: 'steps',
       items: [
-        '**Make the app password.** Type your Fastmail address. The set-up opens Fastmail\'s help page about app passwords. In Fastmail, open **Settings** → **Privacy & Security** → **Connected apps & API tokens** → **Manage app passwords and access** → **New app password**. Choose a name, set the access to **Mail (IMAP/POP/SMTP)**, then **Generate password**. The page may look slightly different. Check: Fastmail shows a 16-character password.',
+        '**Make the app password.** Type your Fastmail address. The set-up opens Fastmail\'s help page about app passwords. In Fastmail, open **Settings** → **Privacy & Security** → **Connected apps & API tokens** → **Manage app passwords and access** → **New app password**. Paste the name `Threadline` (it is on your clipboard), set the access to **Mail (IMAP/POP/SMTP)**, then **Generate password**. The page may look slightly different. Check: Fastmail shows a 16-character password.',
         '**Paste it in the terminal.** Wait for the check to pass before clicking **Done** on Fastmail\'s page.',
       ],
     },

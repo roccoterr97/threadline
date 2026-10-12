@@ -6,7 +6,7 @@ import {
   LINKEDIN_REDIRECT_ADDRESS,
   LINKEDIN_TOKEN_GENERATOR_PAGE,
 } from './addresses';
-import { DOCTOR_COMMAND, STEP_COMMAND } from './commands';
+import { ASK_EVERYTHING_COMMAND, DOCTOR_COMMAND, STEP_COMMAND } from './commands';
 
 /**
  * Mirrors part 8a of docs/setup-your-accounts.md, "LinkedIn": the two
@@ -263,7 +263,11 @@ export const LINKEDIN: SetupPart = {
     },
     {
       kind: 'paragraph',
-      text: '**What you do:** at the end of the full set-up, type `y` at `Connect LinkedIn now? It works if your LinkedIn profile is located in the EEA or Switzerland (about 5 minutes)`. On its own, answer **yes** to "Connect LinkedIn now?" (or press Enter to skip LinkedIn). Then follow the two stages below as the pages open.',
+      text: '**When:** any time after the set-up. The full set-up leaves LinkedIn out to stay short and names the command at its end. Once your first summary is in, the dashboard shows a small "Add your LinkedIn messages" card (hide it if you do not want LinkedIn), and the morning e-mail mentions it on the first day and once a week for the first four weeks, never more.',
+    },
+    {
+      kind: 'paragraph',
+      text: `**What you do:** in the \`threadline/backend\` folder, run \`${STEP_COMMAND.linkedin}\` and answer **yes** to "Connect LinkedIn now?" (or press Enter to skip LinkedIn). Then follow the two stages below as the pages open. (With \`${ASK_EVERYTHING_COMMAND}\`, the full run still asks \`Connect LinkedIn now? …\` at its end; type \`y\` there instead.)`,
     },
     {
       kind: 'command',

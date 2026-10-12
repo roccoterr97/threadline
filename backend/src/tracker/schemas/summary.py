@@ -99,6 +99,8 @@ class SummaryContent(BaseModel):
     replied_total: int = Field(default=0, ge=0)
     open_questions: int = Field(default=0, ge=0)
     key_reminder: str | None = None
+    #: Offer LinkedIn, which a full set-up leaves for later; only now and then.
+    linkedin_offer: bool = False
     #: The dashboard's address, and what follows the ``#`` of the owner's
     #: personal link when it is the shared one (``tracker.domain.dashboard_link``).
     dashboard_url: str | None = None

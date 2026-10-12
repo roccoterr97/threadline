@@ -36,6 +36,7 @@ from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.microsoft.connection import MicrosoftAccess, ShowCode
 from tracker.infrastructure.netlify_api import NetlifyDeploy, NetlifySite
 from tracker.infrastructure.smtp import SmtpAccount
+from tracker.infrastructure.terminal_io import SecretAnswer
 from tracker.infrastructure.web_probe import WebPage
 from tracker.services.database_structure import MigrationFile, StructureProbe
 from tracker.services.profile.choice import Choice, SavedChoice
@@ -61,6 +62,7 @@ __all__ = [
     "NewProject",
     "Organization",
     "PlatformPort",
+    "SecretAnswer",
     "SetupGateways",
     "SetupIO",
     "SupabaseAdminPort",
@@ -87,6 +89,18 @@ class SetupIO(Protocol):
 
     def ask_secret(self, prompt: str) -> str:
         """Ask for a value without showing what is typed."""
+        ...
+
+    def watches_clipboard(self) -> bool:
+        """Whether :meth:`ask_secret_or_copied` can pick its answer up from the clipboard."""
+        ...
+
+    def ask_secret_or_copied(self, prompt: str, wanted: Callable[[str], bool], /) -> SecretAnswer:
+        """Ask for a hidden value, or pick it up once a value ``wanted`` accepts is copied.
+
+        Typing or pasting the answer works all the while; where the clipboard
+        cannot be watched this is :meth:`ask_secret`.
+        """
         ...
 
     def confirm(self, prompt: str, *, default: bool) -> bool:

@@ -43,6 +43,7 @@ from tracker.infrastructure.imap.session import ImapAccount
 from tracker.infrastructure.microsoft.connection import MicrosoftAccess, ShowCode
 from tracker.infrastructure.netlify_api import NetlifyDeploy, NetlifySite
 from tracker.infrastructure.smtp import SmtpAccount
+from tracker.infrastructure.terminal_io import SecretAnswer
 from tracker.infrastructure.web_probe import WebPage
 from tracker.services.database_structure import KNOWN_MIGRATIONS, MigrationFile
 from tracker.services.profile.applier import ApplyReport, CategoryChanges
@@ -132,7 +133,13 @@ DAILY_START_KEY = "daily-start-key-0123456789abcdefghijklmnopqrstuv"
 class ScriptedIO:
     """Answers questions from a script and records everything said."""
 
-    def __init__(self, answers: list[str | bool] | None = None, *, clipboard: bool = True) -> None:
+    def __init__(
+        self,
+        answers: list[str | bool] | None = None,
+        *,
+        clipboard: bool = True,
+        watches_clipboard: bool = False,
+    ) -> None:
         self.answers: deque[str | bool] = deque(answers or [])
         self.said: list[str] = []
         self.defaults: dict[str, str | None] = {}
@@ -143,6 +150,9 @@ class ScriptedIO:
         #: Every question that took an answer, in the order asked.
         self.asked: list[str] = []
         self.clipboard = clipboard
+        self.watching = watches_clipboard
+        #: What the person copies while a question watches the clipboard, in order.
+        self.person_copies: deque[str] = deque()
         self.on_pause: Callable[[str], None] | None = None
 
     def say(self, text: str) -> None:
@@ -160,6 +170,17 @@ class ScriptedIO:
     def ask_secret(self, prompt: str) -> str:
         self.secret_prompts.append(prompt)
         return str(self._next(prompt))
+
+    def watches_clipboard(self) -> bool:
+        return self.watching
+
+    def ask_secret_or_copied(self, prompt: str, wanted: Callable[[str], bool]) -> SecretAnswer:
+        self.secret_prompts.append(prompt)
+        while self.watching and self.person_copies:
+            text = self.person_copies.popleft()
+            if wanted(text):
+                return SecretAnswer(text, copied=True)
+        return SecretAnswer(str(self._next(prompt)), copied=False)
 
     def confirm(self, prompt: str, *, default: bool) -> bool:
         answer = self._next(prompt)

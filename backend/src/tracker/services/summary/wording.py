@@ -21,6 +21,13 @@ KEY_HEADING: Final[str] = "LinkedIn key"
 NOBODY: Final[str] = "nobody"
 NO_QUESTIONS: Final[str] = "no questions waiting"
 
+#: Now and then, while LinkedIn is not connected (``domain.linkedin_offer``).
+LINKEDIN_OFFER: Final[str] = (
+    "Add your LinkedIn messages: about 5 minutes, profiles in the EEA or Switzerland only."
+)
+LINKEDIN_OFFER_COMMAND: Final[str] = "uv run tracker setup linkedin"
+LINKEDIN_OFFER_HOW: Final[str] = "How"
+
 
 @dataclass(frozen=True, slots=True)
 class Branding:

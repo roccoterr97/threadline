@@ -18,6 +18,17 @@ from tracker.shared.constants.assessment import WORK_DIRECTORY
 #: in the summary, repeated every morning until the key is renewed.
 KEY_REMINDER_DAYS: Final[int] = 7
 
+#: While LinkedIn is not connected, the summary offers it every this many days,
+#: counted from the owner's first daily run, so it is never a daily nag.
+LINKEDIN_OFFER_EVERY_DAYS: Final[int] = 7
+
+#: The offer stops after this many days: an owner who has not added LinkedIn
+#: in the first month most likely cannot (it is EEA and Switzerland only).
+LINKEDIN_OFFER_FOR_DAYS: Final[int] = 28
+
+#: The website's guide to adding LinkedIn, which the offer points at.
+LINKEDIN_GUIDE_URL: Final[str] = "https://threadlineapp.com/setup/extra/linkedin"
+
 #: Page holding the open yes/no questions.
 DASHBOARD_REVIEW_PATH: Final[str] = "/review"
 

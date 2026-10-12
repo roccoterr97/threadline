@@ -56,7 +56,7 @@ export const QUESTIONS: readonly Question[] = [
     id: 'time',
     question: 'How long does the set-up take?',
     answer: [
-      'About 20 minutes with GitHub and Supabase ready, about 30 without. The first summary e-mail arrives about ten minutes after you finish.',
+      'About 25 minutes with nothing ready, about 15 with GitHub and Supabase ready; LinkedIn later, about 5 minutes. The first summary e-mail arrives about ten minutes after you finish.',
     ],
   },
   {

@@ -80,8 +80,9 @@ your Supabase account was registered with (or members of your Supabase
 organisation), unless you set up your own sending service ("custom SMTP"). Part 3
 explains what that means for you.
 
-**Time.** About 20 minutes of your own time with GitHub and Supabase ready,
-about 30 without. Part of it is waiting: a new Supabase project takes one to
+**Time.** About 25 minutes of your own time with nothing ready, about 15 with
+GitHub and Supabase accounts ready. LinkedIn comes later, in about 5 minutes
+(part 8a). Part of it is waiting: a new Supabase project takes one to
 three minutes to start, and the first download of Python can take a few more.
 Making a Gmail app password takes longer if 2-Step Verification is not on yet.
 The first summary e-mail follows about ten minutes after the set-up ends, but
@@ -292,11 +293,11 @@ answer every question yourself, run `uv run tracker setup --ask-everything`.
 
 To run one step again later, name it, for example
 `uv run tracker setup database`. A step run by name asks all its questions, as
-this guide describes under **Run on its own**. At the end of the full run, one
-question offers LinkedIn (part 8a): `Connect LinkedIn now? It works if your
-LinkedIn profile is located in the EEA or Switzerland (about 5 minutes)`.
-Press Enter to leave it for later. The other extras (the Refresh now button
-and the Claude cloud route) come later, in part 8.
+this guide describes under **Run on its own**. The full run does not ask
+about LinkedIn: it ends with `LinkedIn can be added later: uv run tracker setup
+linkedin (about 5 minutes).`, and once your first summary is in, the dashboard
+and the morning e-mail offer it too (part 8a). The other extras (the Refresh
+now button and the Claude cloud route) come later, in part 8.
 
 ---
 
@@ -592,11 +593,14 @@ password. Instead you make an **app password**: a separate password just for
 Threadline, which you can remove at any time. Your normal password is never
 given to Threadline.
 
-**What the set-up does for you:** it explains app passwords, opens your
-provider's page, and waits for you to paste the new password (nothing is shown
-while you paste). Then it **checks it live**: it signs in, opens your inbox
-read-only, counts the messages of the last 30 days and looks for your Sent
-folder. Only then does it store the password, encrypted, in your database,
+**What the set-up does for you:** it explains app passwords, puts the name
+`Threadline` on your clipboard, opens your provider's page and waits for the
+new password. For Gmail and iCloud it picks the password up by itself as soon
+as you copy it on the page (it watches the clipboard for about 5 minutes, and
+empties it once the password is picked up); for every provider you can also
+paste it in the terminal (nothing is shown while you paste). Then it **checks
+it live**: it signs in, opens your inbox read-only, counts the messages of the
+last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database,
 **never in `.env`**, and add the address to your own addresses, so your own
 messages count as yours (run on its own, the step asks first).
 
@@ -607,40 +611,40 @@ messages count as yours (run on its own, the step asks first).
 
 **If not:** "refused the app password" means the password was copied wrongly,
 belongs to another address, or the account does not allow app passwords: see
-your provider below. The set-up lets you paste again twice. "No Sent folder was
+your provider below. The set-up lets you try again twice. "No Sent folder was
 found" still works, but your own replies will not be read: tell the project
 which folder your mail program saves sent mail in.
 
 #### Gmail
 
-1. **Turn on 2-Step Verification.** Open <https://myaccount.google.com/security>,
-   find **2-Step Verification** and follow Google's steps (you need your phone).
-   The page may look slightly different.
+1. **Make the app password.** Type your Gmail address in the terminal. The
+   set-up puts the name `Threadline` on your clipboard and opens
+   <https://myaccount.google.com/apppasswords> on that Google account. Sign in
+   if asked, paste the name and click **Create**. The page may look slightly
+   different.
 
-   **✅ Check:** the Security page shows 2-Step Verification as **on**.
+   **✅ Check:** Google shows a 16-letter password. Google shows it only once.
 
-   **If not:** finish Google's steps; app passwords appear only once it is on.
+   **If not:** if Google says the setting is not available, answer `no` in the
+   terminal. Google asks you to turn on **2-Step Verification** first: the
+   set-up opens that page, you follow Google's steps (it texts or prompts your
+   phone, about 5 minutes), press Enter in the terminal, and the app-password
+   page opens again. If Google still says it is not available, answer `no`
+   again and the set-up stops: you sign in only with security keys, Advanced
+   Protection is on, or it is a work or school account whose administrator
+   switched app passwords (or IMAP) off. Only the administrator can change the
+   last one: use Outlook instead, or ask them.
 
-2. **Make the app password.** Type your Gmail address in the terminal. The
-   set-up opens <https://myaccount.google.com/apppasswords>. Sign
-   in if asked, type a name such as `Threadline`, and create it. The page may
-   look slightly different.
-
-   **✅ Check:** Google shows a 16-character password. Copy it now: Google shows
-   it only once.
-
-   **If not:** if Google says the setting is not available, one of these is
-   true: 2-Step Verification is off; you sign in only with security keys;
-   Advanced Protection is on; or it is a work or school account whose
-   administrator switched app passwords (or IMAP) off. Only the administrator
-   can change the last one: use Outlook instead, or ask them.
-
-3. **Paste it in the terminal** and press Enter. Spaces do not matter.
+2. **Copy the password** on Google's page. The set-up picks it up by itself and
+   says `Picked up the password from your clipboard, and emptied the
+   clipboard.` You can also paste it in the terminal and press Enter (or in the
+   field, on the set-up page in your browser). Spaces do not matter.
 
    **✅ Check:** the lines of the general check above, with the folder
    `[Gmail]/Sent Mail` (or its name in your language).
 
-   **If not:** make a new app password and paste that one.
+   **If not:** if nothing happens after you copy, paste it in the terminal. If
+   Google refuses it, make a new app password and copy that one.
 
 Good to know: IMAP is always on for personal Gmail accounts, so there is no
 setting to switch on. **Changing your Google password removes every app
@@ -659,15 +663,16 @@ password**: see "Renew a mailbox app password" in
 
 2. **Make the password.** Type your iCloud address. The set-up
    opens <https://account.apple.com>. Sign in, open **Sign-In and Security** →
-   **App-Specific Passwords** → **Generate an app-specific password**, name it
-   `Threadline`, and follow the steps. The page may look slightly different.
+   **App-Specific Passwords** → **Generate an app-specific password**, paste the
+   name `Threadline` (it is on your clipboard), and follow the steps. The page may look slightly different.
 
    **✅ Check:** Apple shows the new password.
 
    **If not:** check you are signed in with the Apple Account that owns the
    mailbox.
 
-3. **Paste it in the terminal.**
+3. **Copy the password** on Apple's page: the set-up picks it up by itself. Or
+   paste it in the terminal.
 
    **✅ Check:** the general check above.
 
@@ -684,8 +689,8 @@ app-specific password.
 
 1. **Make the app password.** Type your Yahoo address. The set-up
    opens <https://login.yahoo.com/account/security>. Under **External
-   connections**, click **Create app password**, type `Threadline`, then
-   **Generate password**. The page may look slightly different.
+   connections**, click **Create app password**, paste `Threadline` (it is on
+   your clipboard), then **Generate password**. The page may look slightly different.
 
    **✅ Check:** Yahoo shows a new password.
 
@@ -709,8 +714,8 @@ IMAP needs a paid Fastmail plan above Basic.
 1. **Make the app password.** Type your Fastmail address. The
    set-up opens Fastmail's help page about app passwords. In Fastmail, open
    **Settings** → **Privacy & Security** → **Connected apps & API tokens** →
-   **Manage app passwords and access** → **New app password**. Choose a name,
-   set the access to **Mail (IMAP/POP/SMTP)**, then **Generate password**. The
+   **Manage app passwords and access** → **New app password**. Paste the name
+   `Threadline` (it is on your clipboard), set the access to **Mail (IMAP/POP/SMTP)**, then **Generate password**. The
    page may look slightly different.
 
    **✅ Check:** Fastmail shows a 16-character password.
@@ -1090,19 +1095,15 @@ GitHub's timer allows; with Refresh now switched on (part 8b), exactly on time.
 
 ## 7. The final check
 
-Just before the end, the set-up asks once `Connect LinkedIn now? It works if
-your LinkedIn profile is located in the EEA or Switzerland (about 5 minutes)`.
-Type `y` to connect it now (part 8a shows every click), or press Enter to
-leave it for later. A LinkedIn problem never undoes the rest: the set-up still
-ends as below.
-
 The set-up ends by saying `Set-up done.`, then your dashboard's personal link
 and the e-mail address that can sign in to it (`Sign in there with …`: write
 both down). It then says how the first run was left (and, when it was started and an
 e-mail can be sent, when the first summary e-mail will arrive) and the daily
 time. Then it lists what was chosen for you, one line each with the command
-that changes it (`What was chosen, and the command that changes each:`), and
-how to add the extras. Then it checks every connection once and prints one
+that changes it (`What was chosen, and the command that changes each:`), the
+line `LinkedIn can be added later: uv run tracker setup linkedin (about 5
+minutes).` (unless LinkedIn is already connected), and how to add the other
+extras. Then it checks every connection once and prints one
 line for each. The technical details of the whole set-up are in
 `backend/setup.log`, if anyone helping you needs them.
 
@@ -1136,8 +1137,8 @@ something.
 
 Three extras can be added at any time. None of them is needed for the morning
 summary, though Refresh now also makes it arrive on time. The full set-up
-already offers LinkedIn at its end; if you said yes there, it is done. To go
-through all three in order, each one skippable:
+leaves LinkedIn for later and names its command at the end. To go through all
+three in order, each one skippable:
 
 ```bash
 uv run tracker setup extras
@@ -1185,11 +1186,17 @@ to LinkedIn with the new key and saves it only if LinkedIn accepts it. The
 application's Client Secret is kept encrypted in your Supabase database, never
 in a plain file.
 
-**What you do:** at the end of the full set-up, type `y` at `Connect LinkedIn
-now? It works if your LinkedIn profile is located in the EEA or Switzerland
-(about 5 minutes)`. On its own (`uv run tracker setup linkedin`), answer
-**yes** to "Connect LinkedIn now?" (or press Enter to skip LinkedIn). Then
-follow the two stages below as the pages open.
+**When:** any time after the set-up. The full set-up leaves LinkedIn out to
+stay short and names the command at its end. Once your first summary is in,
+the dashboard shows a small "Add your LinkedIn messages" card (hide it if you
+do not want LinkedIn), and the morning e-mail mentions it on the first day and
+once a week for the first four weeks, never more.
+
+**What you do:** in the `threadline/backend` folder, run
+`uv run tracker setup linkedin` and answer **yes** to "Connect LinkedIn now?"
+(or press Enter to skip LinkedIn). Then follow the two stages below as the
+pages open. (With `uv run tracker setup --ask-everything`, the full run still
+asks `Connect LinkedIn now? …` at its end; type `y` there instead.)
 
 #### Stage 1 of 2: create the application and request its product
 

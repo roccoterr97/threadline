@@ -16,6 +16,7 @@ from tests.setup_world import (
 )
 from tracker.domain.linkedin_sign_in import SignInProblem
 from tracker.services.setup import values
+from tracker.services.setup.context import SetupContext
 from tracker.services.setup.models import StepName
 from tracker.services.setup.step_linkedin import LINKEDIN_OFFER, LinkedInStep
 from tracker.services.setup.wizard import SetupWizard, default_steps
@@ -612,10 +613,45 @@ async def test_a_new_key_is_kept_when_linkedin_cannot_be_reached_to_try_it() -> 
     assert any("could not be reached to try the new key" in line for line in world.io.said)
 
 
-# --- Offered at the end of a full run ------------------------------------------------
+# --- Left for later in a full run; offered at its end only with --ask-everything ------
+
+_LATER_LINE = "LinkedIn can be added later: uv run tracker setup linkedin (about 5 minutes)."
 
 
-async def test_a_full_run_ends_by_offering_linkedin_and_a_yes_connects_it() -> None:
+def _express(world: World) -> SetupContext:
+    """The world's context, as a full ``tracker setup`` without ``--ask-everything`` makes it."""
+    ctx = world.context()
+    ctx.session.express = True
+    return ctx
+
+
+async def test_a_full_run_asks_nothing_about_linkedin_and_names_the_command() -> None:
+    world = make_world([], configured_env())
+
+    assert await SetupWizard(_express(world), [LinkedInStep()]).run_core()
+
+    assert world.io.asked == []
+    assert world.linkedin.sign_ins == []
+    said = world.io.said
+    assert _LATER_LINE in said
+    assert "It works if your LinkedIn profile is located in the EEA or Switzerland." in said
+    assert said.index(_LATER_LINE) > said.index("Set-up done.")
+    assert "LinkedIn" not in said[said.index(_LATER_LINE) + 2]
+
+
+async def test_a_full_run_does_not_name_linkedin_once_it_is_connected() -> None:
+    world = make_world([], _saved_key(with_app=True))
+
+    assert await SetupWizard(_express(world), [LinkedInStep()]).run_core()
+
+    assert world.io.asked == []
+    assert not any(line.startswith("LinkedIn can be added later") for line in world.io.said)
+    assert "Extras you can add any time: the dashboard's Refresh now button, which also" in (
+        world.io.said
+    )
+
+
+async def test_ask_everything_ends_by_offering_linkedin_and_a_yes_connects_it() -> None:
     world = _first_time(_PROFILE, False)
     world.io.answers.appendleft(True)
 
@@ -630,12 +666,10 @@ async def test_a_full_run_ends_by_offering_linkedin_and_a_yes_connects_it() -> N
     assert world.env.values["LINKEDIN_ACCESS_TOKEN"] == GOOD_LINKEDIN
     assert "LinkedIn is optional" not in world.io.text()
     assert "messages reach Threadline a day or two late." in world.io.said
-    assert "Extras you can add any time: the dashboard's Refresh now button, which also" in (
-        world.io.said
-    )
+    assert _LATER_LINE not in world.io.said
 
 
-async def test_a_full_run_where_linkedin_is_declined_names_it_among_the_extras() -> None:
+async def test_ask_everything_where_linkedin_is_declined_names_the_command_for_later() -> None:
     world = make_world([False], configured_env())
 
     assert await SetupWizard(world.context(), [LinkedInStep()]).run_core()
@@ -643,10 +677,10 @@ async def test_a_full_run_where_linkedin_is_declined_names_it_among_the_extras()
     assert world.io.asked == [LINKEDIN_OFFER]
     assert world.linkedin.sign_ins == []
     assert "Skipped. Run 'uv run tracker setup linkedin' whenever you want it." in world.io.said
-    assert any(line.startswith("Extras you can add any time: LinkedIn") for line in world.io.said)
+    assert _LATER_LINE in world.io.said
 
 
-async def test_a_full_run_does_not_offer_linkedin_once_it_is_connected() -> None:
+async def test_ask_everything_does_not_offer_linkedin_once_it_is_connected() -> None:
     world = make_world([], _saved_key(with_app=True))
 
     assert await SetupWizard(world.context(), [LinkedInStep()]).run_core()
@@ -654,7 +688,7 @@ async def test_a_full_run_does_not_offer_linkedin_once_it_is_connected() -> None
     assert world.io.asked == []
 
 
-async def test_linkedin_stopping_at_the_end_of_a_full_run_still_ends_it_as_done() -> None:
+async def test_linkedin_stopping_at_the_end_of_ask_everything_still_ends_it_as_done() -> None:
     world = _first_time()
     world.io.answers.appendleft(True)
     world.linkedin.key = "linkedin-unreadable"

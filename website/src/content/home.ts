@@ -63,7 +63,7 @@ export const needs = {
     ['A mailbox', 'Gmail, Outlook, iCloud, Yahoo, Fastmail or any IMAP mailbox'],
     ['LinkedIn, if you want', 'Only for profiles located in the EEA or Switzerland'],
   ] satisfies readonly (readonly [string, string])[],
-  time: 'About 20 minutes with GitHub and Supabase ready, about 30 without.',
+  time: 'About 25 minutes with nothing ready, about 15 with GitHub and Supabase ready. LinkedIn later, about 5 minutes.',
 } as const;
 
 export const finalCall = {

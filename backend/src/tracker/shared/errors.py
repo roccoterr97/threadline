@@ -198,6 +198,17 @@ class MailboxPasswordError(SourceAuthError):
     code = "mailbox_password_refused"
 
 
+class AppPasswordUnavailableError(TrackerError):
+    """The mailbox's provider offers no app passwords for this account.
+
+    Raised once two-step sign-in is on and the provider still offers none, as
+    happens when a work or school administrator has switched them off. It is
+    not a refused password, so it is not asked for again.
+    """
+
+    code = "app_password_unavailable"
+
+
 class MailboxWindowCappedError(TrackerError):
     """A mailbox held more new mail than is read at once; its oldest part was left unread.
 

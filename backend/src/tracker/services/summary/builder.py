@@ -21,6 +21,7 @@ from uuid import UUID
 
 from tracker.domain.dashboard_link import DashboardAddress, dashboard_address
 from tracker.domain.enums import RunStatus, WaitingOn
+from tracker.domain.linkedin_offer import linkedin_offer_due
 from tracker.domain.models import PersonOverview, RunLog, RunStepLog
 from tracker.repositories import Repositories
 from tracker.schemas.summary import (
@@ -135,6 +136,7 @@ class SummaryBuilder:
             replied_total=len(replied),
             open_questions=len(self._repositories.review_items.list_every_unanswered()),
             key_reminder=self._key_reminder(),
+            linkedin_offer=self._linkedin_offer_due(),
             dashboard_url=dashboard.base if dashboard is not None else None,
             dashboard_connect=dashboard.connect if dashboard is not None else None,
         )
@@ -279,6 +281,19 @@ class SummaryBuilder:
             if message.sent_at >= oldest_sent:
                 replied[owner_of[message.conversation_id]] = None
         return [by_person[person_id] for person_id in replied]
+
+    def _linkedin_offer_due(self) -> bool:
+        """Whether this morning offers LinkedIn: not connected, and a day the policy picks.
+
+        The days count from the owner's first daily run, read in their time zone.
+        """
+        if self._settings.linkedin_enabled:
+            return False
+        first = self._repositories.run_logs.find_first(triggers_of_kind(refresh=False))
+        if first is None:
+            return False
+        first_day = first.started_at.astimezone(self._clock.zone).date()
+        return linkedin_offer_due(first_day, self._clock.today())
 
     def _key_reminder(self) -> str | None:
         """Return the LinkedIn key reminder, or ``None`` while the key is fresh.

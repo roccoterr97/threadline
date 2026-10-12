@@ -6,8 +6,9 @@ from collections.abc import Callable
 
 import typer
 
+from tracker.infrastructure.clipboard import copy_to_clipboard
 from tracker.infrastructure.setup_form.conversation import NO, YES, Conversation, QuestionKind
-from tracker.infrastructure.terminal_io import answer_or_suggestion, copy_to_clipboard
+from tracker.infrastructure.terminal_io import SecretAnswer, answer_or_suggestion
 
 
 class FormIO:
@@ -49,6 +50,14 @@ class FormIO:
         """Ask for a value in a hidden field; it is never echoed."""
         self._echo(f"? {prompt}")
         return self._conversation.ask(QuestionKind.SECRET, prompt)
+
+    def watches_clipboard(self) -> bool:
+        """Never: the page keeps its paste field rather than reading the clipboard."""
+        return False
+
+    def ask_secret_or_copied(self, prompt: str, _wanted: Callable[[str], bool]) -> SecretAnswer:
+        """Ask in a hidden field; the page does not watch the clipboard."""
+        return SecretAnswer(self.ask_secret(prompt), copied=False)
 
     def confirm(self, prompt: str, *, default: bool) -> bool:
         """Ask a yes/no question."""

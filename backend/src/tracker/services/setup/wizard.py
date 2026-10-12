@@ -1,10 +1,12 @@
 """Runs the steps in order, skipping finished ones, and stops cleanly on a problem.
 
 The set-up has two halves. The core steps are what the first morning e-mail
-needs, and ``tracker setup`` runs them, then asks once whether to connect
-LinkedIn now, and ends with what happens next. The extras (LinkedIn, the
-Refresh now button, the Claude cloud route) are run together by
-``tracker setup extras``, or one at a time by name.
+needs, and ``tracker setup`` runs them and ends with what happens next,
+naming the command that adds LinkedIn later: LinkedIn is left out of the full
+run to keep it short, and the dashboard and the morning e-mail offer it once
+the first summary is in. Only ``--ask-everything`` still asks about it at the
+end. The extras (LinkedIn, the Refresh now button, the Claude cloud route) are
+run together by ``tracker setup extras``, or one at a time by name.
 """
 
 from __future__ import annotations
@@ -84,11 +86,12 @@ class SetupWizard:
         self._steps = tuple(steps)
 
     async def run_core(self) -> bool:
-        """Run every core step that is not finished yet, offer LinkedIn, then say what is next.
+        """Run every core step that is not finished yet, then say what is next.
 
         Returns:
-            Whether every core step finished. LinkedIn is not one of them: when
-            it stops, it says how to carry on, and the run still ends as done.
+            Whether every core step finished. LinkedIn is not one of them: with
+            ``--ask-everything`` it is offered here, and when it stops, it says
+            how to carry on, and the run still ends as done.
         """
         if not await self._run_group(StepGroup.CORE):
             return False
@@ -163,7 +166,10 @@ class SetupWizard:
         return True
 
     async def _offer_linkedin(self) -> bool:
-        """Ask once whether to connect LinkedIn now, and run its step on a yes.
+        """With ``--ask-everything``, ask once whether to connect LinkedIn now.
+
+        A full run without it never asks: the finish line names the command,
+        and the dashboard and the morning e-mail offer it later.
 
         Returns:
             Whether LinkedIn is connected at the end.
@@ -173,7 +179,7 @@ class SetupWizard:
             return False
         if await step.is_done(self._ctx):
             return True
-        if not wants_linkedin_now(self._ctx):
+        if self._ctx.session.express or not wants_linkedin_now(self._ctx):
             return False
         self._ctx.io.say(step.title)
         await self._attempt(step, skip_when_done=False)
@@ -236,15 +242,13 @@ def _say_finish_line(
 
 
 def _say_extras(io: SetupIO, *, linkedin_connected: bool) -> None:
-    """Name the extras still to add, LinkedIn only when it is not connected."""
-    if linkedin_connected:
-        io.say("Extras you can add any time: the dashboard's Refresh now button, which also")
-        io.say("makes the daily run start on time, and the Claude cloud route:")
-        io.say(f"{_COMMAND} {StepGroup.EXTRAS}")
-        return
-    io.say("Extras you can add any time: LinkedIn (EEA and Switzerland only), the dashboard's")
-    io.say("Refresh now button, which also makes the daily run start on time, and the Claude")
-    io.say(f"cloud route: {_COMMAND} {StepGroup.EXTRAS}")
+    """Name the extras still to add, with LinkedIn's own line while it is not connected."""
+    if not linkedin_connected:
+        io.say(f"LinkedIn can be added later: {_COMMAND} {StepName.LINKEDIN} (about 5 minutes).")
+        io.say("It works if your LinkedIn profile is located in the EEA or Switzerland.")
+    io.say("Extras you can add any time: the dashboard's Refresh now button, which also")
+    io.say("makes the daily run start on time, and the Claude cloud route:")
+    io.say(f"{_COMMAND} {StepGroup.EXTRAS}")
 
 
 def _say_how_to_sign_in(ctx: SetupContext, login: str | None) -> None:

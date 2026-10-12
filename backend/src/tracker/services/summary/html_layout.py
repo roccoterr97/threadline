@@ -21,6 +21,9 @@ from tracker.services.summary.wording import (
     CHASE_HEADING,
     DO_TODAY_HEADING,
     KEY_HEADING,
+    LINKEDIN_OFFER,
+    LINKEDIN_OFFER_COMMAND,
+    LINKEDIN_OFFER_HOW,
     NO_QUESTIONS,
     NOBODY,
     OVERDUE_HEADING,
@@ -34,6 +37,7 @@ from tracker.services.summary.wording import (
 from tracker.shared.constants.summary import (
     DASHBOARD_REVIEW_PATH,
     DASHBOARD_RUNS_PATH,
+    LINKEDIN_GUIDE_URL,
 )
 
 _FONT: Final[str] = "-apple-system,'Segoe UI',Helvetica,Arial,sans-serif"
@@ -80,6 +84,7 @@ def render_html(content: SummaryContent, product_name: str) -> str:
         _people(REPLIED_HEADING, content.replied, content.replied_total, url, _INK),
         _review(content.open_questions, content.dashboard_page(DASHBOARD_REVIEW_PATH)),
         _key_reminder(content.key_reminder),
+        _linkedin_offer(shown=content.linkedin_offer),
         _footer(content.dashboard_page(DASHBOARD_RUNS_PATH), product_name),
     ]
     body = "".join(f"<tr><td style='padding:0 28px'>{row}</td></tr>" for row in rows if row)
@@ -228,6 +233,18 @@ def _key_reminder(reminder: str | None) -> str:
         f"<div style='margin:24px 0 0;padding:14px 16px;background:{_NOTICE_BACKGROUND};"
         f"border-left:4px solid {_NOTICE};border-radius:6px;font-size:14px'>"
         f"<strong style='color:{_NOTICE}'>{KEY_HEADING}</strong><br>{escape(reminder)}</div>"
+    )
+
+
+def _linkedin_offer(*, shown: bool) -> str:
+    """One quiet line offering LinkedIn, on the mornings ``domain.linkedin_offer`` picks."""
+    if not shown:
+        return ""
+    guide = escape(LINKEDIN_GUIDE_URL, quote=True)
+    return (
+        f"<p style='margin:24px 0 0;font-size:14px;color:{_MUTED}'>{LINKEDIN_OFFER} "
+        f"Run <code>{LINKEDIN_OFFER_COMMAND}</code> on your computer. "
+        f"<a href='{guide}' style='color:{_ACCENT}'>{LINKEDIN_OFFER_HOW}</a></p>"
     )
 
 

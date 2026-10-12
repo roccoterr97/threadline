@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta, tzinfo
+
 import pytest
 
 from tests.setup_world import (
@@ -37,6 +40,26 @@ from tracker.shared.constants.setup import (
 from tracker.shared.errors import SourceAuthError, ValidationFailedError
 
 pytestmark = pytest.mark.asyncio
+
+
+class _SteppingClock:
+    """A clock that moves on by the same few seconds each time it is read."""
+
+    def __init__(self, *, seconds: float) -> None:
+        self._moment = datetime(2026, 9, 29, 7, 0, tzinfo=UTC)
+        self._step = timedelta(seconds=seconds)
+
+    @property
+    def zone(self) -> tzinfo:
+        return UTC
+
+    def now(self) -> datetime:
+        self._moment += self._step
+        return self._moment
+
+    def today(self) -> date:
+        return self._moment.date()
+
 
 # --- Supabase ------------------------------------------------------------------
 
@@ -180,6 +203,19 @@ async def test_database_waits_between_files_so_supabase_versions_never_collide()
 
     sent = len(world.platform.applied)
     assert world.waits == [MIGRATION_PAUSE_SECONDS] * (sent - 1)
+
+
+async def test_the_time_supabase_takes_to_answer_counts_towards_the_pause() -> None:
+    world = make_world([True, PASTE, GOOD_TOKEN], configured_env())
+    world.admin.present = {"0001_schema"}
+    ctx = world.context()
+    answering = replace(ctx.gateways, clock=_SteppingClock(seconds=0.6))
+
+    await DatabaseStep().run(replace(ctx, gateways=answering))
+
+    sent = len(world.platform.applied)
+    assert sent > 1
+    assert world.waits == [pytest.approx(MIGRATION_PAUSE_SECONDS - 0.6)] * (sent - 1)
 
 
 async def test_database_sends_a_refused_file_once_more_and_shows_why() -> None:

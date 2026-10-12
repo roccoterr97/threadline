@@ -450,6 +450,18 @@ export const banner = {
   updatedAt: (whenText: string) => `Last updated ${whenText}`,
 } as const;
 
+/** The offer to add LinkedIn, which a full set-up leaves for later. */
+export const linkedInOffer = {
+  title: 'Add your LinkedIn messages',
+  body: 'It takes about 5 minutes, for LinkedIn profiles located in the European Economic Area or Switzerland only.',
+  commandIntro: 'On your computer, in the threadline/backend folder, run:',
+  command: 'uv run tracker setup linkedin',
+  guide: 'Show me how',
+  guideNewTab: '(opens in a new tab)',
+  hide: 'Hide',
+  hideLabel: 'Hide the LinkedIn suggestion',
+} as const;
+
 /** Where the switch-on guide lives; the dashboard cannot know the address of the owner's copy. */
 const REFRESH_GUIDE = 'the guide docs/refresh-now.md in your copy of Threadline';
 

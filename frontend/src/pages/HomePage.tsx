@@ -8,6 +8,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ErrorState } from '../components/ErrorState';
 import { HeadlineCounters } from '../components/HeadlineCounters';
 import { HiddenPersonNotice } from '../components/HiddenPersonNotice';
+import { LinkedInOffer } from '../components/LinkedInOffer';
 import { LoadingState } from '../components/LoadingState';
 import { PeopleCutNotice } from '../components/PeopleCutNotice';
 import { PeopleFilters } from '../components/PeopleFilters';
@@ -29,6 +30,7 @@ import {
   type StatusFilter,
   type TypeFilter,
 } from '../domain/peopleView';
+import { linkedInMissing } from '../domain/linkedInOffer';
 import { assessRunHealth } from '../domain/runHealth';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { useReadQuery } from '../hooks/useReadQuery';
@@ -85,6 +87,8 @@ export function HomePage() {
       <PeopleCutNotice shown={allPeople.length} />
 
       {runs.isSuccess && <RunBanner health={assessRunHealth(runs.data, clock)} clock={clock} />}
+
+      {runs.isSuccess && linkedInMissing(runs.data) && <LinkedInOffer />}
 
       {/* The strip is extra: while it loads, nothing shows rather than a second spinner. */}
       {meetings.isSuccess && <ComingUp meetings={meetings.data} />}
