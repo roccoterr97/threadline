@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, time
 from pathlib import Path
 
 import pytest
@@ -15,7 +15,6 @@ from pydantic import SecretStr
 from tests.setup_world import (
     GOOD_SECRET,
     OWNER_EMAIL,
-    REFRESH_RUN_TITLE,
     FakeWorkflow,
     World,
     configured_env,
@@ -416,9 +415,8 @@ async def test_after_saving_the_first_run_is_started_after_one_yes() -> None:
     assert world.github.started == [("you/threadline", "daily")]
     assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
     said = world.io.said
-    assert "The first run has started." in said
-    assert "It is running; the summary e-mail comes in about 10 minutes." in said
-    assert f"You can watch it here, or close this window: {WORKFLOW_PAGE}" in said
+    assert "The first run is going on GitHub; the summary e-mail comes in about 10 minutes." in said
+    assert f"To watch it: {WORKFLOW_PAGE}" in said
 
 
 @pytest.mark.asyncio
@@ -590,7 +588,10 @@ async def test_with_outlook_alone_the_mailbox_step_is_offered_and_makes_the_e_ma
     assert world.github.variables["MAIL_SOURCES"] == "outlook,imap"
     assert world.github.started == [("you/threadline", "daily")]
     assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
-    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
+    assert (
+        "The first run is going on GitHub; the summary e-mail comes in about 10 minutes."
+        in world.io.said
+    )
 
 
 @pytest.mark.asyncio
@@ -617,7 +618,8 @@ async def test_starting_the_first_run_anyway_says_no_e_mail_will_come() -> None:
     assert world.github.started == [("you/threadline", "daily")]
     assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE, summary_by_email=False)
     shown = world.io.text()
-    assert "No summary e-mail" in shown
+    assert "cannot e-mail you the morning summary" in shown
+    assert "your dashboard fills in about 10 minutes" in shown
     assert "e-mail comes in about" not in shown
 
 
@@ -920,124 +922,11 @@ def test_the_core_steps_end_with_the_dashboard_the_schedule_and_github() -> None
     assert names[-3:] == [StepName.DASHBOARD, StepName.SCHEDULE, StepName.GITHUB]
 
 
-# --- Following the first run ----------------------------------------------------------
-
-STOPPED_NOTE = (
-    "Claude did not accept the key saved on GitHub (CLAUDE_CODE_OAUTH_TOKEN): it is "
-    "incomplete, expired or was cancelled."
-)
+# --- Not waiting for the first run -----------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_a_first_run_that_stops_at_once_is_said_with_the_reason_from_github() -> None:
-    world = make_world([CLAUDE_KEY, True, ""], github_env())
-    world.github.run_states = [("in_progress", ""), ("completed", "failure")]
-    world.github.notes = (STOPPED_NOTE,)
-    step = GitHubStep()
-
-    await step.run(world.context())
-
-    run_page = "https://github.com/you/threadline/actions/runs/1000"
-    assert step.first_run == FirstRun(started=True, page=run_page, stopped=True)
-    said = world.io.said
-    assert f"The first run stopped with a problem. {STOPPED_NOTE}" in said
-    assert not any("e-mail comes in about" in line for line in said)
-    assert world.waits == [10, 10, 10]
-
-
-@pytest.mark.asyncio
-async def test_a_stopped_run_without_a_reason_names_its_page() -> None:
-    world = make_world([CLAUDE_KEY, True, ""], github_env())
-    world.github.run_states = [("completed", "failure")]
-
-    await GitHubStep().run(world.context())
-
-    text = world.io.text()
-    assert "The first run stopped with a problem. To see why, open this page" in text
-    assert "step marked with a red cross: https://github.com/you/threadline/actions/runs/1000" in (
-        text
-    )
-
-
-@pytest.mark.asyncio
-async def test_a_first_run_still_going_after_two_minutes_is_left_to_finish() -> None:
-    world = make_world([CLAUDE_KEY, True, ""], github_env())
-
-    await GitHubStep().run(world.context())
-
-    assert world.waits == [10] * 12
-    assert "Watching it for up to 2 minutes, to catch a problem early..." in world.io.said
-    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
-
-
-@pytest.mark.asyncio
-async def test_a_first_run_that_finishes_well_says_so() -> None:
-    world = make_world([CLAUDE_KEY, True, ""], github_env())
-    world.github.run_states = [("completed", "success")]
-
-    await GitHubStep().run(world.context())
-
-    assert "The first run has finished." in world.io.said
-    assert "The summary e-mail is on its way." in world.io.said
-
-
-@pytest.mark.asyncio
-async def test_an_earlier_run_is_not_taken_for_the_new_one() -> None:
-    world = make_world([CLAUDE_KEY, True, ""], github_env())
-    old = "https://github.com/you/threadline/actions/runs/7"
-    world.github.runs = [WorkflowRun(id=7, status="completed", conclusion="failure", url=old)]
-
-    await GitHubStep().run(world.context())
-
-    assert set(world.github.looked_at) == {1001}
-    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
-
-
-_SET_UP_STARTED = datetime(2026, 9, 29, 7, 0, tzinfo=UTC)
-
-
-def _other_run(run_id: int, title: str, created_at: datetime) -> WorkflowRun:
-    url = f"https://github.com/you/threadline/actions/runs/{run_id}"
-    return WorkflowRun(run_id, "in_progress", "", url, title=title, created_at=created_at)
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "other",
-    [
-        _other_run(1001, REFRESH_RUN_TITLE, _SET_UP_STARTED + timedelta(seconds=5)),
-        _other_run(1001, DAILY_RUN_TITLE, _SET_UP_STARTED + timedelta(seconds=5)),
-        _other_run(999, DAILY_RUN_TITLE, _SET_UP_STARTED - timedelta(minutes=10)),
-    ],
-    ids=["a refresh just after", "an on-time start just after", "a daily run from before"],
-)
-async def test_only_the_daily_run_the_set_up_started_is_followed(other: WorkflowRun) -> None:
-    world = make_world([CLAUDE_KEY, True, ""], github_env())
-    world.github.runs_started_next = [other]
-    world.github.run_states = [("completed", "failure")]
-    step = GitHubStep()
-
-    await step.run(world.context())
-
-    assert set(world.github.looked_at) == {1000}
-    run_page = "https://github.com/you/threadline/actions/runs/1000"
-    assert step.first_run == FirstRun(started=True, page=run_page, stopped=True)
-
-
-@pytest.mark.asyncio
-async def test_the_set_ups_run_is_still_found_when_githubs_clock_is_a_little_behind() -> None:
-    world = make_world([CLAUDE_KEY, True, ""], github_env())
-    world.github.run_created_at = _SET_UP_STARTED - timedelta(seconds=30)
-    world.github.run_states = [("completed", "success")]
-
-    await GitHubStep().run(world.context())
-
-    assert set(world.github.looked_at) == {1000}
-    assert "The first run has finished." in world.io.said
-
-
-@pytest.mark.asyncio
-async def test_when_github_cannot_say_how_runs_go_the_run_is_not_followed() -> None:
+async def test_the_set_up_does_not_wait_for_the_first_run() -> None:
     world = make_world([CLAUDE_KEY, True, ""], github_env())
     world.github.runs_readable = False
     step = GitHubStep()
@@ -1046,11 +935,22 @@ async def test_when_github_cannot_say_how_runs_go_the_run_is_not_followed() -> N
 
     assert world.waits == []
     assert step.first_run == FirstRun(started=True, page=WORKFLOW_PAGE)
-    assert "The first run has started." in world.io.said
-    assert "It is running; the summary e-mail comes in about 10 minutes." in world.io.said
+    assert world.io.said[-2:] == [
+        "The first run is going on GitHub; the summary e-mail comes in about 10 minutes.",
+        f"To watch it: {WORKFLOW_PAGE}",
+    ]
 
 
 # --- The end of the core set-up ---------------------------------------------------
+
+
+#: What the closing words say comes after the first run, at the finishing world's time.
+EVERY_DAY_BY_EMAIL = (
+    "After the first one, the summary e-mail comes every day at 07:30 (Europe/Rome)."
+)
+EVERY_DAY_ON_THE_DASHBOARD = (
+    "After the first run, the dashboard is updated every day at 07:30 (Europe/Rome)."
+)
 
 
 def _finishing_world(answers: list[str | bool]) -> World:
@@ -1070,12 +970,11 @@ async def test_the_core_set_up_ends_saying_the_e_mail_is_on_its_way() -> None:
     said = world.io.said
     ending = said[said.index("Set-up done.") :]
     assert ending[1:3] == [
-        "The first run is going on GitHub, so the first summary e-mail reaches you in",
-        "about 10 minutes.",
+        EVERY_DAY_BY_EMAIL,
+        "If a run stops with a problem, GitHub e-mails you; 'uv run tracker doctor' says why.",
     ]
-    assert "After that it comes every day at 07:30 (Europe/Rome)." in ending
-    extras = " ".join(ending[-3:])
-    assert "Refresh now button, which also makes the daily run start on time" in extras
+    extras = " ".join(ending[-2:])
+    assert "Refresh now button (it also starts the daily run on time)" in extras
     assert extras.endswith("Claude cloud route: uv run tracker setup extras")
 
 
@@ -1088,7 +987,9 @@ async def test_a_first_run_not_started_is_named_with_its_page_at_the_end() -> No
     said = world.io.said
     ending = said[said.index("Set-up done.") :]
     assert ending[1] == f"Start the first run at {WORKFLOW_PAGE}:"
-    assert "After that it comes every day at 07:30 (Europe/Rome)." in ending
+    assert "the summary e-mail follows about 10 minutes later." in ending
+    assert EVERY_DAY_BY_EMAIL in ending
+    assert not any("tracker doctor" in line for line in ending)
 
 
 @pytest.mark.asyncio
@@ -1103,7 +1004,7 @@ async def test_the_closing_words_promise_no_e_mail_when_none_can_come() -> None:
     text = "\n".join(ending)
     assert f"Start the first run at {WORKFLOW_PAGE}:" in ending
     assert "the dashboard fills about 10 minutes later." in ending
-    assert "After that the dashboard is updated every day at 07:30 (Europe/Rome)." in ending
+    assert EVERY_DAY_ON_THE_DASHBOARD in ending
     assert "No summary e-mail will come yet" in text
     assert "summary e-mail follows" not in text
     assert "comes every day" not in text
@@ -1119,21 +1020,7 @@ async def test_the_closing_words_name_the_missing_claude_key() -> None:
     ending = said[said.index("Set-up done.") :]
     assert "The first run is not started yet: GitHub still needs your Claude key." in ending
     assert "'uv run tracker setup github' and paste the key." in ending
-    assert "After that it comes every day at 07:30 (Europe/Rome)." in ending
-    assert not any("e-mail reaches you" in line for line in ending)
-
-
-@pytest.mark.asyncio
-async def test_the_closing_words_point_back_to_a_first_run_that_stopped() -> None:
-    world = _finishing_world([CLAUDE_KEY, True, ""])
-    world.github.run_states = [("completed", "failure")]
-    world.github.notes = (STOPPED_NOTE,)
-
-    assert await SetupWizard(world.context(), [GitHubStep()]).run_core()
-
-    said = world.io.said
-    ending = said[said.index("Set-up done.") :]
-    assert ending[1] == "The first run on GitHub stopped with a problem; what to do is said above."
+    assert EVERY_DAY_BY_EMAIL in ending
     assert not any("e-mail reaches you" in line for line in ending)
 
 
@@ -1151,7 +1038,7 @@ async def test_a_core_set_up_that_stopped_has_no_closing_words() -> None:
 # --- The gh and git helpers ----------------------------------------------------------
 
 
-def test_gh_reads_the_newest_runs_started_by_hand_and_one_runs_state() -> None:
+def test_gh_reads_the_newest_runs_however_they_were_started() -> None:
     listing = Recorder(
         output=(
             '[{"databaseId": 43, "status": "queued", "conclusion": "", "url": "v",'
@@ -1162,12 +1049,8 @@ def test_gh_reads_the_newest_runs_started_by_hand_and_one_runs_state() -> None:
             ' "createdAt": "not a time"}, "not a run"]'
         )
     )
-    viewing = Recorder(
-        output='{"databaseId": 42, "status": "completed", "conclusion": "failure", "url": "u"}'
-    )
 
     runs = GitHubCli(listing, which=lambda _: "/usr/bin/gh").recent_runs("you/threadline")
-    seen = GitHubCli(viewing, which=lambda _: "/usr/bin/gh").workflow_run("you/threadline", 42)
 
     assert [run.id for run in runs] == [43, 42, 41]
     assert runs[1] == WorkflowRun(
@@ -1179,14 +1062,11 @@ def test_gh_reads_the_newest_runs_started_by_hand_and_one_runs_state() -> None:
         created_at=datetime(2026, 10, 9, 8, 0, tzinfo=UTC),
     )
     assert runs[2].created_at is None
-    assert seen.finished
-    assert not seen.succeeded
     command = listing.calls[0][0]
     assert command[:4] == ["gh", "run", "list", "--workflow"]
-    assert "workflow_dispatch" in command
+    assert "--event" not in command
     assert command[command.index("--limit") + 1] == str(RECENT_RUNS_LIMIT)
     assert "displayTitle,createdAt" in command[command.index("--json") + 1]
-    assert viewing.calls[0][0][:4] == ["gh", "run", "view", "42"]
 
 
 def test_gh_reads_no_run_as_none_and_a_failure_as_unavailable() -> None:
@@ -1194,8 +1074,6 @@ def test_gh_reads_no_run_as_none_and_a_failure_as_unavailable() -> None:
     for broken in (Recorder(status=1), Recorder(output="not json")):
         with pytest.raises(SourceUnavailableError, match="could not say how the run is going"):
             GitHubCli(broken, which=lambda _: "/usr/bin/gh").recent_runs("x/y")
-    with pytest.raises(SourceUnavailableError):
-        GitHubCli(Recorder(output="{}"), which=lambda _: "/usr/bin/gh").workflow_run("x/y", 1)
 
 
 def test_gh_reads_a_runs_notes_by_their_title_from_each_job() -> None:

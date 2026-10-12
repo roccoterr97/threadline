@@ -11,8 +11,8 @@ is pushed.
 The same time and zone are copied into the database, where the on-time morning
 start reads them (``daily_start.py``), so the two never drift apart.
 
-An express run does not ask: it keeps the time already set, or 07:00, and says
-how to change it.
+An express run does not ask: it keeps the time already set, or 07:00, and the
+closing summary says how to change it.
 """
 
 from __future__ import annotations
@@ -54,9 +54,7 @@ class ScheduleStep:
         schedule = Schedule(_ask_time(ctx, current), _zone(ctx))
         after = write_schedule(before, schedule)
         if after == before:
-            ctx.io.say(f"The daily run already starts at {schedule.describe()}. Nothing to change.")
-            if ctx.session.express:
-                ctx.io.say(f"To change the time: uv run tracker setup {StepName.SCHEDULE}")
+            ctx.detail(f"The daily run already starts at {schedule.describe()}. Nothing to change.")
             save_schedule_in_database(ctx, schedule)
             offer_unsent_change(ctx)
             return
@@ -74,7 +72,7 @@ def _zone(ctx: SetupContext) -> str:
     saved = saved_time_zone(ctx)
     if saved is None:
         return ask_time_zone(ctx)
-    ctx.io.say(
+    ctx.detail(
         f"The time is read in your time zone, {saved}. "
         f"To change it: uv run tracker setup {StepName.TIME_ZONE}"
     )

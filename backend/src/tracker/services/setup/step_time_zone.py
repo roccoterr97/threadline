@@ -7,7 +7,8 @@ and the owner types it. The name is optional: it helps only when your
 addresses do not spell it (``jd123@`` rather than ``sam.rivera@``).
 
 An express run asks neither: it takes the computer's zone (asking only when
-the computer cannot name one), leaves the name out, and says how to change both.
+the computer cannot name one) and leaves the name out; the closing summary says
+how to change the zone.
 
 A new zone is also written into the GitHub Actions workflow's ``timezone``
 line, so the daily run keeps starting at the owner's chosen hour, and into the
@@ -60,12 +61,11 @@ class TimeZoneStep:
 
     async def run(self, ctx: SetupContext) -> None:
         """Ask the zone, offering the computer's, then the optional name."""
-        ctx.io.say("Dates are read in your time zone: what 'today' is, and when the daily")
-        ctx.io.say("run starts.")
+        ctx.detail("Dates are read in your time zone: what 'today' is, and when the daily")
+        ctx.detail("run starts.")
         zone = ask_time_zone(ctx)
         _follow_in_workflow(ctx, zone)
         if ctx.session.express:
-            ctx.io.say(f"To change it, or add the name people write you by: {_CHANGE_COMMAND}")
             return
         _ask_display_name(ctx)
 
@@ -102,7 +102,7 @@ def _take_offered_zone(ctx: SetupContext, offered: str, *, saved: str | None) ->
         zone = ctx.ask_until_valid(lambda: ctx.io.ask(TIME_ZONE_PROMPT), values.time_zone)
     if zone != saved:
         ctx.env.set(OWNER_TIME_ZONE, zone)
-    ctx.io.say(f"Your time zone: {zone}.")
+    ctx.detail(f"Your time zone: {zone}.")
     return zone
 
 
@@ -158,7 +158,7 @@ def _follow_in_workflow(ctx: SetupContext, zone: str) -> None:
         return
     show_changes(ctx, before, after)
     workflow.write(after)
-    ctx.io.say(f"Saved {WORKFLOW_PATH}: the daily run now starts at {schedule.describe()}.")
+    ctx.detail(f"Saved {WORKFLOW_PATH}: the daily run now starts at {schedule.describe()}.")
     save_schedule_in_database(ctx, schedule)
     offer_push(ctx)
 

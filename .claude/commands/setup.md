@@ -99,10 +99,11 @@ Threadline runs every day from the person's own **private** copy on GitHub.
 1. Ask whether they have a GitHub account. If not, send them to
    <https://github.com/signup> and wait.
 2. Sign gh in, if `gh auth status` says it is not: run
-   `gh auth login --hostname github.com --git-protocol https --web --scopes workflow`
+   `gh auth login --hostname github.com --git-protocol https --web --clipboard --scopes workflow`
    in the background. The `workflow` permission is needed later, to push the
    daily-run file; without it GitHub refuses that push. The command prints a
-   one-time code such as `ABCD-1234` and a link. Give them the code and the
+   one-time code such as `ABCD-1234` and a link, and puts the code on their
+   clipboard. Give them the code and the
    link (<https://github.com/login/device>), tell them to paste the code there,
    check the account name at the top of the GitHub page (if it is not the
    account they want Threadline on, click **Use a different account**), and
@@ -112,8 +113,8 @@ Threadline runs every day from the person's own **private** copy on GitHub.
    If they were already signed in, check the permission: run
    `gh api --include user` and look for `workflow` in the `X-Oauth-Scopes`
    line (a sign-in that lists no scopes needs nothing). When it is missing, run
-   `gh auth refresh -h github.com -s workflow` in the background, the same way
-   (a code and a link), and wait for it to end.
+   `gh auth refresh -h github.com --clipboard -s workflow` in the background,
+   the same way (a code and a link), and wait for it to end.
 3. Give git a name, if `git config --global user.name` prints nothing: a new
    computer has none, and the schedule step later saves a change with it.
    Ask what name should appear on saved changes (a first name is fine) and run
@@ -209,11 +210,24 @@ it asks, not your answers. Ask me whenever something is unclear."*
 
 It asks only what they must do: the Supabase code, their e-mail address and
 its app password (or the Microsoft sign-in for Outlook). Everything else takes
-the usual answer by itself (the Supabase project `threadline`, the computer's
-time zone, the usual categories, the shared dashboard, 07:00) and is said in
-one line with the command that changes it; the end lists every choice again.
-Someone who wants to answer every question runs
-`uv run tracker setup --browser --ask-everything` instead.
+the usual answer by itself, without a word (the Supabase project `threadline`,
+the computer's time zone, the usual categories, the shared dashboard, 07:00);
+the end lists every choice once, with the command that changes it. A full run
+shows no `Step N of 11` titles and no lines that only report: only what asks
+something, a few progress lines, and the closing summary. Someone who wants to
+answer every question runs `uv run tracker setup --browser --ask-everything`
+instead (that run, and a step run by name, shows every line and the step
+titles).
+
+The order is not quite the guide's. While Supabase starts a new project (one
+to three minutes), the set-up asks for the mailbox (`Meanwhile, your
+mailbox.`), and if Supabase is still starting after that, it makes the Claude
+key (`Supabase is still starting, so meanwhile, the Claude key.`). Then
+`The Supabase project is up.`, the database (`Creating your database's
+tables; this takes about half a minute.`, then `The database structure is in
+place.`), and GitHub last (`Last, GitHub: it runs Threadline every day on your
+own private copy.`). When their `threadline` project already exists and is
+running, the mailbox comes after the database instead.
 
 The first lines it prints include that page's full address. The part after
 `#` is the page's own access key, so you do see it: never open, fetch or
@@ -229,49 +243,65 @@ fetch the page yourself.
 While it runs, you see every question and every line it says, never an
 answer. Follow along; when it opens a page for them (a line starting with
 `Open https://…`), say in one sentence what to find there, from the guide's
-matching part (2a signing in to Supabase and the project, 2c database, 3a
-login, 3b categories, 3c time zone, 4 mailbox, 4c Microsoft, 5 your dashboard,
-6a daily time, 6b GitHub, 6c first run).
+matching part (2a signing in to Supabase and the project, 4 mailbox, 2c
+database, 4c Microsoft, 6b the Claude key and GitHub, 6c first run, 7 the
+end).
 
 Six moments need a word from you:
 
-- **Supabase** (the first step). A Supabase page opens by itself (it may
-  mention the "Supabase CLI": expected). Tell them: sign in if asked, click
-  **Authorize**, then type the short code the page shows into the set-up page.
-  Not into this chat. The set-up then uses their project named `threadline`,
-  or creates it. If the browser sign-in does not work, the set-up asks for a
+- **Supabase** (the first step). The set-up says `Supabase keeps your data,
+  in a free account; the set-up creates the project there.` and a Supabase
+  page opens by itself (it names the "Supabase CLI": expected). Tell them:
+  sign in if asked, click **Authorize**, then type the short code the page
+  shows into the set-up page (it asks `Verification code from the Supabase
+  page`; the page in the browser does not watch the clipboard). Not into this
+  chat. Then `Signed in to Supabase.` The set-up then uses their project named
+  `threadline`, or creates it (`Supabase is starting the project; this takes
+  one to three minutes.`). If the browser sign-in does not work, the set-up asks for a
   pasted token instead: guide 2a says how it is made (the small **Create
   legacy token** link). If Supabase will not create a project (the free plan
   allows two active ones), the set-up lists theirs and asks before using one:
   help them choose one that holds nothing else, or pause one in Supabase.
 - **The dashboard login.** The set-up makes it for the address of their
-  Supabase account and says which address that is. Repeat it to them: it is
-  the address the sign-in link is e-mailed to. If it could not read that
-  address, the page asks for it once: the address they signed up to Supabase
-  with.
-- **The mailbox.** The page asks `Your e-mail address` and tells the provider
-  from it (it asks which one only for a company's own domain). Then it puts
-  the name `Threadline` on their clipboard and opens the page where the app
-  password is made (for Gmail, on that Google account), or, for Outlook, the
-  Microsoft sign-in comes next. Tell them: paste the name, create the
-  password, copy it and paste it into the set-up page's hidden field. If
-  Google says the setting is not available, they answer `no` there: the set-up
-  opens Google's 2-Step Verification page (about 5 minutes, with their phone),
-  then the app-password page again.
+  Supabase account without a word, and names it at the end (`Sign in there
+  with …`). Repeat it to them then: it is the address the sign-in link is
+  e-mailed to. If it could not read that address, the page asks for it once:
+  the address they signed up to Supabase with.
+- **The mailbox** (with a new project, right after `Meanwhile, your
+  mailbox.`). The page asks `Your e-mail address` and tells the provider from
+  it, silently (it asks which one only for a company's own domain). Then it
+  says `Your Gmail is read with an app password: …` (or the name of their
+  mailbox), puts the name `Threadline` on their clipboard and opens the page
+  where the app password is made (for Gmail, on that Google account), or, for
+  Outlook, the Microsoft sign-in comes next. Tell them: paste the name, create
+  the password, copy it and paste it into the set-up page's hidden field. It
+  is checked straight away: `Connected. Your inbox has … messages from the
+  last 30 days.` It is kept in memory and stored, encrypted, once the
+  database is ready, without asking again. If Google says the setting is not
+  available, they answer `no` there: the set-up opens Google's 2-Step
+  Verification page (about 5 minutes, with their phone), then the
+  app-password page again. If the mailbox cannot be settled while Supabase
+  starts (`… Your mailbox is asked again once the project is up.`), the page
+  asks again after the database.
 - **Your dashboard.** The set-up takes the shared dashboard at
-  `https://app.threadlineapp.com` by itself. It then shows their **personal link**,
-  which opens their own dashboard. It holds only their database's public
+  `https://app.threadlineapp.com` by itself. At the very end it shows their
+  **personal link** (`Your dashboard (keep this link; it is on your
+  clipboard): …`) and opens it in the browser. The link opens their own
+  dashboard. It holds only their database's public
   address, nothing secret, so you may repeat it in the chat. Tell them to keep
   it: it is also in every morning e-mail, and on a new phone they open it once,
   then sign in with the link Supabase e-mails them. Say why the shared page is
   safe: their data stays in their own Supabase database, and only their e-mail
   address can sign in. If they would rather have their own copy on Netlify,
   that is optional and comes later (guide 8d).
-- **The Claude key** (the GitHub step). The set-up makes it by itself (it asks
-  first only when GitHub already has one, and the default no keeps that one).
-  A Claude page opens. Tell them: sign
-  in if asked, with the account of their Claude plan, and click **Authorize**.
-  The key goes straight to GitHub; nobody sees it. If no Claude page opens,
+- **The Claude key** (the GitHub step, or earlier, after `Supabase is still
+  starting, so meanwhile, the Claude key.`). The set-up makes it by itself (it
+  asks first only when GitHub already has one, and the default no keeps that
+  one). It says `A Claude page opens in your browser. Sign in if it asks, then
+  click Authorize.` Tell them: sign in if asked, with the account of their
+  Claude plan, and click **Authorize**. Then `Got the Claude key.` The key
+  goes straight to GitHub; nobody sees it. The GitHub step then saves the
+  settings in one line (`Saved … secrets and … variables in …`). If no Claude page opens,
   the set-up page shows the address to open (`If no page opened, open this
   address: …`); give them that line. If the set-up page asks
   them to paste the key instead: open the **Terminal** app (on a Mac:
@@ -316,23 +346,20 @@ step alone is `uv run tracker setup <step> --browser`.
 
 If the command is cut off by a timeout, nothing is lost: run it again.
 
-**Check:** the command ends with the final check and
-`Everything Threadline needs is working.` Lines marked `PROBLEM` name the step
-to redo. The `warning` lines for Refresh now and the on-time morning start are
-expected until part 5 below.
+**Check:** the command ends with the final check (`Final check of every
+connection:`) and `Everything Threadline needs is working.` Lines marked
+`PROBLEM` name the step to redo. The `warning` lines for Refresh now and the
+on-time morning start are expected until part 5 below. The line `Daily run on
+GitHub` says `ok` with `a daily run is going: …` right after the set-up.
 
 ## Part 5 — the first run, and the on-time start (`first run`)
 
 0. Read what the wizard said about the first run before you promise anything.
    Three cases:
-   - `It is running; the summary e-mail comes in about 10 minutes.` — an
-     e-mail will come.
-   - `The first run stopped with a problem.` followed by the reason (the
-     set-up follows the run for two minutes) — do what that line says. For
-     `Claude did not accept the key saved on GitHub`, run
-     `uv run tracker setup github --browser` again: it makes a new key (the
-     Claude key moment of part 4) and starts a new first run.
-   - `No summary e-mail will come` (they have no mailbox with an app password,
+   - `The first run is going on GitHub; the summary e-mail comes in about 10
+     minutes.` — an e-mail will come (if the run works: the set-up no longer
+     waits to see, so step 2 below checks it).
+   - `No summary e-mail will come yet` (they have no mailbox with an app password,
      typically Outlook alone) — do **not** promise an e-mail. Offer to connect
      a Gmail or other mailbox (`uv run tracker setup mailbox --browser`, then
      `uv run tracker setup github --browser`), or the Claude cloud route
@@ -344,8 +371,9 @@ expected until part 5 below.
      run `uv run tracker setup github --browser` again and do the Claude key
      moment of part 4.
 1. The GitHub step saves the settings, switches Actions on and starts the
-   first run by itself; it says `The first run has started.` with the run's page. If
-   it said it could not, start it: with gh,
+   first run by itself; it says `The first run is going on GitHub; …` and
+   `To watch it: …` with the run's page, then ends without waiting for the
+   run. If it said it could not, start it: with gh,
    `gh workflow run threadline-run.yml -f mode=daily` from `~/threadline`.
    Without gh: tell them **Actions → Threadline run → Run workflow → Run
    workflow** (if GitHub shows **I understand my workflows, go ahead and
@@ -353,7 +381,13 @@ expected until part 5 below.
 2. Follow it: find the run's number with
    `gh run list --workflow threadline-run.yml --limit 1 --json databaseId --jq '.[0].databaseId'`,
    then run `gh run watch <that number>` (about five to ten minutes;
-   `gh run watch` with no number refuses to run without a terminal).
+   `gh run watch` with no number refuses to run without a terminal). If it
+   fails, run `uv run tracker doctor`: its `Daily run on GitHub` line says
+   `PROBLEM` with the reason the run left and the run's page. When the reason
+   is about the Claude key (Claude refused it), run
+   `uv run tracker setup github --browser` again: it makes a new key (the
+   Claude key moment of part 4) and starts a new first run. GitHub also
+   e-mails them when a run fails.
 3. When it ends, tell them to look for the summary e-mail in their inbox (only
    if an e-mail can come; otherwise say there is none yet and why), and to
    open their personal link and sign in with the link Supabase e-mails them
@@ -366,7 +400,8 @@ expected until part 5 below.
    plainly it is optional.
 
 **Check:** the run has a green tick, `uv run tracker doctor` shows no
-`PROBLEM` line, and they say the e-mail arrived (or, with no way to send one,
+`PROBLEM` line (its `Daily run on GitHub` line says `ok` with `the newest
+daily run finished well`), and they say the e-mail arrived (or, with no way to send one,
 the dashboard shows the run). A green tick after a few
 seconds with nothing sent means a setting is missing on GitHub: the run's page
 names it; redo `uv run tracker setup github --browser`. After the extra, the
@@ -376,8 +411,9 @@ doctor's **On-time morning start** line says `ok`.
 
 Say, in five lines at most: the dashboard's personal link and the e-mail
 address that signs in to it (the wizard's last screen names both after
-`Set-up done.`, then lists every choice with the command that changes it;
-tell them to write the link down); that they may now delete
+`Set-up done.`, puts the link on their clipboard and opens it, then lists
+every choice with the command that changes it; tell them to write the link
+down); that they may now delete
 the Supabase key named `threadline-setup-…` under **Account → Access
 Tokens**; that the summary comes every day at the time they chose; that `docs/operations.md` is the page for
 later (renewing keys, pausing); that nothing is ever sent to anybody but them;

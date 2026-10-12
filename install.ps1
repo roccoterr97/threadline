@@ -14,15 +14,16 @@
 #   1. Installs Git if it is missing (with winget, Windows' own installer).
 #   2. Installs uv, the tool that runs Threadline, if it is missing. uv's own
 #      installer also adds uv to your user PATH, so that new PowerShell windows
-#      find it.
+#      find it. Then uv starts downloading the Python that Threadline runs on,
+#      in the background.
 #   3. Installs the GitHub command-line tool (gh) if it is missing, or updates
 #      it when it is too old (with winget).
-#   4. Installs Claude Code if it is missing, with Anthropic's own installer,
-#      which puts the "claude" command in the ".local\bin" folder in your user
-#      folder. Claude Code may need Git, which step 1 adds first. You use it
-#      to make the key that lets the daily run use your Claude subscription.
-#      If it cannot be installed, the installer carries on: the set-up asks
-#      you to paste that key either way.
+#   4. Starts installing Claude Code in the background if it is missing, with
+#      Anthropic's own installer, which puts the "claude" command in the
+#      ".local\bin" folder in your user folder. Claude Code may need Git, which
+#      step 1 adds first. You use it to make the key that lets the daily run
+#      use your Claude subscription. If it cannot be installed, the installer
+#      carries on: the set-up asks you to paste that key either way.
 #   5. Signs you in to GitHub in the browser if you are not signed in yet, with
 #      the extra permission that saving the daily-run file needs. Then it runs
 #      "gh auth setup-git", which adds a line to your git settings so that git
@@ -36,7 +37,12 @@
 #      folder, is reused and brought up to date, after checking that it is
 #      private and yours. An earlier set-up in the "tracker" folder is offered
 #      instead of a second copy.
-#   7. Installs Threadline's parts and starts the guided set-up.
+#   7. Installs Threadline's parts, waits for the background downloads of
+#      steps 2 and 4, and starts the guided set-up.
+#
+# The background downloads write what they print to log files in a temporary
+# folder. When one fails, its log is also added to install.log in the copy's
+# folder, which git ignores, so it can be read or sent later.
 #
 # How the keyboard is kept: "irm | iex" runs the downloaded text inside this
 # very PowerShell window, so the sign-in and the set-up read from your
@@ -64,8 +70,9 @@ $CopyFolder = Join-Path $HOME 'threadline'
 # Where an earlier version of the set-up put the copy.
 $OlderCopyFolder = Join-Path $HOME 'tracker'
 
-# The folder that finally holds the copy; Get-Copy may point it at the older one.
-$State = @{ Folder = $CopyFolder }
+# The folder that finally holds the copy (Get-Copy may point it at the older
+# one), and the background jobs while they run.
+$State = @{ Folder = $CopyFolder; PythonJob = $null; ClaudeJob = $null }
 
 # The official installer of uv, and where the GitHub tool is explained.
 $UvInstaller = 'https://astral.sh/uv/install.ps1'
@@ -91,6 +98,21 @@ $GitHubCliMinimum = [version] '2.68'
 
 # The permission a GitHub sign-in needs to save the daily-run file (a workflow).
 $GitHubWorkflowScope = 'workflow'
+
+# The Python that Threadline runs on, downloaded in the background while you
+# sign in. Keep equal to backend\.python-version.
+$PythonVersion = '3.12'
+
+# Where downloads and logs are kept while the installer runs; removed at the end.
+$WorkFolder = Join-Path ([IO.Path]::GetTempPath()) "threadline-install-$PID"
+
+# How many of a log's last lines are shown when something fails, and the file
+# in the copy's folder that keeps the whole log (git ignores *.log files).
+$LogLinesShown = 5
+$InstallLogName = 'install.log'
+
+# How long each look at a background job waits before looking again.
+$WaitStepMilliseconds = 500
 
 # A freshly made copy may take a moment to appear on GitHub.
 $CopyWaitAttempts = 10
@@ -139,6 +161,85 @@ function Save-Download([string] $Address, [string] $Path) {
     Invoke-WebRequest -UseBasicParsing -Uri $Address -OutFile $Path
 }
 
+# Makes the work folder, with the empty file that background jobs read as their input.
+function New-WorkFolder {
+    $null = New-Item -ItemType Directory -Force -Path $WorkFolder
+    $null = New-Item -ItemType File -Force -Path (Join-Path $WorkFolder 'no-input.txt')
+}
+
+# Stops the background jobs still running, with what they started, and
+# removes the work folder.
+function Clear-Install {
+    foreach ($Job in @($State.PythonJob, $State.ClaudeJob)) {
+        if ($Job -and -not $Job.Process.HasExited) {
+            $null = Invoke-Quietly 'taskkill' @('/T', '/F', '/PID', "$($Job.Process.Id)")
+        }
+    }
+    $State.PythonJob = $null
+    $State.ClaudeJob = $null
+    Remove-Item $WorkFolder -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Starts a program that needs nothing from you as a background job in a
+# folder, with what it prints kept in the work folder. Answers with the job.
+function Start-Background([string] $Name, [string] $Program, [string[]] $Arguments, [string] $Folder) {
+    $Job = @{
+        Log = (Join-Path $WorkFolder "$Name.log")
+        ErrorLog = (Join-Path $WorkFolder "$Name-errors.log")
+    }
+    $Options = @{
+        FilePath = $Program
+        ArgumentList = $Arguments
+        WorkingDirectory = $Folder
+        NoNewWindow = $true
+        PassThru = $true
+        RedirectStandardInput = (Join-Path $WorkFolder 'no-input.txt')
+        RedirectStandardOutput = $Job.Log
+        RedirectStandardError = $Job.ErrorLog
+    }
+    $Job.Process = Start-Process @Options
+    # Windows PowerShell fills in the exit code later only for a process whose handle was read.
+    $null = $Job.Process.Handle
+    return $Job
+}
+
+# Waits for a background job and answers $true when it worked.
+function Wait-Background($Job) {
+    # Waiting in short steps keeps Ctrl+C working meanwhile.
+    while (-not $Job.Process.WaitForExit($WaitStepMilliseconds)) {
+    }
+    return $Job.Process.ExitCode -eq 0
+}
+
+# Adds a background job's log to install.log in the copy's folder, under a
+# heading. Answers with that file, or $null when there is nowhere to keep it.
+function Save-JobLog($Job, [string] $Heading) {
+    if (-not (Test-Path $State.Folder)) {
+        return $null
+    }
+    $InstallLog = Join-Path $State.Folder $InstallLogName
+    $Lines = @('', "=== $Heading") + @(Get-Content -Path $Job.Log, $Job.ErrorLog -ErrorAction SilentlyContinue)
+    Add-Content -Path $InstallLog -Value $Lines -ErrorAction SilentlyContinue -ErrorVariable NotSaved
+    if ($NotSaved) {
+        return $null
+    }
+    return $InstallLog
+}
+
+# Shows the last lines a background job printed, keeps its whole log in
+# install.log in the copy's folder, and says where that is.
+function Show-JobLog($Job, [string] $Heading) {
+    $Lines = Get-Content -Path $Job.Log, $Job.ErrorLog -ErrorAction SilentlyContinue |
+        Where-Object { "$_".Trim() } | Select-Object -Last $LogLinesShown
+    foreach ($Line in $Lines) {
+        Note $Line
+    }
+    $Kept = Save-JobLog $Job $Heading
+    if ($Kept) {
+        Note "The full report is in $Kept."
+    }
+}
+
 # Runs winget (Windows' own installer) for one package and answers with its exit code.
 function Invoke-Winget([string] $Verb, [string] $Package, [string] $Label, [string] $ManualPage) {
     if (-not (Test-Program 'winget')) {
@@ -167,7 +268,6 @@ function Stop-WingetFailed([string] $Label, [int] $Code, [string] $ManualPage) {
 
 function Install-Git {
     if (Test-Program 'git') {
-        Say 'Git is installed.'
         return
     }
     Say 'Installing Git.'
@@ -186,7 +286,6 @@ function Install-Git {
 
 function Install-Uv {
     if (Test-Program 'uv') {
-        Say 'uv is installed.'
         return
     }
     Say 'Installing uv, the tool that runs Threadline.'
@@ -221,32 +320,82 @@ function Install-Uv {
     }
 }
 
-# Claude Code makes the key that lets the daily run use your Claude
-# subscription. Without it the set-up still works, so a failure here is said
-# and the installer carries on.
-function Install-ClaudeCode {
-    if ((Test-Program 'claude') -or (Test-Path (Join-Path $ClaudeFolder 'claude.exe'))) {
-        Use-ClaudeFolder
-        Say 'Claude Code is installed.'
+# Downloads the Python that Threadline runs on in the background, so that it
+# is there by the time Threadline's parts are installed. Not being able to
+# start it is not serious: installing the parts downloads Python itself.
+function Start-PythonDownload {
+    $Uv = (Get-Command 'uv').Source
+    try {
+        $State.PythonJob = Start-Background 'python' $Uv @('python', 'install', $PythonVersion) $WorkFolder
+    } catch {
+        Note "Python could not start downloading in advance; it comes with Threadline's parts."
+    }
+}
+
+# A failed download is not serious either, so this says one line and carries on.
+function Wait-PythonDownload {
+    $Job = $State.PythonJob
+    if (-not $Job) {
         return
     }
-    Say 'Installing Claude Code, which makes the key for your Claude subscription.'
+    $Worked = Wait-Background $Job
+    $State.PythonJob = $null
+    if ($Worked) {
+        return
+    }
+    $Kept = Save-JobLog $Job "Downloading Python $PythonVersion"
+    if ($Kept) {
+        Note "Python did not download in advance (see $Kept); trying again now."
+    } else {
+        Note 'Python did not download in advance; trying again now.'
+    }
+}
+
+# Claude Code makes the key that lets the daily run use your Claude
+# subscription. Without it the set-up still works, so a failure here is said
+# and the installer carries on. Its installer needs nothing from you, so it
+# runs in the background while you sign in to GitHub, and Complete-ClaudeCode
+# waits for it.
+function Start-ClaudeCode {
+    if ((Test-Program 'claude') -or (Test-Path (Join-Path $ClaudeFolder 'claude.exe'))) {
+        Use-ClaudeFolder
+        return
+    }
     # Saved first and run second, in a separate PowerShell, as for uv.
-    $ClaudeScript = Join-Path ([IO.Path]::GetTempPath()) "threadline-claude-install-$PID.ps1"
+    $ClaudeScript = Join-Path $WorkFolder 'claude-install.ps1'
+    $PowerShell = (Get-Command 'powershell').Source
+    # The quotes keep a path with spaces (as in some user names) in one piece.
+    $Arguments = @('-NoProfile', '-ExecutionPolicy', 'ByPass', '-File', """$ClaudeScript""")
     try {
         Save-Download $ClaudeInstaller $ClaudeScript
-        & powershell -NoProfile -ExecutionPolicy ByPass -File $ClaudeScript | Out-Host
-        $ClaudeCode = $LASTEXITCODE
+        $State.ClaudeJob = Start-Background 'claude-code' $PowerShell $Arguments $WorkFolder
     } catch {
-        $ClaudeCode = 1
-    } finally {
-        Remove-Item $ClaudeScript -ErrorAction SilentlyContinue
+        Show-ClaudeCarryOn
+        return
     }
+    Say 'Installing Claude Code in the background.'
+}
+
+# Waits for the Claude Code installer started by Start-ClaudeCode, if any.
+function Complete-ClaudeCode {
+    $Job = $State.ClaudeJob
+    if (-not $Job) {
+        return
+    }
+    $Worked = Wait-Background $Job
+    $State.ClaudeJob = $null
     Use-ClaudeFolder
-    if ($ClaudeCode -ne 0 -or -not (Test-Program 'claude')) {
-        Note 'Claude Code did not install. You can carry on: install it later from'
-        Note "$ClaudeSetupPage before the set-up asks for the Claude key."
+    if ($Worked -and (Test-Program 'claude')) {
+        return
     }
+    Show-ClaudeCarryOn
+    Show-JobLog $Job 'Installing Claude Code'
+}
+
+# Says that the installer carries on without Claude Code, and how to add it later.
+function Show-ClaudeCarryOn {
+    Say 'Claude Code did not install. You can carry on: install it later from'
+    Note "$ClaudeSetupPage before the set-up asks for the Claude key."
 }
 
 # The installer adds Claude Code to future windows, or says how; this one needs it now.
@@ -275,7 +424,6 @@ function Test-GitHubCliRecent {
 function Install-GitHubCli {
     $Installed = Test-Program 'gh'
     if ($Installed -and (Test-GitHubCliRecent)) {
-        Say 'The GitHub tool (gh) is installed.'
         return
     }
     if ($Installed) {
@@ -330,8 +478,9 @@ function Confirm-WorkflowPermission {
         return
     }
     Say 'Your GitHub sign-in needs one more permission, to save the daily-run file.'
-    Note 'A browser window opens: follow what it says.'
-    & gh auth refresh --hostname github.com --scopes $GitHubWorkflowScope
+    Note 'A browser window opens. The code is on your clipboard: paste it on the GitHub page.'
+    # --clipboard is in every GitHub tool since well before $GitHubCliMinimum.
+    & gh auth refresh --hostname github.com --clipboard --scopes $GitHubWorkflowScope
     if ($LASTEXITCODE -ne 0) {
         Stop-Install 'The extra GitHub permission was not added.' @(
             "Run 'gh auth login --scopes $GitHubWorkflowScope' (if you set GH_TOKEN, give that token",
@@ -377,13 +526,14 @@ function Confirm-GitIdentity {
 
 function Connect-GitHub {
     if ((Invoke-Quietly 'gh' @('auth', 'status')) -eq 0) {
-        Say 'You are signed in to GitHub.'
         Confirm-WorkflowPermission
     } else {
-        Say 'Signing you in to GitHub: a browser window opens, follow what it says.'
-        Note 'Before you click Authorize, check the account name at the top of the GitHub page:'
-        Note "if it is not the account you want Threadline on, click 'Use a different account'."
-        & gh auth login --hostname github.com --web --git-protocol https --scopes $GitHubWorkflowScope
+        Say 'Signing you in to GitHub in the browser.'
+        Note 'The code is on your clipboard: paste it on the GitHub page.'
+        Note "Check the account name at the top before you click Authorize ('Use a different account' if it is wrong)."
+        # Install-GitHubCli has made sure the GitHub tool is at least $GitHubCliMinimum,
+        # and every version since well before that has --clipboard.
+        & gh auth login --hostname github.com --web --clipboard --git-protocol https --scopes $GitHubWorkflowScope
         if ($LASTEXITCODE -ne 0) {
             Stop-Install 'The GitHub sign-in did not finish.' @('Paste the line again to retry.')
         }
@@ -547,37 +697,55 @@ function Get-Copy {
     Get-NewCopy
 }
 
-function Start-Setup {
+# Installs what Threadline needs to run, in the copy's backend folder, once
+# the background download of Python is over.
+function Install-Parts {
     $Folder = $State.Folder
     if (-not (Test-Path (Join-Path $Folder 'backend\pyproject.toml'))) {
         Stop-Install "$Folder does not hold Threadline's files." @(
             'Move or rename that folder, then paste the line again.'
         )
     }
-    Say "Installing Threadline's parts. The first time, this can download Python and take a few minutes."
-    Set-Location (Join-Path $Folder 'backend')
-    & uv sync
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Install "Threadline's parts could not be installed." @('Paste the line again to retry.')
+    Say "Installing Threadline's parts. The first time, this can take a few minutes."
+    $Backend = Join-Path $Folder 'backend'
+    Set-Location $Backend
+    Wait-PythonDownload
+    $Uv = (Get-Command 'uv').Source
+    $Job = Start-Background 'threadline-parts' $Uv @('sync') $Backend
+    if (Wait-Background $Job) {
+        return
     }
-    Say 'Starting the guided set-up. From now on it asks you what it needs.'
-    $Shown = $Folder.Replace($HOME, '~')
-    Note "To come back later: open PowerShell, type 'cd $Shown\backend', then"
-    Note "'uv run tracker setup'."
+    Show-JobLog $Job "Installing Threadline's parts"
+    Stop-Install "Threadline's parts could not be installed." @('Paste the line again to retry.')
+}
+
+function Start-Setup {
+    $Shown = $State.Folder.Replace($HOME, '~')
+    Say 'Starting the guided set-up; it asks you what it needs.'
+    Note "To come back later, open PowerShell and type: cd $Shown\backend; uv run tracker setup"
+    Clear-Install
     & uv run tracker setup
 }
 
 try {
+    New-WorkFolder
+    Say 'Getting Threadline ready on this computer.'
     Install-Git
     Install-Uv
+    Start-PythonDownload
     Install-GitHubCli
-    Install-ClaudeCode
+    Start-ClaudeCode
     Connect-GitHub
     Get-Copy
+    Install-Parts
+    Complete-ClaudeCode
     Start-Setup
 } catch {
     Write-Host ''
     Write-Host "!!  $($_.Exception.Message)" -ForegroundColor Red
+} finally {
+    # Also when the installer stops or Ctrl+C is pressed.
+    Clear-Install
 }
 
 }

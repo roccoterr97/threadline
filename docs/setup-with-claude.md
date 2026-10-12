@@ -5,8 +5,8 @@ set-up for you. You create two free accounts and click where it tells you;
 Claude does everything that happens in the terminal. Keys are typed by you
 into a page in your browser, never into the chat.
 
-It takes about 25 minutes of your own time with nothing ready, about 15 with
-GitHub and Supabase accounts ready; LinkedIn comes later, in about 5 minutes.
+It takes about 20 minutes in total, making the accounts included; LinkedIn
+comes later, in about 5 minutes.
 The first summary e-mail follows about ten minutes
 later, if you have a mailbox that can send it, for example Gmail with an app
 password. You need a Mac or a Linux computer and a paid Claude plan (Pro, Max

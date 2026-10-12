@@ -80,9 +80,8 @@ your Supabase account was registered with (or members of your Supabase
 organisation), unless you set up your own sending service ("custom SMTP"). Part 3
 explains what that means for you.
 
-**Time.** About 25 minutes of your own time with nothing ready, about 15 with
-GitHub and Supabase accounts ready. LinkedIn comes later, in about 5 minutes
-(part 8a). Part of it is waiting: a new Supabase project takes one to
+**Time.** About 20 minutes in total, making the accounts included. LinkedIn
+comes later, in about 5 minutes (part 8a). Part of it is waiting: a new Supabase project takes one to
 three minutes to start, and the first download of Python can take a few more.
 Making a Gmail app password takes longer if 2-Step Verification is not on yet.
 The first summary e-mail follows about ten minutes after the set-up ends, but
@@ -170,31 +169,44 @@ lets GitHub use your Claude plan.
    ```
 
 3. If Windows asks whether to allow an installation, click **Yes**.
-4. When it says `Signing you in to GitHub`, the terminal shows a one-time code.
-   Press Enter, and a GitHub page opens in your browser. Sign in and type the
-   code. Before you click **Authorize**, check the account name at the top of
-   the GitHub page: if it is not the account you want Threadline on, click
-   **Use a different account** and sign in with the right one. Then click
-   **Authorize**. The page lists what it lets the GitHub tool do,
-   including "workflow": that one is needed to save the daily-run file later.
-   If the terminal asks whether to authenticate Git with your GitHub
-   credentials, answer yes.
-5. Wait. It makes your copy, downloads it and installs Threadline's parts. This
-   takes a minute or two. The first time, installing the parts can also
-   download Python itself, which can take a few minutes more; that is normal.
+4. The first line is `Getting Threadline ready on this computer.` When it says
+   `Signing you in to GitHub in the browser.`, the terminal shows a one-time
+   code, and the code is already on your clipboard. Press Enter, and a GitHub
+   page opens in your browser. Sign in and paste the code. Before you click
+   **Authorize**, check the account name at the top of the GitHub page: if it
+   is not the account you want Threadline on, click **Use a different
+   account** and sign in with the right one. Then click **Authorize**. The
+   page lists what it lets the GitHub tool do, including "workflow": that one
+   is needed to save the daily-run file later. If the terminal asks whether
+   to authenticate Git with your GitHub credentials, answer yes. While you
+   sign in, Claude Code installs in the background (`Installing Claude Code
+   in the background.`), and so does Python, which Threadline runs on.
+5. Wait. It makes your copy, downloads it and installs Threadline's parts
+   (`Installing Threadline's parts. The first time, this can take a few
+   minutes.`). This takes a minute or two. The first time, the download of
+   Python can take a few minutes more; that is normal.
 
-**✅ Check:** the terminal says `Starting the guided set-up`, then
-`Step 1 of 11: Your Supabase project`. Carry on with part 2.
+**✅ Check:** the terminal says `Starting the guided set-up; it asks you what
+it needs.` and how to come back later (`To come back later, open a terminal
+and type: cd ~/threadline/backend && uv run tracker setup`; on Windows,
+`open PowerShell and type: cd ~\threadline\backend; uv run tracker setup`).
+Then the set-up starts with Supabase: `Supabase keeps your data, in a free
+account; the set-up creates the project there.` Carry on with part 2.
 
 **If not:** every message that stops the installer says what to do, and
 pasting the line again is safe: it skips what is already done and carries on.
+When something that ran in the background fails, the installer shows its last
+lines and keeps the full report in `install.log`, in your `threadline` folder.
+Show that file to anyone helping you.
 
 - `Git is not installed yet` on a Mac: click **Install** in the window that
   offers the "command line developer tools", wait for it to finish, then paste
   the line again.
 - `Could not download uv` or `Could not download the GitHub tool`: the internet
   connection dropped. Check it and paste the line again.
-- Claude Code could not be installed: install it from Anthropic's page,
+- `Claude Code did not install`: the installer carries on without it, and the
+  set-up will ask you to paste the Claude key (part 6b). To have the key made
+  for you instead, install Claude Code from Anthropic's page,
   <https://code.claude.com/docs/en/setup>, open a new terminal, and paste the
   line again.
 - `The installation of Git did not finish (code …)` (or the GitHub tool) on
@@ -271,8 +283,13 @@ terminal is in another folder: type `cd ~/threadline/backend` and try again.
 If you set Threadline up before the one-line install existed, your copy may be
 in a folder called `tracker`: use that name instead of `threadline`.
 
-**What the set-up does next.** It runs 11 steps in order, numbered on screen
-(`Step 1 of 11`, `Step 2 of 11`, …). This guide follows the same order:
+**What the set-up does next.** It runs 11 steps in order. A full run does not
+number them on screen: it shows only the lines that ask you something, a few
+lines of progress, and a summary at the end. With `--ask-everything`, or when
+you run one step by name, each step starts with its number (`Step 1 of 11`,
+`Step 2 of 11`, …) and shows every line, also the ones that only report;
+where this guide says "run on its own", that holds for `--ask-everything`
+too. This guide follows the same order:
 
 | Steps | Part of this guide |
 |-------|--------------------|
@@ -285,11 +302,17 @@ in a folder called `tracker`: use that name instead of `threadline`.
 **It asks only what you must do.** In the full run you give the Supabase code
 (2a), your e-mail address and its app password (4), and click **Authorize**
 twice (Supabase, then Claude). Everything else takes the usual answer by
-itself: the Supabase project named `threadline`, your Supabase account's
-address as the dashboard login, the usual categories, your computer's time
-zone, the shared dashboard and 07:00 for the daily run. Each is said in one
-line with the command that changes it, and the end lists them all again. To
-answer every question yourself, run `uv run tracker setup --ask-everything`.
+itself, without a word: the Supabase project named `threadline`, your
+Supabase account's address as the dashboard login, the usual categories, your
+computer's time zone, the shared dashboard and 07:00 for the daily run. The
+end lists each choice once, with the command that changes it. To answer every
+question yourself, run `uv run tracker setup --ask-everything`.
+
+**Not quite in this order.** When the set-up creates a new Supabase project,
+Supabase needs one to three minutes to start it. The set-up does not make you
+wait: meanwhile it asks for your mailbox (`Meanwhile, your mailbox.`, part 4)
+and, if Supabase is still starting after that, makes the Claude key
+(part 6b). Then it carries on with the database.
 
 To run one step again later, name it, for example
 `uv run tracker setup database`. A step run by name asks all its questions, as
@@ -313,19 +336,34 @@ and later switches off sign-ups.
 **What you do:**
 
 1. A Supabase page opens. Sign in if asked (**Continue with GitHub**), then
-   click **Authorize**. The page may mention the "Supabase CLI": that is
-   expected, Threadline signs in the same way.
-2. The page shows a short verification code. Type it into the set-up and press
-   Enter.
+   click **Authorize**. The page names the "Supabase CLI": that is expected,
+   Threadline signs in the same way.
+2. The page shows a short verification code. In a terminal, the set-up
+   usually watches your clipboard (`Then copy the code Supabase shows; the
+   set-up picks it up by itself.`): copy the code on the page, and the set-up
+   says `Picked up the code from your clipboard.` You can also type it after
+   `Waiting for the copied code, or type it here` and press Enter. Where the
+   clipboard cannot be watched (and on the set-up page in your browser), it
+   says `Supabase then shows a short verification code: type it here.` and
+   asks `Verification code from the Supabase page`: type the code and press
+   Enter. Either way you then see `Signed in to Supabase.`
 3. If you have several Supabase organisations, type the number of the one to
    use.
 4. The set-up uses your project named `threadline` when there is one, running
    or starting (it is most likely the one an earlier try made). Otherwise it
-   creates it, in the region nearest your time zone. It never takes a project
-   with another name by itself: that project may hold other data.
-5. Wait while Supabase starts the project. This takes one to three minutes.
-   Do not press Ctrl-C meanwhile: the project is already being created, and
-   stopping leaves it half set up. The set-up warns you of this.
+   creates it, in the region nearest your time zone (`Creating the project
+   'threadline' in …, the region nearest your time zone.`). It never takes a
+   project with another name by itself: that project may hold other data.
+5. Supabase starts a new project (`Supabase is starting the project; this
+   takes one to three minutes.`). In a full run you do not just wait: the
+   set-up asks for your mailbox meanwhile (`Meanwhile, your mailbox.`). Do
+   that now, as part 4 describes. If Supabase is still starting after that,
+   the set-up also makes the Claude key (`Supabase is still starting, so
+   meanwhile, the Claude key.`): click **Authorize** on the Claude page, as
+   part 6b describes. If the project is still not up after both, it says
+   `Waiting for Supabase to finish starting the project...`. Do not press
+   Ctrl-C meanwhile: the project is already being created, and stopping
+   leaves it half set up.
 
 **Run on its own** (`uv run tracker setup supabase`, or the full run with
 `--ask-everything`), the step asks first: `Create the project (or pick an
@@ -338,19 +376,22 @@ your time zone).
 
 Supabase now lists a key named `threadline-setup-…` under **Account → Access
 Tokens**. That is the click you just gave. You may delete it once the set-up is
-done (part 7).
+done (part 7); the set-up's last line reminds you.
 
 The project's database password is made up for you and not kept: Threadline
 never needs it. If you ever do, reset it in Supabase under **Project Settings →
 Database**.
 
-**✅ Check:** you see `The project is up.` (for a new project), then
+**✅ Check:** you see `Using your Supabase project 'threadline'` (for a
+project you already have) or, for a new project, `The Supabase project is
+up.` after the mailbox questions. Run on its own, the step also says
 `Supabase accepted the address and both keys.`
 
 **If not:**
 
-- `Supabase did not accept that code`: type the code the newest Supabase page
-  shows. After three refused codes the set-up moves to pasting a token.
+- `Supabase did not accept that code`: type (or copy) the code the newest
+  Supabase page shows. After three refused codes the set-up moves to pasting a
+  token.
 - `Signing in through the browser did not work this time`: the set-up moves
   to pasting a token, below.
 - **I'd rather paste a token.** Run the step on its own and type **2** when
@@ -403,10 +444,12 @@ later steps then ask you to sign in to Supabase once, for the database.
 
 **What the set-up does for you:** everything. It makes a key that locks your
 Microsoft sign-in and your mailbox's app password inside the database, and
-saves it without showing it.
+saves it without showing it. A full run says nothing here.
 
-**✅ Check:** you see `A new key was made and saved.` (or, on a second run,
-`A usable key is already saved; it is kept.`)
+**✅ Check:** in a full run, nothing to see: the set-up goes straight on. Run
+on its own (`uv run tracker setup encryption`), you see `A new key was made
+and saved.` (or, on a second run, `A usable key is already saved; it is
+kept.`)
 
 **If not:** if it asks whether to replace an existing key, answer **no** unless
 you know the old one is wrong. A new key means signing in to Microsoft again.
@@ -423,10 +466,12 @@ Run on its own later (`uv run tracker setup database`), the step first asks
 `Apply them automatically?`: press Enter, and sign in to Supabase as in 2a
 (**Authorize**, then the code), or paste a legacy token.
 
-**✅ Check:** the step starts with `To apply: 0001_schema, 0002_access_rules, …`,
-naming every file still missing (all of them on a new project). Then you see
-`Applied 0001_schema`, one line per file, and `The database structure is in
-place.`
+**✅ Check:** in a full run you see `Creating your database's tables; this
+takes about half a minute.`, then `The database structure is in place.` Run
+on its own, the step starts with `To apply: 0001_schema, 0002_access_rules,
+…`, naming every file still missing (all of them on a new project), then
+shows `Applied 0001_schema`, one line per file, and `The database structure
+is in place.`
 
 **If not:** if a file still fails, or Supabase refuses the sign-in when a file
 is sent, the set-up switches to the manual route by itself: it opens the **SQL Editor**, puts each file on your clipboard in turn,
@@ -456,9 +501,11 @@ service, called "custom SMTP" in Supabase. This guide does not cover it.)
 
 **What the set-up does for you:** it reads the address of your Supabase
 account (with the sign-in from part 2), creates your login for it, records it
-as the only owner, and switches off sign-ups in Supabase. It says which
-address it is: `Your dashboard login is you@example.com, the address of your
-Supabase account`. Note it: that is where the sign-in link goes.
+as the only owner, and switches off sign-ups in Supabase. A full run does this
+without a word; the address is named at the end (`Sign in there with
+you@example.com: a sign-in link is e-mailed to that address.`, and
+`Dashboard login: …` in the list of choices). Note it: that is where the
+sign-in link goes.
 
 **What you do:** nothing, usually. If the set-up could not read that address
 (for example when you carry on a set-up started earlier), it asks `E-mail
@@ -468,10 +515,12 @@ e-mail address of your GitHub account; Supabase shows it under **Account →
 Preferences**. Run on its own (`uv run tracker setup login`), the step always
 asks, offering your Supabase account's address.
 
-**✅ Check:** you see `… can now sign in to the dashboard, and nobody else can
-read it.` A later run that finds the login done says
-`Your dashboard login: …` under `Already done`. and then `Sign-ups are now switched off: nobody else can create a
-login.` (or `Sign-ups are switched off` if they already were).
+**✅ Check:** in a full run, the end of the set-up names your login
+(`Dashboard login: …`). Run on its own, the step says `… can now sign in to
+the dashboard, and nobody else can read it.` and then `Sign-ups are now
+switched off: nobody else can create a login.` (or `Sign-ups are switched
+off` if they already were). A later run with `--ask-everything` that finds
+the login done says `Your dashboard login: …` under `Already done`.
 
 **If not:** if Supabase would not change the setting (also after a Supabase server
 error or a timeout), the set-up opens the page
@@ -483,8 +532,8 @@ pressing Enter.
 ### 3b. Your categories (`tracker setup categories`)
 
 Threadline puts each person you talk to in a category, such as "Startup" or
-"Investor". The full run keeps the job-search categories without asking
-(`Kept the usual job-search categories.`); change them any time on the
+"Investor". The full run keeps the job-search categories without a word (the
+end lists `Categories: the usual job-search list.`); change them any time on the
 dashboard's **Settings** page, or run `uv run tracker setup categories`, which
 asks the questions below.
 
@@ -508,7 +557,7 @@ tells the AI helper about them.
 5. Look at the list it shows, then press Enter to save it.
 
 **✅ Check:** you should now see `Saved … categories, 'Not known' included.`
-(or, in the full run, `Kept the usual job-search categories.`)
+(or, in the full run, `Categories: the usual job-search list.` at the end).
 Once your dashboard is ready (part 5), its **Settings** page shows the same
 categories.
 
@@ -519,8 +568,8 @@ answered **n** by mistake, run `uv run tracker setup categories` again.
 ### 3c. Your time zone (`tracker setup timezone`)
 
 **What the set-up does for you:** it reads the time zone your computer uses and,
-in the full run, takes it without asking: `Your time zone: Europe/Paris.` Only
-if it cannot tell (a Windows zone name it does not know, for example) does it
+in the full run, takes it without a word (the end lists `Time zone:
+Europe/Paris.`). Only if it cannot tell (a Windows zone name it does not know, for example) does it
 say "I could not tell your time zone" and wait for you to type it. Run on its
 own (`uv run tracker setup timezone`), the step offers the zone, such as
 `Your time zone [Europe/Paris]:`, and asks for your name too. Your time zone decides what
@@ -541,8 +590,8 @@ the step shows the line it changed and asks first, as in part 6a).
    is optional: it helps only when your e-mail address does not spell your name
    (`jd123@…`). Leave it empty and press Enter to skip it.
 
-**✅ Check:** you see `Your time zone: …` (full run) or `Saved OWNER_TIME_ZONE=…`
-with your zone.
+**✅ Check:** you see `Time zone: …` in the list at the end (full run) or
+`Saved OWNER_TIME_ZONE=…` (run on its own), with your zone.
 
 **If not:** "that is not a time-zone name" means it was typed in another form:
 use the region and the city with a slash, such as `Europe/Rome`. To change it
@@ -560,12 +609,24 @@ nothing is sent, moved, deleted, or even marked as read.
 extra that takes about a minute: one paste, no Google sign-in (see
 [8e](#8e-google-calendar-tracker-setup-google-calendar)).
 
+**When it comes.** In a full run that creates a new Supabase project, these
+questions come earlier, while Supabase starts the project (part 2a, step 5):
+the set-up says `Meanwhile, your mailbox.` and asks them right away. The app
+password is checked straight away and kept in memory only; it is stored,
+encrypted, in your database once the database is ready, later in the run,
+without asking again. If the mailbox cannot be settled then (for example the
+password was refused three times), the set-up says why, then `Your mailbox is
+asked again once the project is up.`, and asks again later. When your
+Supabase project already exists and is running, the questions come here, in
+their usual place.
+
 ### 4a. Choose your mailbox (`tracker setup mailbox`)
 
 The set-up asks one thing: *Your e-mail address*. Type it and press Enter. It
-tells the provider from the address (`From the address, your mailbox is
-Gmail.`): gmail.com, outlook.com, hotmail, live, msn.com, icloud.com, me.com,
-yahoo and fastmail addresses are recognised. For any other address, such as a
+tells the provider from the address: gmail.com, outlook.com, hotmail, live,
+msn.com, icloud.com, me.com, yahoo and fastmail addresses are recognised (with
+`--ask-everything` it says so: `From the address, your mailbox is Gmail.`).
+For any other address, such as a
 company's own domain, it then asks: *Which mailbox should Threadline read?
 gmail, outlook, icloud, yahoo, fastmail or other*. Type one word and press
 Enter. (Run on its own, `uv run tracker setup mailbox` asks that question
@@ -593,20 +654,26 @@ password. Instead you make an **app password**: a separate password just for
 Threadline, which you can remove at any time. Your normal password is never
 given to Threadline.
 
-**What the set-up does for you:** it explains app passwords, puts the name
-`Threadline` on your clipboard, opens your provider's page and waits for the
-new password. For Gmail and iCloud it picks the password up by itself as soon
-as you copy it on the page (it watches the clipboard for about 5 minutes, and
-empties it once the password is picked up); for every provider you can also
-paste it in the terminal (nothing is shown while you paste). Then it **checks
-it live**: it signs in, opens your inbox read-only, counts the messages of the
-last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database,
-**never in `.env`**, and add the address to your own addresses, so your own
-messages count as yours (run on its own, the step asks first).
+**What the set-up does for you:** it explains app passwords in one line that
+names your mailbox (`Your Gmail is read with an app password: a separate
+password just for Threadline, which you can remove at any time.`), puts the
+name `Threadline` on your clipboard, opens your provider's page and waits for
+the new password. For Gmail and iCloud it picks the password up by itself as
+soon as you copy it on the page (`Then copy the 16-letter password Google
+shows; the set-up picks it up by itself.`; it watches the clipboard for about
+5 minutes, and empties it once the password is picked up); for every provider
+you can also paste it in the terminal (nothing is shown while you paste).
+Then it **checks it live**: it signs in, opens your inbox read-only, counts
+the messages of the last 30 days and looks for your Sent folder. Only then
+does it store the password, encrypted, in your database, **never in `.env`**
+(while Supabase is still starting a new project, it keeps the password in
+memory and stores it once the database is ready), and add the address to your
+own addresses, so your own messages count as yours (run on its own, the step
+asks first).
 
 **✅ Check (for every provider):** the terminal shows
-`Connected. Your inbox has … messages from the last 30 days.`, then
-`Your own replies are read from the folder '…'.` and
+`Connected. Your inbox has … messages from the last 30 days.` Run on its own,
+it then also shows `Your own replies are read from the folder '…'.` and
 `Saved the app password, encrypted, in your database - it is not in .env.`
 
 **If not:** "refused the app password" means the password was copied wrongly,
@@ -640,8 +707,8 @@ which folder your mail program saves sent mail in.
    clipboard.` You can also paste it in the terminal and press Enter (or in the
    field, on the set-up page in your browser). Spaces do not matter.
 
-   **✅ Check:** the lines of the general check above, with the folder
-   `[Gmail]/Sent Mail` (or its name in your language).
+   **✅ Check:** the lines of the general check above (run on its own, with
+   the folder `[Gmail]/Sent Mail`, or its name in your language).
 
    **If not:** if nothing happens after you copy, paste it in the terminal. If
    Google refuses it, make a new app password and copy that one.
@@ -775,7 +842,7 @@ IMAP needs a paid Fastmail plan above Basic.
 ### 4c. Outlook mailbox and calendar (`tracker setup microsoft`)
 
 If you chose another mailbox in 4a, the full run leaves Outlook out without
-asking: `Outlook left out. To add it or its calendar: uv run tracker setup
+a word; the end lists `Outlook: not connected. Change: uv run tracker setup
 microsoft`. Run that command to add it later. (With `--ask-everything` the
 step asks `Connect Outlook as well?`; a **no** is remembered, and it says
 `Skipped earlier` next time.)
@@ -838,22 +905,25 @@ shared dashboard and gives you your **personal link**. That link opens your own
 dashboard. It carries your database's public address, nothing secret. The
 set-up saves it, so every morning summary e-mail carries it too.
 
-**What you do:** write down the personal link it shows. It starts with
-`https://app.threadlineapp.com`. The full run takes the shared dashboard
-without asking; run on its own (`uv run tracker setup dashboard`), the step
-offers it first: press Enter (yes).
+**What you do:** nothing yet. The full run takes the shared dashboard without
+a word and shows your personal link at the very end (part 7): `Your dashboard
+(keep this link; it is on your clipboard): …`. It also opens it in your
+browser then. Write the link down; it starts with
+`https://app.threadlineapp.com`. Run on its own (`uv run tracker setup
+dashboard`), the step offers the shared dashboard first (press Enter for yes)
+and shows the link straight away.
 
 **✅ Check:** on your phone, open your personal link, type your e-mail, and
 click the link in the e-mail Supabase sends. The dashboard opens (it is empty
 until the first run).
 
 **If not:** "This address cannot sign in" on the dashboard means you typed
-another address than your dashboard login: use the one the set-up named in
-part 3a (`Your dashboard login is …`), usually your Supabase address. The end
-of the set-up names it again, and any later `uv run tracker setup` says it
-under `Already done`. "Too many links were asked for" means waiting as
-long as it says. Supabase's own message "Email address not authorized" means
-the address is not the one of your Supabase account (see part 3a). A link that
+another address than your dashboard login: use the one the end of the
+set-up named (`Sign in there with …`), usually your Supabase address. A later
+`uv run tracker setup --ask-everything` says it under `Already done`. "Too
+many links were asked for" means waiting as long as it says. Supabase's own
+message "Email address not authorized" means the address is not the one of
+your Supabase account (see part 3a). A link that
 opens `localhost` means the sign-in link was not connected: run
 `uv run tracker setup dashboard` again. Running it again keeps the sign-in
 addresses you already have in Supabase and adds the new one; it tells you which
@@ -900,8 +970,9 @@ e-mail arrives until you connect a mailbox (`uv run tracker setup mailbox`, then
 ### 6a. The daily time (`tracker setup schedule`)
 
 **What the set-up does for you:** in the full run, it keeps the time already
-set, 07:00 unless you chose another before, and says how to change it
-(`To change the time: uv run tracker setup schedule`). The time is read in the
+set, 07:00 unless you chose another before, without a word; the end lists it
+with the command that changes it (`Daily run: every day at 07:00 (…). Change:
+uv run tracker setup schedule`). The time is read in the
 time zone of part 3c and written, with the zone, into the workflow file
 `.github/workflows/threadline-run.yml`, then sent to your copy on GitHub.
 GitHub follows your summer and winter time by itself.
@@ -946,15 +1017,20 @@ settings go into your copy's **secrets** (hidden in every log) and
 key that lets it use your Claude subscription. The set-up makes that key for
 you with Claude Code, which the install line added.
 
-**What you do:** on a Mac or Linux, a Claude page opens by itself. Sign in if
-asked, with the account of your Claude plan, and click **Authorize**. The key
+**What you do:** the step starts with `Last, GitHub: it runs Threadline every
+day on your own private copy.` (unless the key was already made while
+Supabase started the project, part 2a). On a Mac or Linux, a Claude page opens
+by itself (`A Claude page opens in your browser. Sign in if it asks, then
+click Authorize.`). Sign in if asked, with the account of your Claude plan,
+and click **Authorize**. The set-up says `Got the Claude key.` The key
 goes straight to GitHub: you never see or copy it. It lasts one year. The
 window shows only the set-up's own lines. If no page opens, it shows the
 address to open (`If no page opened, open this address: …`). If the Claude
 page shows a code instead, paste it in the set-up's window and press Enter
 (after half a minute the set-up says so too). The
 set-up waits up to 5 minutes for the click, then saves your settings on GitHub
-(`Saving … secrets and … variables in … with the GitHub CLI.`). Run on its own
+(`Saved 8 secrets and 3 variables in you/threadline.`; the numbers depend on
+what you set up). Run on its own
 (`uv run tracker setup github`), the step asks before each of these: press
 Enter for yes.
 
@@ -986,7 +1062,8 @@ The key is never saved on your computer, not even in `.env`. Anyone with this
 key can use your Claude subscription, so never paste it anywhere else.
 
 **What the set-up does for you:** it saves every secret and variable on your
-copy and names each one as it goes, never its value. The **secrets** include
+copy, never showing a value. A full run says it in one line; run on its own,
+the step names each one as it goes. The **secrets** include
 the Claude key, your Supabase keys, the encryption key, your own addresses
 (`OWNER_EMAIL_ADDRESSES`), and, when you have set them, `IMAP_USERNAME`,
 `DASHBOARD_BASE_URL` and `OWNER_DISPLAY_NAME`. The **variables** are the
@@ -999,8 +1076,9 @@ each one by name and asks once whether to delete them on GitHub, so the daily
 run stops using the old values. Press Enter to delete them, or type `n` to keep
 them.
 
-**✅ Check:** the list names every secret and variable it set, ending with
-`Done. GitHub has everything it needs to run Threadline on your copy.`
+**✅ Check:** you see `Saved … secrets and … variables in …` with your copy's
+name. Run on its own, the list names every secret and variable it set, ending
+with `Done. GitHub has everything it needs to run Threadline on your copy.`
 
 **If not:** if the Claude page did not open, or you closed it, run
 `uv run tracker setup github` again. `That key is cut short`, `That is an API
@@ -1027,21 +1105,23 @@ then starts the run, without asking. (Run on its own, the step asks `Start the
 first daily run on GitHub now?` first: press Enter for yes. When no summary
 e-mail can be sent from GitHub, the question says so and Enter means no.)
 
-The set-up then watches the run for up to two minutes, to catch a problem
-early (`Watching it for up to 2 minutes, to catch a problem early...`).
+The set-up does not wait for the run: it says where to watch it and ends
+straight away. If the run stops with a problem, GitHub e-mails you, and
+`uv run tracker doctor` says why (part 7).
 
-**✅ Check:** you see `The first run has started.`, then
-`It is running; the summary e-mail comes in about 10 minutes.` and the address
-of the run's page. (If the run already finished, it says `The first run has
-finished.` instead.)
+**✅ Check:** you see `The first run is going on GitHub; the summary e-mail
+comes in about 10 minutes.` (or, when no e-mail can be sent, `your dashboard
+fills in about 10 minutes`), then `To watch it: …` with the address of the
+run's page.
 
 **If not:**
 
-- `The first run stopped with a problem.`, followed by the reason: do what that
-  line says. Most often it is `Claude did not accept the key saved on GitHub`.
-  Run `uv run tracker setup github` again: it makes a new key the same way (if
-  it asks you to paste one, paste both lines), and answer yes to start a new
-  first run.
+- GitHub e-mails you that the run failed, or `uv run tracker doctor` shows
+  `PROBLEM  Daily run on GitHub: the newest daily run stopped.` followed by
+  the reason: do what that line says. Most often it is Claude refusing the
+  key saved on GitHub. Run `uv run tracker setup github` again: it makes a new
+  key the same way (if it asks you to paste one, paste both lines), and answer
+  yes to start a new first run.
 - If GitHub refused to start the run, the set-up says so in one line and names
   the page where you start the run yourself:
 
@@ -1096,16 +1176,20 @@ GitHub's timer allows; with Refresh now switched on (part 8b), exactly on time.
 ## 7. The final check
 
 The set-up ends by saying `Set-up done.`, then your dashboard's personal link
-and the e-mail address that can sign in to it (`Sign in there with …`: write
-both down). It then says how the first run was left (and, when it was started and an
-e-mail can be sent, when the first summary e-mail will arrive) and the daily
-time. Then it lists what was chosen for you, one line each with the command
+(`Your dashboard (keep this link; it is on your clipboard): …`), which it also
+opens in your browser, and the e-mail address that can sign in to it (`Sign in
+there with …`: write both down). It then says when the summary e-mail comes
+(`After the first one, the summary e-mail comes every day at 07:00 (…).`) and
+`If a run stops with a problem, GitHub e-mails you; 'uv run tracker doctor'
+says why.` When the first run was not started, it says how to start it
+instead. Then it lists what was chosen for you, one line each with the command
 that changes it (`What was chosen, and the command that changes each:`), the
 line `LinkedIn can be added later: uv run tracker setup linkedin (about 5
 minutes).` (unless LinkedIn is already connected), and how to add the other
-extras. Then it checks every connection once and prints one
-line for each. The technical details of the whole set-up are in
-`backend/setup.log`, if anyone helping you needs them.
+extras (`Extras any time: …`). Last, it reminds you that you can delete its
+Supabase access, then checks every connection once (`Final check of every
+connection:`) and prints one line for each. The technical details of the
+whole set-up are in `backend/setup.log`, if anyone helping you needs them.
 
 You can run the same check yourself at any time:
 
@@ -1122,8 +1206,16 @@ you add the extras (part 8), these are expected:
 - `warning  On-time morning start: not switched on (optional): GitHub alone
   starts the daily run, often late`
 
+The line **Daily run on GitHub** looks at the newest daily run: `ok` while it
+is going (`a daily run is going: …`) or when it finished well. It says
+`skipped` when there is no daily run yet, when the GitHub tool is not signed
+in on this computer, or when the folder is not linked to your private copy.
+
 **If not:** fix the lines marked `PROBLEM` from top to bottom. Each one ends
 with the command that repairs it, usually `uv run tracker setup <step>`.
+`PROBLEM  Daily run on GitHub: the newest daily run stopped.` gives the reason
+the run left and the run's page; when it is about the Claude key (Claude
+refused it), run `uv run tracker setup github` to make a new key.
 
 You are done. You can now delete the Supabase key named `threadline-setup-…`
 (or the token you pasted) under **Account → Access Tokens** on Supabase. From
@@ -1416,8 +1508,8 @@ until you run `uv run tracker setup refresh` again with a new key.
 **2. Supabase, once more.** The set-up never saved the sign-in from part 2,
 so it asks again, as in
 [part 2a](#2a-sign-in-to-supabase-and-your-project-tracker-setup-supabase):
-click **Authorize** on the Supabase page and type the code it shows (or paste
-a legacy token).
+click **Authorize** on the Supabase page and copy or type the code it shows
+(or paste a legacy token).
 
 The set-up then saves the helper's settings in Supabase (your GitHub key goes
 straight there), puts the helper in place, and checks that it answers.

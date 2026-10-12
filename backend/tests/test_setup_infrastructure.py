@@ -38,6 +38,7 @@ from tracker.infrastructure.supabase_platform import SupabasePlatform
 from tracker.infrastructure.terminal_io import TerminalIO
 from tracker.infrastructure.web_probe import WebProbe
 from tracker.services.setup import values
+from tracker.services.setup.supabase_sign_in import looks_like_code
 from tracker.shared.clock import FixedClock
 from tracker.shared.constants.collection import LINKEDIN_SNAPSHOT_URL
 from tracker.shared.errors import (
@@ -880,6 +881,83 @@ def test_without_a_clipboard_the_watching_question_is_the_hidden_prompt(
     assert answer == terminal_io.SecretAnswer("x", copied=False)
     assert asked == ["Paste it"]
     assert io.watches_clipboard() is False
+
+
+def test_a_copied_code_is_picked_up_from_a_question_that_shows_what_is_typed() -> None:
+    if sys.platform == "win32":
+        pytest.skip(_NO_TERMINAL_ON_WINDOWS)
+    import pty
+    import termios
+
+    keyboard, terminal = pty.openpty()
+    clipboard_now = Clipboard("ABCD-1234", "77635001")
+    echo_while_watching: list[int] = []
+    # Read here, where the type checker knows this is not Windows.
+    attributes, echo = termios.tcgetattr, termios.ECHO
+
+    def read() -> str | None:
+        echo_while_watching.append(attributes(terminal)[3] & echo)
+        return clipboard_now.read()
+
+    try:
+        answer = terminal_io.read_hidden_or_copied(
+            terminal,
+            terminal_io.newly_copied("ABCD-1234", looks_like_code, read),
+            hidden=False,
+            polls=10,
+            interval=0.01,
+        )
+    finally:
+        os.close(keyboard)
+        os.close(terminal)
+
+    assert answer == terminal_io.SecretAnswer("77635001", copied=True)
+    assert echo_while_watching
+    assert all(echo_while_watching)
+
+
+def test_a_typed_code_is_read_while_the_clipboard_is_watched() -> None:
+    if sys.platform == "win32":
+        pytest.skip(_NO_TERMINAL_ON_WINDOWS)
+    import pty
+
+    keyboard, terminal = pty.openpty()
+    try:
+        os.write(keyboard, b"77635001\n")
+        answer = terminal_io.read_hidden_or_copied(
+            terminal,
+            terminal_io.newly_copied("", looks_like_code, lambda: ""),
+            hidden=False,
+            polls=10,
+            interval=0.01,
+            gap_seconds=0.01,
+        )
+    finally:
+        os.close(keyboard)
+        os.close(terminal)
+
+    assert answer == terminal_io.SecretAnswer("77635001", copied=False)
+
+
+def test_without_a_clipboard_the_shown_watching_question_is_the_plain_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[tuple[str, bool]] = []
+    monkeypatch.setattr(terminal_io.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(terminal_io, "read_clipboard", lambda: None)
+
+    def ask(
+        _self: TerminalIO, prompt: str, *, default: str | None = None, exact: bool = False
+    ) -> str:
+        asked.append((prompt, exact))
+        return "77635001"
+
+    monkeypatch.setattr(TerminalIO, "ask", ask)
+
+    answer = TerminalIO().ask_or_copied("Verification code", looks_like_code)
+
+    assert answer == terminal_io.SecretAnswer("77635001", copied=False)
+    assert asked == [("Verification code", True)]
 
 
 def test_a_terminal_with_a_clipboard_watches_it(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -29,7 +29,7 @@ from tracker.infrastructure.claude_setup_token import (
     ClaudeKeyListener,
     ClaudeKeyScreen,
 )
-from tracker.infrastructure.github_cli import GitHubRepository, WorkflowRun
+from tracker.infrastructure.github_cli import GitHubRepository
 from tracker.infrastructure.imap.connection import StoreAccess
 from tracker.infrastructure.imap.reader import MailboxSurvey
 from tracker.infrastructure.imap.session import ImapAccount
@@ -101,6 +101,14 @@ class SetupIO(Protocol):
 
         Typing or pasting the answer works all the while; where the clipboard
         cannot be watched this is :meth:`ask_secret`.
+        """
+        ...
+
+    def ask_or_copied(self, prompt: str, wanted: Callable[[str], bool], /) -> SecretAnswer:
+        """Ask for a value shown as typed, or pick it up once a value ``wanted`` accepts is copied.
+
+        Typing the answer works all the while; where the clipboard cannot be
+        watched this is :meth:`ask` with ``exact`` set.
         """
         ...
 
@@ -395,18 +403,6 @@ class GitHubPort(Protocol):
 
     def disable_workflow(self, repository: str) -> None:
         """Switch the Threadline workflow off, so it stops starting on its schedule."""
-        ...
-
-    def recent_runs(self, repository: str) -> tuple[WorkflowRun, ...]:
-        """The newest runs started with 'Run workflow', newest first."""
-        ...
-
-    def workflow_run(self, repository: str, run_id: int) -> WorkflowRun:
-        """Read where one run is."""
-        ...
-
-    def run_notes(self, repository: str, run_id: int, title: str) -> tuple[str, ...]:
-        """Read the notes with one title that a run's jobs left."""
         ...
 
 

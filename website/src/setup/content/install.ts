@@ -103,7 +103,7 @@ export const INSTALL: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'The terminal reports what it installs, then says `Signing you in to GitHub` and shows a one-time code. (If this terminal is already signed in to GitHub, it skips that and goes on to make your copy.)',
+          text: 'The terminal says `Getting Threadline ready on this computer.` and installs what is missing, then says `Signing you in to GitHub in the browser.` and shows a one-time code, which is already on your clipboard. (If this terminal is already signed in to GitHub, it skips that and goes on to make your copy.)',
         },
       ],
       ifNot: [
@@ -132,7 +132,8 @@ export const INSTALL: SetupPart = {
             '`Could not download uv` or `Could not download the GitHub tool`: the internet connection dropped. Check it and paste the line again.',
             `\`The GitHub tool this computer uses is still version …\`: the installer could not replace an old GitHub tool. Install the newest from [cli.github.com](${GITHUB_CLI_PAGE}), open a new terminal, and paste the line again.`,
             '`… was installed but cannot be found yet`: close the terminal, open a new one, and paste the line again.',
-            `Claude Code could not be installed: install it from [code.claude.com/docs/en/setup](${CLAUDE_CODE_SETUP_URL}), open a new terminal, and paste the line again.`,
+            `\`Claude Code did not install\`: the installer carries on without it, and the set-up will ask you to paste the Claude key. To have the key made for you instead, install Claude Code from [code.claude.com/docs/en/setup](${CLAUDE_CODE_SETUP_URL}), open a new terminal, and paste the line again.`,
+            'When something that ran in the background fails, the installer shows its last lines and keeps the full report in `install.log`, in your `threadline` folder. Show that file to anyone helping you.',
           ],
         },
       ],
@@ -143,15 +144,15 @@ export const INSTALL: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'The installer signs you in to GitHub in the browser, with the extra permission that saving the daily-run file later needs.',
+          text: 'The installer signs you in to GitHub in the browser, with the extra permission that saving the daily-run file later needs. Meanwhile, Claude Code installs in the background (`Installing Claude Code in the background.`), and so does Python, which Threadline runs on.',
         },
       ],
       youDo: [
         {
           kind: 'steps',
           items: [
-            'When the terminal says `Signing you in to GitHub`, it shows a one-time code. Press Enter, and a GitHub page opens in your browser.',
-            'Sign in and type the code.',
+            'When the terminal says `Signing you in to GitHub in the browser.`, it shows a one-time code and says `The code is on your clipboard: paste it on the GitHub page.` Press Enter, and a GitHub page opens in your browser.',
+            'Sign in and paste the code.',
             'Before you click **Authorize**, check the account name at the top of the GitHub page. If it is not the account you want Threadline on, click **Use a different account** and sign in with the right one.',
             'Click **Authorize**. The page lists what it lets the GitHub tool do, including "workflow": that one is needed to save the daily-run file later.',
             'If the terminal asks whether to authenticate Git with your GitHub credentials, answer yes.',
@@ -185,7 +186,7 @@ export const INSTALL: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'The installer makes your copy, downloads it and installs Threadline\'s parts. This takes a minute or two. The first time, installing the parts can also download Python itself, which can take a few minutes more; that is normal.',
+          text: 'The installer makes your copy, downloads it and installs Threadline\'s parts (`Installing Threadline\'s parts. The first time, this can take a few minutes.`). This takes a minute or two. The first time, the download of Python can take a few minutes more; that is normal.',
         },
       ],
       youDo: [
@@ -197,7 +198,13 @@ export const INSTALL: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'The terminal says `Starting the guided set-up`, then `Step 1 of 11: Your Supabase project`. Carry on with the Supabase part.',
+          text: 'The terminal says `Starting the guided set-up; it asks you what it needs.` and how to come back later (`To come back later, open a terminal and type: cd ~/threadline/backend && uv run tracker setup`). Then the set-up starts with Supabase: `Supabase keeps your data, in a free account; the set-up creates the project there.` Carry on with the Supabase part.',
+          platforms: ['mac', 'linux'],
+        },
+        {
+          kind: 'paragraph',
+          text: 'The terminal says `Starting the guided set-up; it asks you what it needs.` and how to come back later (`To come back later, open PowerShell and type: cd ~\\threadline\\backend; uv run tracker setup`). Then the set-up starts with Supabase: `Supabase keeps your data, in a free account; the set-up creates the project there.` Carry on with the Supabase part.',
+          platforms: ['windows'],
         },
       ],
       ifNot: [
@@ -225,7 +232,7 @@ export const INSTALL: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: '**What the set-up does next.** It runs 11 steps in order, numbered on screen (`Step 1 of 11`, `Step 2 of 11`, …). This guide follows the same order:',
+          text: '**What the set-up does next.** It runs 11 steps in order. A full run does not number them on screen: it shows only the lines that ask you something, a few lines of progress, and a summary at the end. With `--ask-everything`, or when you run one step by name, each step starts with its number (`Step 1 of 11`, `Step 2 of 11`, …) and shows every line, also the ones that only report. This guide follows the same order:',
         },
         {
           kind: 'table',
@@ -243,7 +250,11 @@ export const INSTALL: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: `**It asks only what you must do.** You give the Supabase code, your e-mail address and its app password, and click **Authorize** twice (Supabase, then Claude). Everything else takes the usual answer by itself: the Supabase project named \`threadline\`, your Supabase account's address as the dashboard login, the usual categories, your computer's time zone, the shared dashboard and 07:00 for the daily run. Each is said in one line with the command that changes it, and the end lists them all again. To answer every question yourself, run \`${ASK_EVERYTHING_COMMAND}\`.`,
+          text: `**It asks only what you must do.** You give the Supabase code, your e-mail address and its app password, and click **Authorize** twice (Supabase, then Claude). Everything else takes the usual answer by itself, without a word: the Supabase project named \`threadline\`, your Supabase account's address as the dashboard login, the usual categories, your computer's time zone, the shared dashboard and 07:00 for the daily run. The end lists each choice once, with the command that changes it. To answer every question yourself, run \`${ASK_EVERYTHING_COMMAND}\`.`,
+        },
+        {
+          kind: 'paragraph',
+          text: '**Not quite in this order.** When the set-up creates a new Supabase project, Supabase needs one to three minutes to start it. The set-up does not make you wait: meanwhile it asks for your mailbox (`Meanwhile, your mailbox.`) and, if Supabase is still starting after that, makes the Claude key. Then it carries on with the database.',
         },
         {
           kind: 'paragraph',

@@ -115,7 +115,7 @@ def offer_push(ctx: SetupContext, *, committed: bool = False) -> None:
     if not has_copy(ctx):
         _offer_commit(ctx)
         return
-    ctx.io.say("GitHub uses the new time once this file is committed and pushed.")
+    ctx.detail("GitHub uses the new time once this file is committed and pushed.")
     if ctx.session.express or ctx.io.confirm(
         "Send the new time to your copy on GitHub now?", default=True
     ):
@@ -123,7 +123,7 @@ def offer_push(ctx: SetupContext, *, committed: bool = False) -> None:
             ctx.gateways.git.push()
         else:
             ctx.gateways.git.commit_and_push(WORKFLOW_PATH, SCHEDULE_COMMIT_MESSAGE)
-        ctx.io.say("Committed and pushed. GitHub will use the new time from now on.")
+        ctx.detail("Committed and pushed. GitHub will use the new time from now on.")
         return
     if not committed:
         _say_commit_lines(ctx)

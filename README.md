@@ -146,8 +146,8 @@ Outlook-only set-ups). The design is described in
 No other paid service is needed, unless you choose a paid mailbox such as
 Fastmail. The dashboard is shared, at <https://app.threadlineapp.com>: your
 data stays in your own Supabase database, and only you can sign in. Setting it
-up takes about 25 minutes of your own time with nothing ready, about 15 with
-GitHub and Supabase accounts ready; LinkedIn comes later, in about 5 minutes.
+up takes about 20 minutes in total, making the accounts included; LinkedIn
+comes later, in about 5 minutes.
 The first summary e-mail follows about ten minutes later, if you have a
 mailbox that can send it, for example Gmail with an app password.
 

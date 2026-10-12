@@ -94,7 +94,8 @@ async def test_one_token_creates_the_project_and_saves_its_address_and_keys() ->
     assert request.region is RegionGroup.EMEA
     assert world.io.secret_prompts == [TOKEN_PROMPT]
     assert world.io.opened == [SUPABASE_TOKENS_PAGE]
-    assert world.waits == [PROJECT_READY_WAIT_SECONDS, PROJECT_READY_WAIT_SECONDS]
+    # The first look comes at once: Supabase starts the project on its own servers.
+    assert world.waits == [PROJECT_READY_WAIT_SECONDS]
     assert "Supabase accepted the address and both keys." in world.io.said
 
 
@@ -262,7 +263,7 @@ async def test_a_project_left_by_a_stopped_run_is_reused_by_just_pressing_enter(
     assert world.platform.created == []
     assert world.env.values["SUPABASE_URL"] == PROJECT_URL
     assert "  1. threadline (still being set up)" in world.io.said
-    assert len(world.waits) == 2
+    assert len(world.waits) == 1
 
 
 async def test_the_project_named_threadline_is_the_default_among_several() -> None:
@@ -297,7 +298,7 @@ async def test_a_project_that_never_comes_up_stops_cleanly() -> None:
     with pytest.raises(ValidationFailedError, match="still being set up after 5 minutes"):
         await SupabaseStep().run(world.context())
 
-    assert len(world.waits) == PROJECT_READY_ATTEMPTS
+    assert len(world.waits) == PROJECT_READY_ATTEMPTS - 1
     assert world.env.values == {}
 
 
@@ -336,7 +337,7 @@ async def test_a_new_project_that_does_not_answer_yet_is_asked_again() -> None:
 
     await SupabaseStep().run(world.context())
 
-    assert world.waits[2:] == [NEW_PROJECT_ANSWER_WAIT_SECONDS] * 4
+    assert world.waits[1:] == [NEW_PROJECT_ANSWER_WAIT_SECONDS] * 4
     assert world.env.values["SUPABASE_SERVICE_ROLE_KEY"] == GOOD_SECRET
 
 
@@ -347,7 +348,7 @@ async def test_a_new_project_that_never_answers_stops_with_a_hint_to_run_again()
     with pytest.raises(SourceUnavailableError):
         await SupabaseStep().run(world.context())
 
-    assert world.waits[2:] == [NEW_PROJECT_ANSWER_WAIT_SECONDS] * (NEW_PROJECT_ANSWER_ATTEMPTS - 1)
+    assert world.waits[1:] == [NEW_PROJECT_ANSWER_WAIT_SECONDS] * (NEW_PROJECT_ANSWER_ATTEMPTS - 1)
     assert "does not answer yet" in world.io.text()
     assert world.env.values == {}
 
@@ -366,7 +367,7 @@ async def test_too_many_requests_while_waiting_is_simply_waited_out() -> None:
 
     await SupabaseStep().run(world.context())
 
-    assert len(world.waits) == 4
+    assert len(world.waits) == 3
     assert world.env.values["SUPABASE_URL"] == NEW_PROJECT_URL
 
 

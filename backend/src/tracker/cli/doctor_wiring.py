@@ -10,6 +10,8 @@ safe to share:
   client, which blocks instead of waiting. Each therefore finishes before the
   next check starts; they are deliberately not moved to threads, where they
   would overlap on that client.
+* The daily-run check reads GitHub with the GitHub CLI on a thread of its
+  own; its CLI helper is used nowhere else.
 * The three Microsoft checks share one authenticator, which renews the key
   under a lock: whichever asks first renews, and the other two reuse that key.
   The Teams check renews a different key, so it has an authenticator of its own.
@@ -30,6 +32,7 @@ from supabase import Client
 
 from tracker.domain.dashboard_link import dashboard_address
 from tracker.infrastructure.database import create_database_client, probe_database
+from tracker.infrastructure.github_cli import GitHubCli, run_command
 from tracker.infrastructure.ical.feed import CalendarFeed
 from tracker.infrastructure.imap.reader import ImapMailbox, MailboxSurvey
 from tracker.infrastructure.imap.session import ImapSession
@@ -71,6 +74,7 @@ from tracker.services.doctor.checks import (
     TelegramCheck,
     WorkflowTime,
 )
+from tracker.services.doctor.daily_run import DailyRunCheck
 from tracker.services.doctor.models import Check, CheckResult, CheckStatus, ok, problem, skipped
 from tracker.services.doctor.service import DoctorReport, DoctorService
 from tracker.services.setup.daily_start import daily_start_url
@@ -79,7 +83,7 @@ from tracker.services.setup.values import project_ref
 from tracker.services.setup.workflow_schedule import read_schedule
 from tracker.services.summary.sender import smtp_account
 from tracker.shared.clock import SystemClock
-from tracker.shared.config import Settings, get_settings
+from tracker.shared.config import REPOSITORY_ROOT, Settings, get_settings
 from tracker.shared.constants.collection import (
     CALENDAR_FUTURE_DAYS,
     CALENDAR_PAST_DAYS,
@@ -123,6 +127,7 @@ DEPENDENT_CHECKS: Final[tuple[str, ...]] = (
     "Refresh now",
     "On-time morning start",
     "Sign-ups switched off",
+    "Daily run on GitHub",
 )
 
 _LABELS: Final[dict[CheckStatus, str]] = {
@@ -251,6 +256,7 @@ def _checks(settings: Settings, clients: _Clients) -> tuple[Check, ...]:
             _workflow_time(),
         ),
         SignUpsCheck(signups_disabled, _sign_in_page(settings.supabase_url)),
+        DailyRunCheck(GitHubCli(run_command(REPOSITORY_ROOT))),
     )
 
 

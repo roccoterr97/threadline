@@ -53,6 +53,24 @@ accounts are needed now, GitHub and Supabase.
   clicks **Authorize**, and the key goes to GitHub without being shown or
   copied. Windows, and any failure, fall back to pasting the key. Declining a
   new key when GitHub already has one keeps it.
+- `tracker doctor` has a **Daily run on GitHub** line. It reads the newest
+  daily run with the GitHub CLI: `ok` while it is going or when it finished
+  well; `PROBLEM` when it stopped, with the reason the workflow left (for a
+  refused Claude key, run `uv run tracker setup github` for a new one) and the
+  run's page; `skipped` when the GitHub CLI is not signed in, the folder is not
+  linked to the private copy, or there is no daily run yet.
+- In a terminal that can watch the clipboard, the Supabase sign-in code is
+  picked up as soon as the owner copies it on Supabase's page (`Picked up the
+  code from your clipboard.`). Typing it still works the whole time; without a
+  clipboard, and on the set-up page in the browser, the code is typed as
+  before.
+- The installers put GitHub's one-time sign-in code on the clipboard
+  (`gh auth login --web --clipboard`, and the same for the extra `workflow`
+  permission): the owner presses Enter and pastes it on GitHub's page.
+- The installers download in the background: Claude Code installs and Python
+  downloads while the owner signs in to GitHub. When a background job fails,
+  its last lines are shown and the whole log is kept in `install.log` in the
+  `threadline` folder.
 
 ### Changed
 
@@ -65,8 +83,8 @@ accounts are needed now, GitHub and Supabase.
   (read with `GET /v1/profile`), adds the mailbox to the owner's own
   addresses, makes the Claude key, saves the GitHub settings and starts the
   first run without asking. The time zone, categories, Outlook, the shared
-  dashboard and the daily time take the usual answer, each said in one line
-  with the command that changes it, and the end lists every choice.
+  dashboard and the daily time take the usual answer without a word, and the
+  end lists every choice with the command that changes it.
   `tracker setup --ask-everything` asks every question as before; a step run
   by name still asks all of its own. A later run that finds the login done
   names its address.
@@ -123,6 +141,28 @@ accounts are needed now, GitHub and Supabase.
   field. The clipboard is read with `pbpaste` on a Mac, PowerShell's
   `Get-Clipboard` on Windows and `wl-paste`, `xclip` or `xsel` on Linux; with
   none of them the set-up asks for the password as before.
+- When the set-up creates a new Supabase project, it no longer just waits
+  the one to three minutes Supabase takes to start it. Meanwhile it asks for
+  the mailbox (`Meanwhile, your mailbox.`): the app password is checked live
+  at once, held in memory only, and stored, encrypted, once the database is
+  ready, without asking again. If the project is still starting after that,
+  it makes the Claude key too. A mailbox that cannot be settled then is asked
+  again once the project is up. With a project that already runs, the order
+  is as before.
+- The set-up no longer waits for the first run. The GitHub step starts it,
+  says `The first run is going on GitHub; the summary e-mail comes in about
+  10 minutes.` and where to watch it, and the set-up ends. The two-minute
+  watch is gone: GitHub e-mails the owner when a run fails, and
+  `tracker doctor`'s new **Daily run on GitHub** line says why.
+- A full `tracker setup` shows only the lines that ask something, a few
+  progress lines (such as `Creating your database's tables; this takes about
+  half a minute.`) and the closing summary: no `Step N of 11` titles, no
+  `Already done` lines and no lines that only report (values saved in `.env`,
+  checks passed, each structure file applied, each GitHub setting saved). The
+  GitHub settings are saved in one line, and the personal dashboard link is
+  shown, copied and opened at the end. `--ask-everything` and a step run by
+  name still show every line. The installers also leave out the lines that
+  only say a tool is already there.
 
 - The official demo lives at <https://demo.threadlineapp.com>. The old
   address, `try-threadline.vercel.app`, still opens it. `frontend/vercel.json`

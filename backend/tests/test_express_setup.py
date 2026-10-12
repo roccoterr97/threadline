@@ -43,6 +43,10 @@ from tracker.shared.errors import SourceUnavailableError, ValidationFailedError
 
 GMAIL_ADDRESS = "sam.rivera@gmail.com"
 
+#: The most lines a full express run from nothing may say (it said 144 before
+#: the lines that ask nothing of the owner were left to ``--ask-everything``).
+EXPRESS_LINES_AT_MOST = 45
+
 
 def express(world: World) -> SetupContext:
     """The world's context, as a full ``tracker setup`` without ``--ask-everything`` makes it."""
@@ -94,37 +98,50 @@ async def test_a_first_express_run_asks_only_the_code_the_address_and_the_app_pa
 
 
 @pytest.mark.asyncio
-async def test_with_a_watched_clipboard_the_app_password_is_not_even_pasted() -> None:
-    # The Supabase code and the e-mail address; the copied app password is picked up.
-    world = make_world([GOOD_CODE, GMAIL_ADDRESS])
+async def test_with_a_watched_clipboard_only_the_address_is_typed() -> None:
+    # The e-mail address; the copied Supabase code and app password are picked up.
+    world = make_world([GMAIL_ADDRESS])
     world.io.watching = True
-    world.io.person_copies.append("wxyz wxyz wxyz wxyz")
+    world.io.person_copies.extend([GOOD_CODE, "wxyz wxyz wxyz wxyz"])
     world.claude.state_now = ClaudeCodeState.READY
     world.claude.screen = MADE_SCREEN
 
     finished = await SetupWizard(express(world), core_steps()).run_core()
 
     assert finished, world.io.text()
+    assert world.platform.sign_in_codes == [GOOD_CODE]
     assert world.mailbox.saved == {GMAIL_ADDRESS: GOOD_APP_PASSWORD}
+    assert world.io.asked == [ADDRESS_PROMPT]
 
 
 @pytest.mark.asyncio
-async def test_an_express_run_says_each_choice_it_made_and_how_to_change_it() -> None:
+async def test_an_express_run_leaves_its_choices_to_the_closing_summary() -> None:
     world = make_world([GOOD_CODE, GMAIL_ADDRESS, GOOD_APP_PASSWORD])
     world.claude.state_now = ClaudeCodeState.READY
     world.claude.screen = MADE_SCREEN
 
     await SetupWizard(express(world), core_steps()).run_core()
 
-    text = world.io.text()
-    assert f"Your dashboard login is {OWNER_EMAIL}, the address of your Supabase account," in text
-    assert "Kept the usual job-search categories." in text
-    assert "Your time zone: Europe/Paris." in text
-    assert "uv run tracker setup timezone" in text
-    assert "Outlook left out. To add it or its calendar: uv run tracker setup microsoft" in text
-    assert "Your own copy instead: uv run tracker setup dashboard" in text
-    assert "To change the time: uv run tracker setup schedule" in text
-    assert f"Added {GMAIL_ADDRESS} to your own addresses" in text
+    said = world.io.said
+    summary = said.index("What was chosen, and the command that changes each:")
+    before_the_end = "\n".join(said[:summary])
+    for choice in ("timezone", "microsoft", "dashboard", "schedule", "login", "categories"):
+        assert f"uv run tracker setup {choice}" not in before_the_end
+        assert any(f"Change: uv run tracker setup {choice}" in line for line in said[summary:])
+    assert "in .env" not in before_the_end
+    assert not any(line.startswith("Step ") for line in said)
+
+
+@pytest.mark.asyncio
+async def test_an_express_run_from_nothing_says_few_lines() -> None:
+    # What there is to read on the main path, the closing summary included.
+    world = make_world([GOOD_CODE, GMAIL_ADDRESS, GOOD_APP_PASSWORD])
+    world.claude.state_now = ClaudeCodeState.READY
+    world.claude.screen = MADE_SCREEN
+
+    await SetupWizard(express(world), core_steps()).run_core()
+
+    assert len([line for line in world.io.said if line]) <= EXPRESS_LINES_AT_MOST
 
 
 # --- The mailbox: one question --------------------------------------------------------
@@ -173,7 +190,8 @@ async def test_express_asks_only_the_address_for_a_known_provider() -> None:
     assert ADDRESS_PROMPT in world.io.defaults
     assert not any("Which mailbox" in prompt for prompt in world.io.defaults)
     assert "Your Gmail address" not in world.io.defaults
-    assert "From the address, your mailbox is Gmail." in world.io.said
+    assert "From the address, your mailbox is Gmail." not in world.io.said
+    assert world.io.said[0].startswith("Your Gmail is read with an app password")
     assert world.env.values["IMAP_USERNAME"] == GMAIL_ADDRESS
     assert world.env.values["OWNER_EMAIL_ADDRESSES"] == GMAIL_ADDRESS
 
@@ -235,7 +253,7 @@ async def test_express_reuses_a_threadline_project_that_is_still_starting() -> N
     await SupabaseStep().run(express(world))
 
     assert world.platform.created == []
-    assert "The project is up." in world.io.said
+    assert "The Supabase project is up." in world.io.said
 
 
 @pytest.mark.asyncio
@@ -323,9 +341,9 @@ async def test_express_makes_the_login_for_the_supabase_account_address_without_
     await LoginStep().run(signed_in(world))
 
     assert world.admin.users[OWNER_EMAIL] in world.admin.owners
-    assert f"{OWNER_EMAIL} can now sign in to the dashboard, and nobody else can read it." in (
-        world.io.said
-    )
+    assert not world.io.asked
+    # The address is named in the closing summary instead.
+    assert world.io.said == []
 
 
 @pytest.mark.asyncio
@@ -356,7 +374,7 @@ async def test_a_finished_login_still_names_its_address() -> None:
     world.admin.users = {OWNER_EMAIL: "user-1"}
     world.admin.owners = ["user-1"]
 
-    assert await SetupWizard(express(world), [LoginStep()]).run_core()
+    assert await SetupWizard(world.context(), [LoginStep()]).run_core()
 
     said = world.io.said
     done = said.index("Already done. To redo it: uv run tracker setup login")
@@ -441,6 +459,8 @@ async def test_the_end_lists_every_choice_with_the_command_that_changes_it() -> 
         "  Dashboard: Threadline's shared dashboard. Change: uv run tracker setup dashboard",
         f"  Dashboard login: {OWNER_EMAIL}. Change: uv run tracker setup login",
     ]
-    link = f"Your dashboard: {HOSTED_DASHBOARD_URL}/#project="
+    link = "Your dashboard (keep this link; it is on your clipboard): "
+    link += f"{HOSTED_DASHBOARD_URL}/#project="
     assert any(line.startswith(link) for line in said)
+    assert world.io.opened[-1].startswith(f"{HOSTED_DASHBOARD_URL}/#project=")
     assert f"Sign in there with {OWNER_EMAIL}: a sign-in link is e-mailed to that address." in said

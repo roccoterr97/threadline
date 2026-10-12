@@ -27,7 +27,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: '**What the set-up does for you:** it reads the address of your Supabase account (with your Supabase sign-in), creates your login for it, records it as the only owner, and switches off sign-ups in Supabase. It says which address it is: `Your dashboard login is you@example.com, the address of your Supabase account`. Note it: that is where the sign-in link goes.',
+          text: '**What the set-up does for you:** it reads the address of your Supabase account (with your Supabase sign-in), creates your login for it, records it as the only owner, and switches off sign-ups in Supabase. A full run does this without a word; the address is named at the end (`Sign in there with you@example.com: a sign-in link is e-mailed to that address.`, and `Dashboard login: …` in the list of choices). Note it: that is where the sign-in link goes.',
         },
       ],
       youDo: [
@@ -39,7 +39,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `… can now sign in to the dashboard, and nobody else can read it.` and then `Sign-ups are now switched off: nobody else can create a login.` (or `Sign-ups are switched off` if they already were). A later run that finds the login done says `Your dashboard login: …` under `Already done`.',
+          text: 'In a full run, the end of the set-up names your login (`Dashboard login: …`). Run on its own, the step says `… can now sign in to the dashboard, and nobody else can read it.` and then `Sign-ups are now switched off: nobody else can create a login.` (or `Sign-ups are switched off` if they already were). A later run with `--ask-everything` that finds the login done says `Your dashboard login: …` under `Already done`.',
         },
       ],
       ifNot: [
@@ -57,7 +57,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: `Threadline puts each person you talk to in a category, such as "Startup" or "Investor". The set-up keeps the job-search categories without asking (\`Kept the usual job-search categories.\`). Change them any time on the dashboard's **Settings** page, or run \`${STEP_COMMAND.categories}\`, which asks the questions below.`,
+          text: `Threadline puts each person you talk to in a category, such as "Startup" or "Investor". The set-up keeps the job-search categories without a word (the end lists \`Categories: the usual job-search list.\`). Change them any time on the dashboard's **Settings** page, or run \`${STEP_COMMAND.categories}\`, which asks the questions below.`,
         },
         {
           kind: 'paragraph',
@@ -83,7 +83,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `Kept the usual job-search categories.` during the first set-up, or `Saved … categories, \'Not known\' included.` after choosing. Once your dashboard is ready, its **Settings** page shows the same categories.',
+          text: 'You see `Categories: the usual job-search list.` at the end of the first set-up, or `Saved … categories, \'Not known\' included.` after choosing. Once your dashboard is ready, its **Settings** page shows the same categories.',
         },
       ],
       ifNot: [
@@ -100,7 +100,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: `**What the set-up does for you:** it reads the time zone your computer uses and takes it without asking: \`Your time zone: Europe/Paris.\` Only if it cannot tell (a Windows zone name it does not know, for example) does it say "I could not tell your time zone" and wait for you to type it. Run on its own (\`${STEP_COMMAND.timezone}\`), the step offers the zone, such as \`Your time zone [Europe/Paris]:\`, and asks for your name too.`,
+          text: `**What the set-up does for you:** it reads the time zone your computer uses and takes it without a word (the end lists \`Time zone: Europe/Paris.\`). Only if it cannot tell (a Windows zone name it does not know, for example) does it say "I could not tell your time zone" and wait for you to type it. Run on its own (\`${STEP_COMMAND.timezone}\`), the step offers the zone, such as \`Your time zone [Europe/Paris]:\`, and asks for your name too.`,
         },
         {
           kind: 'paragraph',
@@ -123,7 +123,7 @@ export const LOGIN_CATEGORIES_TIME_ZONE: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `Your time zone: …` with your zone (or `Saved OWNER_TIME_ZONE=…` when the step is run on its own).',
+          text: 'You see `Time zone: …` with your zone in the list at the end (or `Saved OWNER_TIME_ZONE=…` when the step is run on its own).',
         },
       ],
       ifNot: [

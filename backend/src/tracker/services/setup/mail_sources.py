@@ -62,4 +62,4 @@ def save_sources(ctx: SetupContext, sources: tuple[MailSource, ...]) -> None:
     """
     ordered = [source for source in MailSource if source in sources]
     ctx.env.set(MAIL_SOURCES, _SEPARATOR.join(source.value for source in ordered))
-    ctx.io.say(f"Saved {MAIL_SOURCES} in .env.")
+    ctx.detail(f"Saved {MAIL_SOURCES} in .env.")

@@ -41,7 +41,7 @@ export const GITHUB: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: `**What the set-up does for you:** it keeps the time already set, 07:00 unless you chose another before, and says how to change it (\`To change the time: ${STEP_COMMAND.schedule}\`). The time is read in the time zone you gave earlier and written, with the zone, into the workflow file \`.github/workflows/threadline-run.yml\`, then sent to your copy on GitHub. GitHub follows your summer and winter time by itself.`,
+          text: `**What the set-up does for you:** it keeps the time already set, 07:00 unless you chose another before, without a word; the end lists it with the command that changes it (\`Daily run: every day at 07:00 (…). Change: ${STEP_COMMAND.schedule}\`). The time is read in the time zone you gave earlier and written, with the zone, into the workflow file \`.github/workflows/threadline-run.yml\`, then sent to your copy on GitHub. GitHub follows your summer and winter time by itself.`,
         },
       ],
       youDo: [
@@ -85,7 +85,7 @@ export const GITHUB: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: '**What the set-up does for you:** it saves every secret and variable on your copy and names each one as it goes, never its value. The **secrets** include the Claude key, your Supabase keys, the encryption key, your own addresses (`OWNER_EMAIL_ADDRESSES`), and, when you have set them, `IMAP_USERNAME`, `DASHBOARD_BASE_URL` and `OWNER_DISPLAY_NAME`. The **variables** are the harmless settings, such as `OWNER_TIME_ZONE`, `MAIL_SOURCES` and `IMAP_PROVIDER`.',
+          text: '**What the set-up does for you:** it saves every secret and variable on your copy, never showing a value. A full run says it in one line; run on its own, the step names each one as it goes. The **secrets** include the Claude key, your Supabase keys, the encryption key, your own addresses (`OWNER_EMAIL_ADDRESSES`), and, when you have set them, `IMAP_USERNAME`, `DASHBOARD_BASE_URL` and `OWNER_DISPLAY_NAME`. The **variables** are the harmless settings, such as `OWNER_TIME_ZONE`, `MAIL_SOURCES` and `IMAP_PROVIDER`.',
         },
         {
           kind: 'paragraph',
@@ -97,9 +97,9 @@ export const GITHUB: SetupPart = {
           kind: 'steps',
           platforms: ['mac', 'linux'],
           items: [
-            'A Claude page opens by itself. Sign in if asked, with the account of your Claude plan, and click **Authorize**. The key goes straight to GitHub: you never see or copy it. It lasts one year.',
+            'The step starts with `Last, GitHub: it runs Threadline every day on your own private copy.` Unless the key was already made while Supabase started the project, a Claude page opens by itself (`A Claude page opens in your browser. Sign in if it asks, then click Authorize.`). Sign in if asked, with the account of your Claude plan, and click **Authorize**. The set-up says `Got the Claude key.` The key goes straight to GitHub: you never see or copy it. It lasts one year.',
             'The window shows only the set-up\'s own lines. If no page opened, it shows the address to open. If the Claude page shows a code instead, paste it in the set-up\'s window and press Enter.',
-            'The set-up then saves your settings on GitHub without asking (`Saving … secrets and … variables in … with the GitHub CLI.`).',
+            'The set-up then saves your settings on GitHub without asking (`Saved 8 secrets and 3 variables in you/threadline.`; the numbers depend on what you set up).',
           ],
         },
         {
@@ -138,7 +138,7 @@ export const GITHUB: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'The list names every secret and variable it set, ending with `Done. GitHub has everything it needs to run Threadline on your copy.`',
+          text: 'You see `Saved … secrets and … variables in …` with your copy\'s name. Run on its own, the list names every secret and variable it set, ending with `Done. GitHub has everything it needs to run Threadline on your copy.`',
         },
       ],
       ifNot: [
@@ -164,21 +164,21 @@ export const GITHUB: SetupPart = {
         },
         {
           kind: 'paragraph',
-          text: 'The set-up then watches the run for up to two minutes, to catch a problem early (`Watching it for up to 2 minutes, to catch a problem early...`).',
+          text: `The set-up does not wait for the run: it says where to watch it and ends straight away. If the run stops with a problem, GitHub e-mails you, and \`${DOCTOR_COMMAND}\` says why.`,
         },
       ],
       youDo: [{ kind: 'paragraph', text: 'Nothing. Watch for the lines below.' }],
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `The first run has started.`, then `It is running; the summary e-mail comes in about 10 minutes.` and the address of the run\'s page. (If the run already finished, it says `The first run has finished.` instead.)',
+          text: 'You see `The first run is going on GitHub; the summary e-mail comes in about 10 minutes.` (or, when no e-mail can be sent, `your dashboard fills in about 10 minutes`), then `To watch it: …` with the address of the run\'s page.',
         },
       ],
       ifNot: [
         {
           kind: 'bullets',
           items: [
-            `\`The first run stopped with a problem.\`, followed by the reason: do what that line says. Most often it is \`Claude did not accept the key saved on GitHub\`. Run \`${STEP_COMMAND.github}\` again: it makes a new key the same way (if it asks you to paste one, paste both lines), and answer yes to start a new first run.`,
+            `GitHub e-mails you that the run failed, or \`${DOCTOR_COMMAND}\` shows \`PROBLEM  Daily run on GitHub: the newest daily run stopped.\` followed by the reason: do what that line says. Most often it is Claude refusing the key saved on GitHub. Run \`${STEP_COMMAND.github}\` again: it makes a new key the same way (if it asks you to paste one, paste both lines), and answer yes to start a new first run.`,
             'If GitHub refused to start the run, the set-up says so in one line and names the page where you start the run yourself: open that page (**Actions → Threadline run** in your copy on GitHub); if it shows **Enable workflow**, click it. Then click **Run workflow**, keep **mode: daily**, and click the green **Run workflow** button.',
             'The same two clicks apply if you set Threadline up without the installer and the set-up could not use the GitHub tool: it then lists the setting names to add on **Settings → Secrets and variables → Actions**, puts each value on your clipboard in turn, and ends with those two clicks.',
           ],

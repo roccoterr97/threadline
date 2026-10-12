@@ -4,8 +4,11 @@ The token's organizations are listed; one is chosen when there are several.
 The organization's projects are offered for reuse, or a new one is created
 with a generated database password that Threadline never needs again, in the
 smart region group closest to this computer's time zone. A new project is
-watched until Supabase reports it healthy. Last, the project's publishable and
-secret keys are read revealed, or created when it has none.
+watched until Supabase reports it healthy; the wait is first given to
+whatever the caller has for the owner to do meanwhile (a full run asks for
+the mailbox, then makes the Claude key), so the owner is not left watching
+it. Last, the project's publishable and secret keys are read revealed, or
+created when it has none.
 
 An express run asks none of that. It reuses the project named ``threadline``
 when there is one, running or starting, and otherwise creates it with that
@@ -19,6 +22,7 @@ from __future__ import annotations
 
 import re
 import secrets
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Final
 
 from pydantic import SecretStr
@@ -59,13 +63,20 @@ _log = get_logger(__name__)
 #: What a whole API key is made of; a masked one carries dots or bullets.
 _KEY_CHARACTERS: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9_-]+")
 
+#: What the owner can do while a project starts; it needs no database.
+Meanwhile = Callable[[SetupContext], Awaitable[None]]
 
-async def find_or_create_project(ctx: SetupContext, token: SecretStr) -> SupabaseProject:
+
+async def find_or_create_project(
+    ctx: SetupContext, token: SecretStr, *, meanwhile: Sequence[Meanwhile] = ()
+) -> SupabaseProject:
     """Choose an existing project or create a new one, and wait until it is up.
 
     Args:
         ctx: The set-up's context.
         token: This run's accepted access token.
+        meanwhile: What to ask the owner, in order, while a project that is
+            not up yet starts; nothing when it is up already.
 
     Returns:
         The project, healthy.
@@ -79,7 +90,7 @@ async def find_or_create_project(ctx: SetupContext, token: SecretStr) -> Supabas
         project = await _threadline_project(ctx, token)
     else:
         project = await _chosen_or_created(ctx, token)
-    return await wait_until_ready(ctx, token, project)
+    return await wait_until_ready(ctx, token, project, meanwhile=meanwhile)
 
 
 async def read_keys(ctx: SetupContext, token: SecretStr, project_ref: str) -> tuple[str, str]:
@@ -120,18 +131,28 @@ def region_group_for(zone: str | None) -> RegionGroup:
 
 
 async def wait_until_ready(
-    ctx: SetupContext, token: SecretStr, project: SupabaseProject
+    ctx: SetupContext,
+    token: SecretStr,
+    project: SupabaseProject,
+    *,
+    meanwhile: Sequence[Meanwhile] = (),
 ) -> SupabaseProject:
-    """Look at a project every few seconds until Supabase reports it healthy.
+    """Give the owner things to do while the project starts, then look until it is healthy.
 
-    A look that fails (Supabase says "too many requests", or answers with an
-    error while the project is coming up) is logged and counted as one
-    attempt; the next look comes after the usual wait.
+    Supabase starts the project on its own servers, so nothing here has to
+    keep it going. The owner does each thing in ``meanwhile`` in turn, the
+    project being looked at before each one after the first, so nothing more
+    is asked once it is up; then it is looked at every few seconds. Supabase
+    giving up on it shows at the first look. A look that fails (Supabase says
+    "too many requests", or answers with an error while the project is coming
+    up) is logged and counted as one attempt; the next look comes after the
+    usual wait.
 
     Args:
         ctx: The set-up's context.
         token: This run's accepted access token.
         project: The project as last seen.
+        meanwhile: What to ask the owner while the project starts, in order.
 
     Returns:
         The project, healthy.
@@ -142,35 +163,83 @@ async def wait_until_ready(
     """
     if project.status == PROJECT_HEALTHY_STATUS:
         return project
-    ctx.io.say("Supabase is setting the project up; this takes one to three minutes.")
-    ctx.io.say("If you stop now (Ctrl-C), it keeps being set up: run this step again and")
-    if ctx.session.express:
-        ctx.io.say("it carries on with this project instead of creating another.")
-    else:
-        ctx.io.say("pick it from the list instead of creating another.")
-    for _ in range(PROJECT_READY_ATTEMPTS):
-        await ctx.gateways.sleep(PROJECT_READY_WAIT_SECONDS)
-        try:
-            project = await ctx.gateways.platform.project(token, project.ref)
-        except SourceUnavailableError as error:
-            _log.warning("project_status_unavailable", ref=project.ref, code=error.code)
-            continue
+    _say_it_starts(ctx)
+    project = await _fill_the_wait(ctx, token, project, meanwhile)
+    for attempt in range(PROJECT_READY_ATTEMPTS):
+        if attempt:
+            await ctx.gateways.sleep(PROJECT_READY_WAIT_SECONDS)
+        project = await _look(ctx, token, project)
         if project.status == PROJECT_HEALTHY_STATUS:
-            ctx.io.say("The project is up.")
+            ctx.io.say("The Supabase project is up.")
             return project
-        if project.status in PROJECT_FAILED_STATUSES:
-            message = (
-                f"Supabase could not set the project up (status {project.status}) - "
-                "delete it in the Supabase dashboard, then run this step again"
-            )
-            raise SourceUnavailableError(message)
+        _stop_if_failed(project)
+        if attempt == 0 and meanwhile:
+            ctx.io.say("Waiting for Supabase to finish starting the project...")
     minutes = int(PROJECT_READY_ATTEMPTS * PROJECT_READY_WAIT_SECONDS // 60)
+    _log.warning("project_not_up", ref=project.ref, status=project.status)
     message = (
         f"the project '{project.name}' is still being set up after {minutes} minutes. It is "
         f"already created, so do not create another: run 'uv run tracker setup "
         f"{StepName.SUPABASE}' again in a while and pick it from the list"
     )
     raise ValidationFailedError(message)
+
+
+async def _fill_the_wait(
+    ctx: SetupContext, token: SecretStr, project: SupabaseProject, meanwhile: Sequence[Meanwhile]
+) -> SupabaseProject:
+    """Ask each thing in turn while the project is still starting; stop asking once it is up.
+
+    Returns:
+        The project as last seen.
+
+    Raises:
+        SourceUnavailableError: If Supabase gave up on the project.
+    """
+    for number, ask in enumerate(meanwhile):
+        if number:
+            project = await _look(ctx, token, project)
+            _stop_if_failed(project)
+            if project.status == PROJECT_HEALTHY_STATUS:
+                return project
+        await ask(ctx)
+    return project
+
+
+async def _look(ctx: SetupContext, token: SecretStr, project: SupabaseProject) -> SupabaseProject:
+    """Read the project once; as last seen when Supabase did not answer this time."""
+    try:
+        return await ctx.gateways.platform.project(token, project.ref)
+    except SourceUnavailableError as error:
+        _log.warning("project_status_unavailable", ref=project.ref, code=error.code)
+        return project
+
+
+def _say_it_starts(ctx: SetupContext) -> None:
+    """Say the project is starting, and, outside an express run, how to carry on after a stop.
+
+    An express run carries on with the same project by itself.
+    """
+    ctx.io.say("Supabase is starting the project; this takes one to three minutes.")
+    if ctx.session.express:
+        return
+    ctx.io.say("If you stop now (Ctrl-C), it keeps being set up: run this step again and")
+    ctx.io.say("pick it from the list instead of creating another.")
+
+
+def _stop_if_failed(project: SupabaseProject) -> None:
+    """Stop when Supabase gave up on the project.
+
+    Raises:
+        SourceUnavailableError: If its status says Supabase could not set it up.
+    """
+    if project.status not in PROJECT_FAILED_STATUSES:
+        return
+    message = (
+        f"Supabase could not set the project up (status {project.status}) - "
+        "delete it in the Supabase dashboard, then run this step again"
+    )
+    raise SourceUnavailableError(message)
 
 
 async def _chosen_or_created(ctx: SetupContext, token: SecretStr) -> SupabaseProject:
@@ -291,7 +360,7 @@ async def _choose_organization(ctx: SetupContext, token: SecretStr) -> Organizat
         )
         raise ValidationFailedError(message)
     if len(organizations) == 1:
-        ctx.io.say(f"Your Supabase organization: {organizations[0].name}.")
+        ctx.detail(f"Your Supabase organization: {organizations[0].name}.")
         return organizations[0]
     ctx.io.say("Your Supabase organizations:")
     number = _ask_for_one(ctx, [item.name for item in organizations], "Which one? (number)")
@@ -402,9 +471,9 @@ async def _create(
         io.say("Look at your projects in Supabase and run this step again to pick it,")
         io.say("instead of creating another.")
         raise
-    io.say(f"Created the project '{name}' ({project.ref}).")
-    io.say("Its database password was generated and is not kept: Threadline never needs it.")
-    io.say("If you ever do, reset it in the Supabase dashboard (Project Settings > Database).")
+    ctx.detail(f"Created the project '{name}' ({project.ref}).")
+    ctx.detail("Its database password was generated and is not kept: Threadline never needs it.")
+    ctx.detail("If you ever do, reset it in the Supabase dashboard (Project Settings > Database).")
     return project
 
 

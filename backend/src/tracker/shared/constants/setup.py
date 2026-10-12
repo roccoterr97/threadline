@@ -87,6 +87,12 @@ SUPABASE_TOKEN_NAME: Final[str] = "Threadline set-up"
 #: person clicks Authorize it shows a short code, and the session address below
 #: hands over the new access token, sealed for this computer's key.
 SUPABASE_BROWSER_SIGN_IN_PAGE: Final[str] = f"{SUPABASE_DASHBOARD_URL}/cli/login"
+
+#: What the code the sign-in page shows looks like, for picking it up from the
+#: clipboard. The page showed eight digits in a real test; letters are let in
+#: too, and a little room either way, in case Supabase changes it. A typed
+#: code is not held to this: Supabase itself says whether it is right.
+SUPABASE_SIGN_IN_CODE_PATTERN: Final[str] = r"[A-Za-z0-9]{6,10}"
 SUPABASE_SIGN_IN_SESSION_URL: Final[str] = f"{SUPABASE_API_URL}/platform/cli/login/{{session_id}}"
 
 #: Seconds to wait for the sign-in session's answer, as Supabase's tool does.

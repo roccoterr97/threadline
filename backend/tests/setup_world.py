@@ -185,6 +185,14 @@ class ScriptedIO:
                 return SecretAnswer(text, copied=True)
         return SecretAnswer(str(self._next(prompt)), copied=False)
 
+    def ask_or_copied(self, prompt: str, wanted: Callable[[str], bool]) -> SecretAnswer:
+        self.exact.append(prompt)
+        while self.watching and self.person_copies:
+            text = self.person_copies.popleft()
+            if wanted(text):
+                return SecretAnswer(text, copied=True)
+        return SecretAnswer(str(self._next(prompt)), copied=False)
+
     def confirm(self, prompt: str, *, default: bool) -> bool:
         answer = self._next(prompt)
         return default if answer == "" else bool(answer)
@@ -876,19 +884,10 @@ class FakeGitHub:
     save_refused: bool = False
     #: The workflow's runs, newest last; each run the set-up starts is added.
     runs: list[WorkflowRun] = field(default_factory=list)
-    #: When GitHub makes each run the set-up starts.
-    run_created_at: datetime = datetime(2026, 9, 29, 7, 0, tzinfo=UTC)
-    #: Runs GitHub shows only once the set-up has started its own, such as a
-    #: refresh pressed a moment later.
-    runs_started_next: list[WorkflowRun] = field(default_factory=list)
-    #: The (status, conclusion) a started run is seen in at each look, in turn;
-    #: the last one repeats.
-    run_states: list[tuple[str, str]] = field(default_factory=lambda: [("in_progress", "")])
     #: The notes titled "Why Claude stopped" that a run's job leaves.
     notes: tuple[str, ...] = ()
-    #: Whether GitHub can say how runs are going, and each run looked at.
+    #: Whether GitHub can say how runs are going.
     runs_readable: bool = True
-    looked_at: list[int] = field(default_factory=list)
 
     def installed(self) -> bool:
         return self.is_installed
@@ -965,28 +964,11 @@ class FakeGitHub:
         run_id = 1000 + len(self.runs)
         url = f"https://github.com/{repository}/actions/runs/{run_id}"
         title = DAILY_RUN_TITLE if mode == WorkflowMode.DAILY else REFRESH_RUN_TITLE
-        run = WorkflowRun(
-            id=run_id,
-            status="queued",
-            conclusion="",
-            url=url,
-            title=title,
-            created_at=self.run_created_at,
-        )
-        self.runs.append(run)
-        self.runs.extend(self.runs_started_next)
+        self.runs.append(WorkflowRun(run_id, "queued", "", url, title=title))
 
     def recent_runs(self, repository: str) -> tuple[WorkflowRun, ...]:
         self._refuse_unless_readable()
         return tuple(reversed(self.runs))
-
-    def workflow_run(self, repository: str, run_id: int) -> WorkflowRun:
-        self._refuse_unless_readable()
-        self.looked_at.append(run_id)
-        states = self.run_states
-        status, conclusion = states.pop(0) if len(states) > 1 else states[0]
-        run = next(run for run in self.runs if run.id == run_id)
-        return replace(run, status=status, conclusion=conclusion)
 
     def run_notes(self, repository: str, run_id: int, title: str) -> tuple[str, ...]:
         self._refuse_unless_readable()

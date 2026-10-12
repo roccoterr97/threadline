@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Final
 
+from tracker.services.setup.claude_key_maker import make_while_project_starts
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import FirstRun, workflow_page
 from tracker.services.setup.models import NotesWhatIsDone, Step, StepGroup, StepName
@@ -28,7 +29,7 @@ from tracker.services.setup.step_github import GitHubStep
 from tracker.services.setup.step_google_calendar import GoogleCalendarStep, say_calendar_tip
 from tracker.services.setup.step_linkedin import LinkedInStep, wants_linkedin_now
 from tracker.services.setup.step_login import LoginStep, login_address
-from tracker.services.setup.step_mailbox import MailboxStep
+from tracker.services.setup.step_mailbox import MailboxStep, ask_while_project_starts
 from tracker.services.setup.step_microsoft import MicrosoftStep
 from tracker.services.setup.step_refresh import RefreshStep
 from tracker.services.setup.step_schedule import ScheduleStep
@@ -48,11 +49,23 @@ _log = get_logger(__name__)
 #: How the owner types the set-up, as every message names it.
 _COMMAND: Final[str] = "uv run tracker setup"
 
+#: The command that adds the extras.
+_EXTRAS: Final[str] = f"{_COMMAND} {StepGroup.EXTRAS}"
+
+#: The command that checks every connection, the daily run on GitHub included.
+_DOCTOR: Final[str] = "uv run tracker doctor"
+
 
 def core_steps() -> tuple[Step, ...]:
-    """The steps the first morning e-mail needs, in the order ``tracker setup`` runs them."""
+    """The steps the first morning e-mail needs, in the order ``tracker setup`` runs them.
+
+    While Supabase starts a new project, the mailbox is asked for (its app
+    password checked live and held in memory), then, if the project is still
+    not up, the Claude key is made; the mailbox and GitHub steps use them
+    once the database is ready.
+    """
     return (
-        SupabaseStep(),
+        SupabaseStep(meanwhile=(ask_while_project_starts, make_while_project_starts)),
         EncryptionStep(),
         DatabaseStep(),
         LoginStep(),
@@ -143,11 +156,15 @@ class SetupWizard:
         return finished
 
     async def _run_group(self, group: StepGroup) -> bool:
-        """Run one half's unfinished steps in order, numbering them."""
+        """Run one half's unfinished steps in order, numbering them.
+
+        An express run leaves the numbered titles out: most of its steps ask
+        nothing, and the ones that do say what they need in their own words.
+        """
         steps = [step for step in self._steps if step.name.group is group]
         for number, step in enumerate(steps, start=1):
-            self._ctx.io.say("")
-            self._ctx.io.say(f"Step {number} of {len(steps)}: {step.title}")
+            self._ctx.detail("")
+            self._ctx.detail(f"Step {number} of {len(steps)}: {step.title}")
             if not await self._attempt(step, skip_when_done=True):
                 return False
         return True
@@ -161,7 +178,7 @@ class SetupWizard:
         """
         try:
             if skip_when_done and await step.is_done(self._ctx):
-                self._ctx.io.say(f"Already done. To redo it: {_COMMAND} {step.name}")
+                self._ctx.detail(f"Already done. To redo it: {_COMMAND} {step.name}")
                 _say_done_note(self._ctx, step)
                 return True
             await step.run(self._ctx)
@@ -207,7 +224,7 @@ def _say_done_note(ctx: SetupContext, step: Step) -> None:
     """Repeat what a finished step left, for a step that has something to repeat."""
     note = step.done_note(ctx) if isinstance(step, NotesWhatIsDone) else None
     if note is not None:
-        ctx.io.say(note)
+        ctx.detail(note)
 
 
 def _how_to_carry_on(step: Step, *, full_run: bool) -> str:
@@ -238,17 +255,14 @@ def _say_finish_line(
     schedule = read_schedule(ctx.gateways.workflow.read())
     run = first_run if first_run is not None else FirstRun(started=False, page=workflow_page(None))
     login = login_address(ctx)
-    io.say("")
-    io.say("Set-up done.")
-    _say_how_to_sign_in(ctx, login)
-    _say_first_run(io, run)
     when = f"every day at {schedule.describe()}" if schedule is not None else "every day"
     if schedule is None:
         when += f", at the time set by {_COMMAND} {StepName.SCHEDULE}"
-    if run.summary_by_email:
-        io.say(f"After that it comes {when}.")
-    else:
-        io.say(f"After that the dashboard is updated {when}.")
+    io.say("")
+    io.say("Set-up done.")
+    _say_how_to_sign_in(ctx, login)
+    _say_first_run(io, run, when)
+    if not run.summary_by_email:
         _say_no_email(io)
     say_summary(ctx, login)
     say_calendar_tip(ctx)
@@ -260,44 +274,53 @@ def _say_extras(io: SetupIO, *, linkedin_connected: bool) -> None:
     if not linkedin_connected:
         io.say(f"LinkedIn can be added later: {_COMMAND} {StepName.LINKEDIN} (about 5 minutes).")
         io.say("It works if your LinkedIn profile is located in the EEA or Switzerland.")
-    io.say("Extras you can add any time: Google Calendar, Telegram, Slack, Teams chats,")
-    io.say("the dashboard's Refresh now button, which also makes the daily run start on time,")
-    io.say(f"and the Claude cloud route: {_COMMAND} {StepGroup.EXTRAS}")
+    io.say("Extras any time: Google Calendar, Telegram, Slack, Teams chats, the Refresh now")
+    io.say(f"button (it also starts the daily run on time), the Claude cloud route: {_EXTRAS}")
 
 
 def _say_how_to_sign_in(ctx: SetupContext, login: str | None) -> None:
-    """Name the dashboard's address and the one address that can sign in to it."""
+    """Name the dashboard's address and the one address that can sign in to it.
+
+    An express run, which did not show the personal link earlier, also puts it
+    on the clipboard and opens it now that the set-up is done.
+    """
     address = opening_link(ctx)
     if address is None:
         return
-    ctx.io.say(f"Your dashboard: {address}")
+    if ctx.session.express and ctx.io.copy(address):
+        ctx.io.say(f"Your dashboard (keep this link; it is on your clipboard): {address}")
+    else:
+        ctx.io.say(f"Your dashboard: {address}")
     if login is None:
         ctx.io.say("Sign in there with the address you gave for the dashboard login: a sign-in")
         ctx.io.say("link is e-mailed to it.")
-        return
-    ctx.io.say(f"Sign in there with {login}: a sign-in link is e-mailed to that address.")
+    else:
+        ctx.io.say(f"Sign in there with {login}: a sign-in link is e-mailed to that address.")
+    if ctx.session.express:
+        ctx.io.open_page(address)
 
 
-def _say_first_run(io: SetupIO, run: FirstRun) -> None:
-    """Say how the first run was left, promising an e-mail only when one can come."""
-    if run.stopped:
-        io.say("The first run on GitHub stopped with a problem; what to do is said above.")
-    elif run.started and run.summary_by_email:
-        io.say("The first run is going on GitHub, so the first summary e-mail reaches you in")
-        io.say(f"about {FIRST_SUMMARY_MINUTES} minutes.")
-    elif run.started:
-        io.say("The first run is going on GitHub, so your dashboard fills in about")
-        io.say(f"{FIRST_SUMMARY_MINUTES} minutes.")
-    elif run.needs_claude_key:
+def _say_first_run(io: SetupIO, run: FirstRun, when: str) -> None:
+    """Say how the first run was left and what comes when, promising an e-mail only when one can.
+
+    The GitHub step already said a started run is going, and when its e-mail
+    comes. It is not waited for: when it stops, GitHub e-mails the owner and
+    ``tracker doctor`` says why.
+    """
+    if run.needs_claude_key:
         io.say("The first run is not started yet: GitHub still needs your Claude key.")
         io.say("Run 'claude setup-token' in a new terminal window, then run")
         io.say(f"'{_COMMAND} {StepName.GITHUB}' and paste the key.")
-    elif run.summary_by_email:
+    elif not run.started:
         io.say(f"Start the first run at {run.page}:")
-        io.say(f"the summary e-mail follows about {FIRST_SUMMARY_MINUTES} minutes later.")
+        first = "the summary e-mail follows" if run.summary_by_email else "the dashboard fills"
+        io.say(f"{first} about {FIRST_SUMMARY_MINUTES} minutes later.")
+    if run.summary_by_email:
+        io.say(f"After the first one, the summary e-mail comes {when}.")
     else:
-        io.say(f"Start the first run at {run.page}:")
-        io.say(f"the dashboard fills about {FIRST_SUMMARY_MINUTES} minutes later.")
+        io.say(f"After the first run, the dashboard is updated {when}.")
+    if run.started:
+        io.say(f"If a run stops with a problem, GitHub e-mails you; '{_DOCTOR}' says why.")
 
 
 def _say_no_email(io: SetupIO) -> None:

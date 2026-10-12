@@ -82,7 +82,7 @@ export const privacyPage = {
 
 export const wizard = {
   title: 'Set it up',
-  lead: 'About 25 minutes with nothing ready, about 15 with GitHub and Supabase ready; LinkedIn later, about 5 minutes. One step per screen. Your place is remembered in this browser.',
+  lead: 'About 20 minutes in total; LinkedIn later, about 5 minutes. One step per screen. Your place is remembered in this browser.',
   needs: [
     'A Mac, Windows or Linux computer',
     'A paid Claude plan (Pro, Max or Team)',

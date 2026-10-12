@@ -28,7 +28,7 @@ export const SUPABASE: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'This is `Step 1 of 11: Your Supabase project`. A Supabase page opens; you click **Authorize** and type the code it shows. That is all you do here: the set-up uses your project named `threadline`, or creates it in the region nearest your time zone, and waits for it to start, which takes one to three minutes. It never takes a project with another name by itself: that project may hold other data.',
+          text: 'The set-up starts here: `Supabase keeps your data, in a free account; the set-up creates the project there.` A Supabase page opens; you click **Authorize** and copy or type the code it shows. That is all you do here: the set-up uses your project named `threadline`, or creates it in the region nearest your time zone, and Supabase starts it, which takes one to three minutes. It never takes a project with another name by itself: that project may hold other data.',
         },
         {
           kind: 'note',
@@ -39,15 +39,15 @@ export const SUPABASE: SetupPart = {
         {
           kind: 'steps',
           items: [
-            'A Supabase page opens. Sign in if asked (**Continue with GitHub**), then click **Authorize**. The page may mention the "Supabase CLI": that is expected.',
-            'The page shows a short code. Type it into the set-up and press Enter.',
+            'A Supabase page opens. Sign in if asked (**Continue with GitHub**), then click **Authorize**. The page names the "Supabase CLI": that is expected.',
+            'The page shows a short code. In a terminal, the set-up usually watches your clipboard (`Then copy the code Supabase shows; the set-up picks it up by itself.`): copy the code, and it says `Picked up the code from your clipboard.` You can also type it after `Waiting for the copied code, or type it here` and press Enter. Where the clipboard cannot be watched (and on the set-up page in your browser), it asks `Verification code from the Supabase page`: type the code and press Enter. Then you see `Signed in to Supabase.`',
             'If you have several Supabase organisations, type the number of the one to use.',
-            'Wait while Supabase starts the project. This takes one to three minutes.',
+            'Supabase starts a new project (`Supabase is starting the project; this takes one to three minutes.`). You do not just wait: the set-up asks for your mailbox meanwhile (`Meanwhile, your mailbox.`). Answer it as the mailbox part describes. If Supabase is still starting after that, it also makes the Claude key (`Supabase is still starting, so meanwhile, the Claude key.`): click **Authorize** on the Claude page, as the GitHub part describes.',
           ],
         },
         {
           kind: 'warning',
-          text: 'Do not press Ctrl + C while the project starts: it is already being created, and stopping leaves it half set up. The set-up warns you of this.',
+          text: 'Do not press Ctrl + C while the project starts: it is already being created, and stopping leaves it half set up.',
         },
         {
           kind: 'note',
@@ -61,14 +61,14 @@ export const SUPABASE: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `Using your Supabase project \'threadline\'` or `The project is up.` (for a new project), then `Supabase accepted the address and both keys.`',
+          text: 'You see `Using your Supabase project \'threadline\'` (for a project you already have) or, for a new project, `The Supabase project is up.` after the mailbox questions. Run on its own, the step also says `Supabase accepted the address and both keys.`',
         },
       ],
       ifNot: [
         {
           kind: 'bullets',
           items: [
-            '`Supabase did not accept that code`: type the code the newest Supabase page shows. After three refused codes the set-up moves to pasting a token.',
+            '`Supabase did not accept that code`: type (or copy) the code the newest Supabase page shows. After three refused codes the set-up moves to pasting a token.',
             '`Signing in through the browser did not work this time`: the set-up moves to pasting a token, below.',
             `**I'd rather paste a token.** Run \`${STEP_COMMAND.supabase}\` and type **2** when it asks how to sign in, or follow on when the set-up moves here by itself. On [supabase.com/dashboard/account/tokens](${SUPABASE_TOKENS_PAGE}), click **Generate new token**, then the small link **Create legacy token** on the left. Choose the shortest expiry, click **Generate token**, and paste the token (it starts with \`sbp_\`). Nothing appears while you paste. It is never saved.`,
             '`Supabase did not accept the access token`: copy the token again, all of it, and paste it once more. The set-up lets you try three times.',
@@ -95,14 +95,14 @@ export const SUPABASE: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: '**What the set-up does for you:** everything. It makes a key that locks your Microsoft sign-in and your mailbox\'s app password inside the database, and saves it without showing it.',
+          text: '**What the set-up does for you:** everything. It makes a key that locks your Microsoft sign-in and your mailbox\'s app password inside the database, and saves it without showing it. A full run says nothing here.',
         },
       ],
-      youDo: [{ kind: 'paragraph', text: 'Nothing. Watch for the line below.' }],
+      youDo: [{ kind: 'paragraph', text: 'Nothing.' }],
       check: [
         {
           kind: 'paragraph',
-          text: 'You see `A new key was made and saved.` (or, on a second run, `A usable key is already saved; it is kept.`)',
+          text: `In a full run, nothing to see: the set-up goes straight on. Run on its own (\`${STEP_COMMAND.encryption}\`), you see \`A new key was made and saved.\` (or, on a second run, \`A usable key is already saved; it is kept.\`)`,
         },
       ],
       ifNot: [
@@ -130,7 +130,7 @@ export const SUPABASE: SetupPart = {
       check: [
         {
           kind: 'paragraph',
-          text: 'The step starts with `To apply: 0001_schema, 0002_access_rules, …`, naming every file still missing (all of them on a new project). Then you see `Applied 0001_schema`, one line per file, and `The database structure is in place.`',
+          text: 'In a full run you see `Creating your database\'s tables; this takes about half a minute.`, then `The database structure is in place.` Run on its own, the step starts with `To apply: 0001_schema, 0002_access_rules, …`, naming every file still missing (all of them on a new project), then shows `Applied 0001_schema`, one line per file, and `The database structure is in place.`',
         },
       ],
       ifNot: [

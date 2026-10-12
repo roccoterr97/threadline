@@ -8,6 +8,7 @@ from typing import Final
 
 from pydantic import SecretStr
 
+from tracker.services.setup.mailbox_answers import MailboxAnswer
 from tracker.services.setup.ports import (
     ChoiceStore,
     EnvStore,
@@ -42,6 +43,11 @@ class SetupSession:
         named_step: The step the owner asked for by name, if any
             (``tracker setup teams``): an optional step run that way needs no
             "connect it now?" question. ``None`` for the core steps or the extras.
+        held_mailbox: The mailbox asked for while Supabase started a new
+            project, its app password already accepted, until the mailbox step
+            stores it in the database. ``None`` when it is still to be asked.
+        claude_key: The Claude key made while Supabase started a new project,
+            until the GitHub step sends it. Never written anywhere.
     """
 
     supabase_token: SecretStr | None = None
@@ -50,6 +56,8 @@ class SetupSession:
     express: bool = False
     linkedin_wanted: bool = False
     named_step: str | None = None
+    held_mailbox: MailboxAnswer | None = None
+    claude_key: SecretStr | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +75,19 @@ class SetupContext:
     env: EnvStore
     gateways: SetupGateways
     session: SetupSession = field(default_factory=SetupSession)
+
+    def detail(self, text: str) -> None:
+        """Say a line the owner need not act on, except in an express run, which leaves it out.
+
+        An express run asks only what the owner must do, so lines that only
+        report (a value saved in ``.env``, a check that passed) would be read
+        for nothing; ``--ask-everything`` and a step run by name still say them.
+
+        Args:
+            text: The line.
+        """
+        if not self.session.express:
+            self.io.say(text)
 
     def write(self, name: str, value: str) -> bool:
         """Write one setting, asking first before changing a different value.
@@ -87,7 +108,7 @@ class SetupContext:
             self.io.say(f"Kept the existing {name}.")
             return False
         self.env.set(name, value)
-        self.io.say(f"Saved {name} in .env.")
+        self.detail(f"Saved {name} in .env.")
         return True
 
     def require(self, name: str, step: str) -> str:

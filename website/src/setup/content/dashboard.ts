@@ -33,13 +33,13 @@ export const DASHBOARD: SetupPart = {
       youDo: [
         {
           kind: 'paragraph',
-          text: `Write down the personal link it shows. The set-up takes the shared dashboard without asking; run on its own (\`${STEP_COMMAND.dashboard}\`), the step offers it first: press Enter (yes).`,
+          text: `Nothing yet. The set-up takes the shared dashboard without a word and shows your personal link at the very end: \`Your dashboard (keep this link; it is on your clipboard): …\`. It also opens it in your browser then. Write the link down. Run on its own (\`${STEP_COMMAND.dashboard}\`), the step offers the shared dashboard first (press Enter for yes) and shows the link straight away.`,
         },
       ],
       check: [
         {
           kind: 'paragraph',
-          text: 'The set-up shows your personal link. It starts with `https://app.threadlineapp.com`.',
+          text: 'At the end, the set-up shows your personal link, puts it on your clipboard and opens it. It starts with `https://app.threadlineapp.com`.',
         },
       ],
       ifNot: [
@@ -81,7 +81,7 @@ export const DASHBOARD: SetupPart = {
         {
           kind: 'bullets',
           items: [
-            '"This address cannot sign in" means you typed another address than your dashboard login: use the one the set-up named at the login step (`Your dashboard login is …`), usually your Supabase address. The end of the set-up names it again.',
+            '"This address cannot sign in" means you typed another address than your dashboard login: use the one the end of the set-up named (`Sign in there with …`), usually your Supabase address.',
             '"Too many links were asked for" means waiting as long as it says.',
             'Supabase\'s own message "Email address not authorized" means the address is not the one of your Supabase account (see the login step).',
             `A link that opens \`localhost\` means the sign-in link was not connected: run \`${STEP_COMMAND.dashboard}\` again.`,

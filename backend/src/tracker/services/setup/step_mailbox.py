@@ -11,6 +11,11 @@ clipboard or takes it pasted, tries it live (sign in, open the inbox
 read-only, count the recent messages) and only then stores it, encrypted, in
 the database. The password never goes into ``.env``.
 
+A full run asks all that while Supabase starts a new project
+(:func:`ask_while_project_starts`), when the database cannot store anything
+yet: the checked password is held in memory (``mailbox_answers``) and this
+step stores it once the database is ready, without asking again.
+
 The morning summary is sent from the same mailbox by SMTP. The known providers'
 sending servers are built in; for another provider the step asks for it and
 signs in to it once, so a wrong server shows up now rather than every morning.
@@ -35,6 +40,7 @@ from tracker.services.setup.app_password import AppPasswordQuestion
 from tracker.services.setup.context import MAX_ATTEMPTS, SetupContext
 from tracker.services.setup.mail_provider import provider_for
 from tracker.services.setup.mail_sources import save_sources, saved_sources, summary_route
+from tracker.services.setup.mailbox_answers import CheckedImapMailbox, MailboxAnswer
 from tracker.services.setup.models import StepName
 from tracker.services.setup.owner_address import remember_address
 from tracker.services.setup.step_microsoft import microsoft_access
@@ -47,7 +53,16 @@ from tracker.shared.constants.mailbox import (
     ImapProvider,
     MailSource,
 )
-from tracker.shared.errors import SourceAuthError, SourceUnavailableError, ValidationFailedError
+from tracker.shared.errors import (
+    AppPasswordUnavailableError,
+    SourceAuthError,
+    SourceUnavailableError,
+    TrackerError,
+    ValidationFailedError,
+)
+from tracker.shared.logging import get_logger
+
+_log = get_logger(__name__)
 
 IMAP_PROVIDER: Final[str] = "IMAP_PROVIDER"
 IMAP_USERNAME: Final[str] = "IMAP_USERNAME"
@@ -88,6 +103,20 @@ _OUTLOOK_LABEL: Final[str] = "Outlook"
 
 _DEFAULT_PORT: Final[str] = "993"
 
+#: Said before the mailbox is asked for while Supabase starts the project.
+MEANWHILE: Final[str] = "Meanwhile, your mailbox."
+
+#: Said when the mailbox could not be settled while the project started.
+_ASKED_AGAIN_LATER: Final[str] = "{reason}. Your mailbox is asked again once the project is up."
+
+#: What asking for the mailbox can end with, short of the owner stopping the set-up.
+_MAILBOX_PROBLEMS: Final[tuple[type[TrackerError], ...]] = (
+    ValidationFailedError,
+    SourceAuthError,
+    SourceUnavailableError,
+    AppPasswordUnavailableError,
+)
+
 
 class MailboxStep:
     """Chooses the mailbox and, for anything but Outlook, checks its app password."""
@@ -108,19 +137,68 @@ class MailboxStep:
         return await ctx.gateways.mailbox.has_password(store_access(ctx), username)
 
     async def run(self, ctx: SetupContext) -> None:
-        """Ask which mailbox (an express run: only the address), then connect it."""
-        if ctx.session.express:
-            address, choice = _address_and_provider(ctx)
-        else:
-            address, choice = None, _asked_provider(ctx)
-        if isinstance(choice, ImapProvider):
-            await _connect_imap(ctx, choice, address)
+        """Save the mailbox asked for while the project started, or ask for it now, then save it."""
+        answer = ctx.session.held_mailbox or await ask_mailbox(ctx)
+        ctx.session.held_mailbox = None
+        if isinstance(answer, CheckedImapMailbox):
+            await _save_imap(ctx, answer)
             return
         save_sources(ctx, (*(saved_sources(ctx) or ()), MailSource.OUTLOOK))
         if ctx.session.express:
             ctx.io.say("Outlook is read through a Microsoft sign-in: it comes next.")
             return
         ctx.io.say("The Microsoft step signs you in: 'uv run tracker setup microsoft'.")
+
+
+async def ask_mailbox(ctx: SetupContext) -> MailboxAnswer:
+    """Ask which mailbox (an express run: only the address), and check its app password live.
+
+    Nothing is saved: that needs the database, which the mailbox step uses.
+
+    Args:
+        ctx: The set-up's context.
+
+    Returns:
+        The mailbox with its accepted app password, or Outlook.
+
+    Raises:
+        ValidationFailedError: If an answer was refused every time.
+        SourceAuthError: If the provider refused every app password.
+        SourceUnavailableError: If the mailbox could not be reached.
+        AppPasswordUnavailableError: If the provider offers no app passwords.
+    """
+    if ctx.session.express:
+        address, choice = _address_and_provider(ctx)
+    else:
+        address, choice = None, _asked_provider(ctx)
+    if isinstance(choice, ImapProvider):
+        return await _checked_imap(ctx, choice, address)
+    return MailSource.OUTLOOK
+
+
+async def ask_while_project_starts(ctx: SetupContext) -> None:
+    """Ask for the mailbox while Supabase starts a new project, holding the answer in memory.
+
+    Only a full run does it, and only when the mailbox step will need asking:
+    a mailbox read with an app password stores it in the database, which a new
+    project does not have yet. A problem is said in one line, and the mailbox
+    step then asks again once the project is up. Stopping the set-up stops it.
+
+    Args:
+        ctx: The set-up's context; the answer is kept in its session.
+    """
+    if ctx.session.named_step is not None:
+        return
+    sources = saved_sources(ctx)
+    if sources is not None and MailSource.IMAP not in sources:
+        return
+    ctx.io.say("")
+    ctx.io.say(MEANWHILE)
+    try:
+        ctx.session.held_mailbox = await ask_mailbox(ctx)
+    except _MAILBOX_PROBLEMS as error:
+        _log.info("mailbox_not_settled_early", code=error.code)
+        ctx.io.say(_ASKED_AGAIN_LATER.format(reason=error.message))
 
 
 def _asked_provider(ctx: SetupContext) -> MailSource | ImapProvider:
@@ -139,7 +217,7 @@ def _address_and_provider(ctx: SetupContext) -> tuple[str, MailSource | ImapProv
         ctx.io.say("The address does not show who runs this mailbox, so please say.")
         return address, _asked_provider(ctx)
     label = IMAP_PRESETS[provider].label if isinstance(provider, ImapProvider) else _OUTLOOK_LABEL
-    ctx.io.say(f"From the address, your mailbox is {label}.")
+    ctx.detail(f"From the address, your mailbox is {label}.")
     return address, provider
 
 
@@ -152,8 +230,10 @@ def store_access(ctx: SetupContext) -> StoreAccess:
     )
 
 
-async def _connect_imap(ctx: SetupContext, provider: ImapProvider, address: str | None) -> None:
-    """Describe the mailbox, check its app password live, then save everything."""
+async def _checked_imap(
+    ctx: SetupContext, provider: ImapProvider, address: str | None
+) -> CheckedImapMailbox:
+    """Describe the mailbox and check its app password live; nothing is saved."""
     preset = IMAP_PRESETS[provider]
     account = _account(ctx, provider, preset, address)
     question = AppPasswordQuestion(ctx, provider, account.username)
@@ -167,14 +247,20 @@ async def _connect_imap(ctx: SetupContext, provider: ImapProvider, address: str 
 
     password, survey = await ctx.ask_until_accepted(question.ask, accept)
     _report(ctx, survey)
+    return CheckedImapMailbox(provider, account, password)
+
+
+async def _save_imap(ctx: SetupContext, mailbox: CheckedImapMailbox) -> None:
+    """Store the checked app password, encrypted, then save the mailbox in ``.env``."""
+    account, password = mailbox.account, mailbox.password
     same_mailbox = _is_saved_mailbox(ctx, account)
     await ctx.gateways.mailbox.save_password(store_access(ctx), account.username, password)
-    ctx.io.say("Saved the app password, encrypted, in your database - it is not in .env.")
-    _save_account(ctx, provider, account)
+    ctx.detail("Saved the app password, encrypted, in your database - it is not in .env.")
+    _save_account(ctx, mailbox.provider, account)
     await _save_sources(ctx)
     if "@" in account.username:
         remember_address(ctx, account.username.lower())
-    if provider is ImapProvider.CUSTOM and _summary_goes_by_smtp(ctx):
+    if mailbox.provider is ImapProvider.CUSTOM and _summary_goes_by_smtp(ctx):
         await _connect_sending(ctx, account, password, keep_saved=same_mailbox)
 
 
@@ -347,7 +433,7 @@ def _report(ctx: SetupContext, survey: MailboxSurvey) -> None:
             "conversations may look unanswered."
         )
         return
-    ctx.io.say(f"Your own replies are read from the folder '{survey.sent_folder}'.")
+    ctx.detail(f"Your own replies are read from the folder '{survey.sent_folder}'.")
 
 
 def _save_account(ctx: SetupContext, provider: ImapProvider, account: ImapAccount) -> None:
@@ -362,7 +448,7 @@ def _save_account(ctx: SetupContext, provider: ImapProvider, account: ImapAccoun
         for name in (IMAP_HOST, IMAP_PORT, SMTP_HOST, SMTP_PORT):
             if ctx.env.get(name) is not None:
                 ctx.env.set(name, "")
-    ctx.io.say(f"Saved {IMAP_PROVIDER} and {IMAP_USERNAME} in .env.")
+    ctx.detail(f"Saved {IMAP_PROVIDER} and {IMAP_USERNAME} in .env.")
 
 
 def _forget_sending_server(ctx: SetupContext) -> None:

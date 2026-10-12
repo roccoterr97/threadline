@@ -30,7 +30,7 @@ def remember_address(ctx: SetupContext, address: str) -> None:
         or ctx.io.confirm(f"Add {address} to your own addresses ({OWNER_ADDRESSES})?", default=True)
     ):
         ctx.env.set(OWNER_ADDRESSES, values.merged_addresses(existing, address))
-        ctx.io.say(f"Added {address} to your own addresses ({OWNER_ADDRESSES} in .env).")
+        ctx.detail(f"Added {address} to your own addresses ({OWNER_ADDRESSES} in .env).")
         return
     if existing is None:
         typed = ctx.ask_until_valid(

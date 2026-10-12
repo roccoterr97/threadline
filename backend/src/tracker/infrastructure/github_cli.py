@@ -39,7 +39,6 @@ from tracker.shared.constants.github import (
     JOB_ANNOTATIONS_API_PATH,
     RECENT_RUNS_LIMIT,
     RUN_CONCLUSION_SUCCESS,
-    RUN_EVENT_BY_HAND,
     RUN_STATUS_COMPLETED,
     WORKFLOW_FILE_NAME,
     WORKFLOW_MODE_INPUT,
@@ -484,7 +483,7 @@ class GitHubCli:
         _log.info("github_workflow_started", mode=mode.value)
 
     def recent_runs(self, repository: str) -> tuple[WorkflowRun, ...]:
-        """The newest runs of the workflow started with 'Run workflow', newest first.
+        """The newest runs of the workflow, however they were started, newest first.
 
         Args:
             repository: The copy, as ``owner/name``.
@@ -498,8 +497,7 @@ class GitHubCli:
         output = self._read_runs(
             [
                 _GH, "run", "list", "--workflow", WORKFLOW_FILE_NAME, "--repo", repository,
-                "--event", RUN_EVENT_BY_HAND, "--limit", str(RECENT_RUNS_LIMIT),
-                "--json", _RUN_FIELDS,
+                "--limit", str(RECENT_RUNS_LIMIT), "--json", _RUN_FIELDS,
             ]
         )  # fmt: skip
         answer = _loaded(output)
@@ -507,25 +505,6 @@ class GitHubCli:
             return self._unreadable()
         runs = (_parse_run(item) for item in cast("list[object]", answer))
         return tuple(run for run in runs if run is not None)
-
-    def workflow_run(self, repository: str, run_id: int) -> WorkflowRun:
-        """Read where one run is.
-
-        Args:
-            repository: The copy, as ``owner/name``.
-            run_id: GitHub's number for the run.
-
-        Returns:
-            The run.
-
-        Raises:
-            SourceUnavailableError: If GitHub could not say.
-        """
-        output = self._read_runs(
-            [_GH, "run", "view", str(run_id), "--repo", repository, "--json", _RUN_FIELDS]
-        )
-        run = _parse_run(_loaded(output))
-        return run if run is not None else self._unreadable()
 
     def run_notes(self, repository: str, run_id: int, title: str) -> tuple[str, ...]:
         """Read the notes with one title that a run's jobs left, such as an error line.

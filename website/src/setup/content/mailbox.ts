@@ -15,7 +15,7 @@ import { DOCTOR_COMMAND, STEP_COMMAND } from './commands';
  */
 
 const GENERAL_CHECK =
-  'The terminal shows `Connected. Your inbox has … messages from the last 30 days.`, then `Your own replies are read from the folder \'…\'.` and `Saved the app password, encrypted, in your database - it is not in .env.`';
+  'The terminal shows `Connected. Your inbox has … messages from the last 30 days.` Run on its own, it then also shows `Your own replies are read from the folder \'…\'.` and `Saved the app password, encrypted, in your database - it is not in .env.`';
 
 const CHOOSE_MAILBOX: SetupStep = {
   id: 'choose-mailbox',
@@ -24,7 +24,11 @@ const CHOOSE_MAILBOX: SetupStep = {
   intro: [
     {
       kind: 'paragraph',
-      text: 'The set-up asks one thing: "Your e-mail address". It tells the provider from the address (`From the address, your mailbox is Gmail.`): gmail.com, outlook.com, hotmail, live, msn.com, icloud.com, me.com, yahoo and fastmail addresses are recognised. For any other address, such as a company\'s own domain, it then asks: "Which mailbox should Threadline read? gmail, outlook, icloud, yahoo, fastmail or other".',
+      text: 'The set-up asks one thing: "Your e-mail address". It tells the provider from the address: gmail.com, outlook.com, hotmail, live, msn.com, icloud.com, me.com, yahoo and fastmail addresses are recognised (with `--ask-everything` it says so: `From the address, your mailbox is Gmail.`). For any other address, such as a company\'s own domain, it then asks: "Which mailbox should Threadline read? gmail, outlook, icloud, yahoo, fastmail or other".',
+    },
+    {
+      kind: 'note',
+      text: '**When it comes.** When the set-up creates a new Supabase project, these questions come earlier, while Supabase starts the project: the set-up says `Meanwhile, your mailbox.` and asks them right away. The app password is checked straight away and kept in memory only; it is stored, encrypted, in your database once the database is ready, later in the run, without asking again. If the mailbox cannot be settled then (for example the password was refused three times), the set-up says why, then `Your mailbox is asked again once the project is up.`, and asks again later. When your Supabase project already exists and is running, the questions come after the database, in their usual place.',
     },
   ],
   youDo: [
@@ -62,7 +66,7 @@ const APP_PASSWORD_INTRO = [
   },
   {
     kind: 'paragraph',
-    text: '**What the set-up does for you:** it explains app passwords, puts the name `Threadline` on your clipboard, opens your provider\'s page and waits for the new password. For Gmail and iCloud it picks the password up by itself as soon as you copy it on the page (it watches the clipboard for about 5 minutes, and empties it once the password is picked up); for every provider you can also paste it in the terminal (nothing is shown while you paste). Then it **checks it live**: it signs in, opens your inbox read-only, counts the messages of the last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database, **never in `.env`**, and add the address to your own addresses, so your own messages count as yours.',
+    text: '**What the set-up does for you:** it explains app passwords in one line that names your mailbox (`Your Gmail is read with an app password: a separate password just for Threadline, which you can remove at any time.`), puts the name `Threadline` on your clipboard, opens your provider\'s page and waits for the new password. For Gmail and iCloud it picks the password up by itself as soon as you copy it on the page (it watches the clipboard for about 5 minutes, and empties it once the password is picked up); for every provider you can also paste it in the terminal (nothing is shown while you paste). Then it **checks it live**: it signs in, opens your inbox read-only, counts the messages of the last 30 days and looks for your Sent folder. Only then does it store the password, encrypted, in your database, **never in `.env`** (while Supabase is still starting a new project, it keeps the password in memory and stores it once the database is ready), and add the address to your own addresses, so your own messages count as yours.',
   },
 ] as const;
 
@@ -88,14 +92,14 @@ const GMAIL: SetupStep = {
       kind: 'steps',
       items: [
         `**Make the app password.** Type your Gmail address in the terminal. The set-up puts the name \`Threadline\` on your clipboard and opens [myaccount.google.com/apppasswords](${GOOGLE_APP_PASSWORDS_PAGE}) on that Google account. Sign in if asked, paste the name and click **Create**. The page may look slightly different. Check: Google shows a 16-letter password. Google shows it only once.`,
-        '**Copy the password** on Google\'s page. The set-up picks it up by itself and says `Picked up the password from your clipboard, and emptied the clipboard.` You can also paste it in the terminal and press Enter (or in the field, on the set-up page in your browser). Spaces do not matter.',
+        '**Copy the password** on Google\'s page (`Then copy the 16-letter password Google shows; the set-up picks it up by itself.`). The set-up says `Picked up the password from your clipboard, and emptied the clipboard.` You can also paste it in the terminal and press Enter (or in the field, on the set-up page in your browser). Spaces do not matter.',
       ],
     },
   ],
   check: [
     {
       kind: 'paragraph',
-      text: `${GENERAL_CHECK} The folder is \`[Gmail]/Sent Mail\` (or its name in your language).`,
+      text: `${GENERAL_CHECK} Run on its own, the folder is \`[Gmail]/Sent Mail\` (or its name in your language).`,
     },
   ],
   ifNot: [
@@ -251,7 +255,7 @@ const OUTLOOK: SetupStep = {
   intro: [
     {
       kind: 'paragraph',
-      text: `If you chose another mailbox, the set-up leaves Outlook out without asking (\`Outlook left out. To add it or its calendar: ${STEP_COMMAND.microsoft}\`). Run that command to add it later.`,
+      text: `If you chose another mailbox, the set-up leaves Outlook out without a word; the end lists \`Outlook: not connected. Change: ${STEP_COMMAND.microsoft}\`. Run that command to add it later.`,
     },
     {
       kind: 'paragraph',

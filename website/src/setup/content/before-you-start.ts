@@ -27,7 +27,7 @@ export const BEFORE_YOU_START: SetupPart = {
     },
     {
       kind: 'paragraph',
-      text: '**Time.** About 25 minutes of your own time with nothing ready, about 15 with GitHub and Supabase ready. LinkedIn comes later, in about 5 minutes. Part of it is waiting: a new Supabase project takes one to three minutes to start, and the first download of Python can take a few more. Making a Gmail app password takes longer if 2-Step Verification is not on yet. You can stop at any point: the set-up carries on where you left off.',
+      text: '**Time.** About 20 minutes in total, making the accounts included. LinkedIn comes later, in about 5 minutes. Part of it is waiting: a new Supabase project takes one to three minutes to start, and the first download of Python can take a few more. Making a Gmail app password takes longer if 2-Step Verification is not on yet. You can stop at any point: the set-up carries on where you left off.',
     },
     {
       kind: 'paragraph',

@@ -9,6 +9,7 @@ checks after each confirmation that the file really ran, and asks again if not.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Final
 
 from pydantic import SecretStr
 
@@ -38,6 +39,9 @@ from tracker.shared.errors import (
     ValidationFailedError,
 )
 
+#: Said once in an express run, which leaves out the line for each file applied.
+EXPRESS_PROGRESS: Final[str] = "Creating your database's tables; this takes about half a minute."
+
 
 class DatabaseStep:
     """Creates the tables, views and rules Threadline needs."""
@@ -52,12 +56,14 @@ class DatabaseStep:
     async def run(self, ctx: SetupContext) -> None:
         """Find what is missing, apply it, then check again."""
         files = ctx.gateways.migrations
-        ctx.io.say("The database needs its tables before anything can be stored.")
+        ctx.detail("The database needs its tables before anything can be stored.")
         pending = pending_files(files, await _inspect_when_it_answers(ctx))
         if not pending:
-            ctx.io.say("Every structure file is already applied.")
+            ctx.detail("Every structure file is already applied.")
             return
-        ctx.io.say(f"To apply: {', '.join(item.name for item in pending)}.")
+        ctx.detail(f"To apply: {', '.join(item.name for item in pending)}.")
+        if ctx.session.express:
+            ctx.io.say(EXPRESS_PROGRESS)
         ref = values.project_ref(ctx.require("SUPABASE_URL", StepName.SUPABASE))
         remaining = pending
         if _apply_automatically_wanted(ctx):
@@ -142,7 +148,7 @@ async def _apply_automatically(
         if not await _apply_one(ctx, ref, token, item):
             ctx.io.say("Carrying on by hand from that file.")
             return pending[index:]
-        ctx.io.say(f"Applied {item.name}.")
+        ctx.detail(f"Applied {item.name}.")
     return ()
 
 

@@ -1,6 +1,6 @@
 import { OPERATIONS_URL } from '../../constants/links';
 import type { SetupPart } from '../types';
-import { DOCTOR_COMMAND, SETUP_COMMAND } from './commands';
+import { DOCTOR_COMMAND, SETUP_COMMAND, STEP_COMMAND } from './commands';
 
 /**
  * Mirrors part 7 of docs/setup-your-accounts.md, "The final check": the last
@@ -18,7 +18,7 @@ export const FINAL_CHECK: SetupPart = {
       intro: [
         {
           kind: 'paragraph',
-          text: 'The set-up ends by saying `Set-up done.`, then your dashboard\'s personal link and the e-mail address that can sign in to it (`Sign in there with …`). It then says how the first run was left (and, when it was started and an e-mail can be sent, when the first summary e-mail will arrive) and the daily time. Then it lists what was chosen for you, one line each with the command that changes it (`What was chosen, and the command that changes each:`), the line `LinkedIn can be added later: uv run tracker setup linkedin (about 5 minutes).` (unless LinkedIn is already connected), and how to add the other extras. Then it checks every connection once and prints one line for each. The technical details of the whole set-up are in `backend/setup.log`, if anyone helping you needs them.',
+          text: 'The set-up ends by saying `Set-up done.`, then your dashboard\'s personal link (`Your dashboard (keep this link; it is on your clipboard): …`), which it also opens in your browser, and the e-mail address that can sign in to it (`Sign in there with …`). It then says when the summary e-mail comes (`After the first one, the summary e-mail comes every day at 07:00 (…).`) and `If a run stops with a problem, GitHub e-mails you; \'uv run tracker doctor\' says why.` When the first run was not started, it says how to start it instead. Then it lists what was chosen for you, one line each with the command that changes it (`What was chosen, and the command that changes each:`), the line `LinkedIn can be added later: uv run tracker setup linkedin (about 5 minutes).` (unless LinkedIn is already connected), and how to add the other extras (`Extras any time: …`). Last, it reminds you that you can delete its Supabase access, then checks every connection once (`Final check of every connection:`) and prints one line for each. The technical details of the whole set-up are in `backend/setup.log`, if anyone helping you needs them.',
         },
       ],
       youDo: [
@@ -73,11 +73,19 @@ export const FINAL_CHECK: SetupPart = {
             '`warning  On-time morning start: not switched on (optional): GitHub alone starts the daily run, often late`',
           ],
         },
+        {
+          kind: 'paragraph',
+          text: 'The line **Daily run on GitHub** looks at the newest daily run: `ok` while it is going (`a daily run is going: …`) or when it finished well. It says `skipped` when there is no daily run yet, when the GitHub tool is not signed in on this computer, or when the folder is not linked to your private copy.',
+        },
       ],
       ifNot: [
         {
           kind: 'paragraph',
           text: `Fix the lines marked \`PROBLEM\` from top to bottom. Each one ends with the command that repairs it, usually \`${SETUP_COMMAND}\` followed by the step's name.`,
+        },
+        {
+          kind: 'paragraph',
+          text: `\`PROBLEM  Daily run on GitHub: the newest daily run stopped.\` gives the reason the run left and the run's page. When it is about the Claude key (Claude refused it), run \`${STEP_COMMAND.github}\` to make a new key.`,
         },
         {
           kind: 'paragraph',

@@ -4,8 +4,9 @@ Supabase's built-in e-mail only reaches the members of the Supabase account
 unless the owner set up their own e-mail sender, so the login is best made
 for the account's own address. With this run's access token that address is
 read from Supabase (``GET /v1/profile``): an express run uses it without
-asking, and any other run offers it. The address is always said, and said
-again when a later run finds the step done.
+asking, and any other run offers it. The address is said in the closing
+summary, and outside an express run also here and when a later run finds the
+step done.
 
 Sign-ups are switched off through Supabase's Management API with this run's
 access token; the settings page is opened only when Supabase refuses that.
@@ -59,8 +60,7 @@ class LoginStep:
 
     async def run(self, ctx: SetupContext) -> None:
         """Create the login (or find it), record it, then check sign-ups are off."""
-        io = ctx.io
-        io.say("You sign in to the dashboard with a link Supabase e-mails to you.")
+        ctx.detail("You sign in to the dashboard with a link Supabase e-mails to you.")
         email = await _login_email(ctx)
         admin = ctx.admin()
         user_id = admin.create_confirmed_user(email) or admin.find_user_id(email)
@@ -68,7 +68,7 @@ class LoginStep:
             message = "Supabase says this login exists but could not find it - try again"
             raise ValidationFailedError(message)
         admin.add_owner(user_id)
-        io.say(f"{email} can now sign in to the dashboard, and nobody else can read it.")
+        ctx.detail(f"{email} can now sign in to the dashboard, and nobody else can read it.")
         await _switch_off_signups(ctx)
 
 
@@ -98,9 +98,6 @@ async def _login_email(ctx: SetupContext) -> str:
     io = ctx.io
     account = await _supabase_account_address(ctx)
     if ctx.session.express and account is not None:
-        io.say(f"Your dashboard login is {account}, the address of your Supabase account,")
-        io.say("which Supabase's free e-mail reaches. To use another address:")
-        io.say(f"uv run tracker setup {StepName.LOGIN}")
         return account
     io.say("Supabase's free e-mail only reaches the members of your Supabase account,")
     io.say("so use the address you signed up to Supabase with.")
@@ -145,11 +142,11 @@ async def _switch_off_signups(ctx: SetupContext) -> None:
     """Make sure strangers cannot create a login: through the API, or by hand if refused."""
     io = ctx.io
     if await _signups_disabled(ctx):
-        io.say("Sign-ups are switched off: nobody else can create a login.")
+        ctx.detail("Sign-ups are switched off: nobody else can create a login.")
         return
-    io.say("Sign-ups are still open, so they are switched off now.")
+    ctx.detail("Sign-ups are still open, so they are switched off now.")
     if await _switched_off_through_the_api(ctx) and await _signups_off_once_applied(ctx):
-        io.say("Sign-ups are now switched off: nobody else can create a login.")
+        ctx.detail("Sign-ups are now switched off: nobody else can create a login.")
         return
     _guide_by_hand(ctx)
     if await _signups_disabled(ctx):

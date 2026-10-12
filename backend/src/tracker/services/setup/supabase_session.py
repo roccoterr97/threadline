@@ -141,7 +141,7 @@ def too_little_access(ctx: SetupContext) -> SourcePermissionError:
 
 def _chosen_route(ctx: SetupContext) -> TokenRoute:
     """Offer the browser sign-in first and the pasted token second; express takes the first."""
-    ctx.io.say("Threadline needs your permission to work in your Supabase account.")
+    ctx.detail("Threadline needs your permission to work in your Supabase account.")
     if ctx.session.express:
         return TokenRoute.BROWSER
     for route in TokenRoute:

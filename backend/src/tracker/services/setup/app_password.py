@@ -26,10 +26,10 @@ from tracker.shared.constants.mailbox import (
 )
 from tracker.shared.errors import AppPasswordUnavailableError
 
-#: What every provider has in common, in two plain sentences.
+#: What every provider has in common, in one plain sentence naming the mailbox.
 _APP_PASSWORD: Final[str] = (
-    "Threadline signs in with an app password: a separate password just for "
-    "Threadline, which you can remove at any time. Your normal password is never used."
+    "Your {label} is read with an app password: a separate password just for "
+    "Threadline, which you can remove at any time."
 )
 
 #: What is particular to a provider, in one or two sentences.
@@ -56,7 +56,7 @@ _NAME_ON_CLIPBOARD: Final[str] = (
 )
 _NAME_TO_TYPE: Final[str] = f"Name it '{APP_PASSWORD_NAME}' when the page asks for a name."
 _COPY_IT: Final[str] = (
-    "Copy the 16-letter password {company} shows; the set-up picks it up by itself."
+    "Then copy the 16-letter password {company} shows; the set-up picks it up by itself."
 )
 _SAY_IF_NONE: Final[str] = "If {company} says the setting is not available, answer no below."
 _TURN_ON_TWO_STEP: Final[str] = (
@@ -113,7 +113,7 @@ class AppPasswordQuestion:
 
     def explain(self) -> None:
         """Say what an app password is, and what is particular to this provider."""
-        self._ctx.io.say(_APP_PASSWORD)
+        self._ctx.io.say(_APP_PASSWORD.format(label=self._preset.label))
         note = _PROVIDER_NOTES.get(self._provider)
         if note is not None:
             self._ctx.io.say(note)

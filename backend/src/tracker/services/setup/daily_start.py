@@ -69,7 +69,7 @@ def save_schedule_in_database(ctx: SetupContext, schedule: Schedule) -> None:
         ctx.io.say("Your database did not answer, so it still has the old daily time.")
         ctx.io.say(f"Run 'uv run tracker setup {StepName.SCHEDULE}' again in a few minutes.")
         return
-    ctx.io.say(f"Saved the daily time in your database too: {schedule.describe()}.")
+    ctx.detail(f"Saved the daily time in your database too: {schedule.describe()}.")
 
 
 def daily_start_ready(ctx: SetupContext) -> bool:

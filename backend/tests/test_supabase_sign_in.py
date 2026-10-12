@@ -32,7 +32,14 @@ from tracker.services.setup.supabase_session import (
     TokenRoute,
     require_supabase_token,
 )
-from tracker.services.setup.supabase_sign_in import CODE_PROMPT, CODE_REFUSED, SIGN_IN_FAILED
+from tracker.services.setup.supabase_sign_in import (
+    CODE_PICKED_UP,
+    CODE_PROMPT,
+    CODE_REFUSED,
+    SIGN_IN_FAILED,
+    WAITING_PROMPT,
+    looks_like_code,
+)
 from tracker.services.setup.wizard import SetupWizard
 from tracker.shared.constants.setup import (
     SUPABASE_BROWSER_SIGN_IN_PAGE,
@@ -162,12 +169,68 @@ async def test_the_owner_is_told_where_the_token_is_listed_and_that_it_may_go() 
 
     await _token(world)
 
+    assert "Signed in to Supabase." in world.io.said
     assert (
         f"Supabase lists it under Access Tokens as '{TOKEN_NAME}'; you can delete it there "
         "once the set-up is finished."
     ) in world.io.said
     assert GOOD_TOKEN not in world.io.text()
     assert world.env.values == {}
+
+
+async def test_a_copied_code_is_picked_up_without_being_typed() -> None:
+    world = make_world([""])
+    world.io.watching = True
+    world.io.person_copies.append(f"{GOOD_CODE}\n")
+
+    token, _ = await _token(world)
+
+    assert token.get_secret_value() == GOOD_TOKEN
+    assert world.platform.sign_in_codes == [GOOD_CODE]
+    assert WAITING_PROMPT in world.io.exact
+    assert CODE_PICKED_UP in world.io.said
+    assert "Then copy the code Supabase shows; the set-up picks it up by itself." in world.io.said
+
+
+async def test_while_the_clipboard_is_watched_the_code_can_still_be_typed() -> None:
+    world = make_world(["", GOOD_CODE])
+    world.io.watching = True
+
+    token, _ = await _token(world)
+
+    assert token.get_secret_value() == GOOD_TOKEN
+    assert world.io.asked[-1] == WAITING_PROMPT
+    assert CODE_PICKED_UP not in world.io.said
+
+
+async def test_a_copied_code_supabase_refuses_is_followed_by_another_look() -> None:
+    world = make_world([""])
+    world.io.watching = True
+    world.io.person_copies.extend(["99999999", GOOD_CODE])
+
+    token, _ = await _token(world)
+
+    assert token.get_secret_value() == GOOD_TOKEN
+    assert world.platform.sign_in_codes == ["99999999", GOOD_CODE]
+
+
+@pytest.mark.parametrize(
+    ("text", "taken"),
+    [
+        ("77635001", True),
+        (" 77635001\n", True),
+        ("a1b2c3d4", True),
+        ("123456", True),
+        ("abcdef7890", True),
+        ("12345", False),
+        ("12345678901", False),
+        ("ABCD-1234", False),
+        ("wxyz wxyz wxyz wxyz", False),
+        ("", False),
+    ],
+)
+async def test_only_text_shaped_like_the_supabase_code_is_picked_up(text: str, taken: bool) -> None:
+    assert looks_like_code(text) is taken
 
 
 async def test_a_wrong_code_is_asked_for_again_then_the_right_one_signs_in() -> None:

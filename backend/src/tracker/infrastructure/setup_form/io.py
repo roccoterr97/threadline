@@ -59,6 +59,10 @@ class FormIO:
         """Ask in a hidden field; the page does not watch the clipboard."""
         return SecretAnswer(self.ask_secret(prompt), copied=False)
 
+    def ask_or_copied(self, prompt: str, _wanted: Callable[[str], bool]) -> SecretAnswer:
+        """Ask in a text field; the page does not watch the clipboard."""
+        return SecretAnswer(self.ask(prompt, exact=True), copied=False)
+
     def confirm(self, prompt: str, *, default: bool) -> bool:
         """Ask a yes/no question."""
         self._echo(f"? {prompt}")

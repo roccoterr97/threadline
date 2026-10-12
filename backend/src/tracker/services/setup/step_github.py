@@ -75,13 +75,13 @@ class GitHubStep:
     async def run(self, ctx: SetupContext) -> None:
         """Collect the key, save everything with gh and start the first run, or show how to."""
         split_settings(ctx)
-        ctx.io.say("GitHub runs Threadline every day on your own copy of this project.")
+        ctx.io.say("Last, GitHub: it runs Threadline every day on your own private copy.")
         by_email = await _settle_summary_route(ctx)
         secrets, variables = split_settings(ctx)
         repository = find_or_create_copy(ctx)
         if repository is not None:
             offer_unsent_change(ctx)
-        ctx.io.say("It needs your settings: secret ones as 'secrets', the rest as 'variables'.")
+        ctx.detail("It needs your settings: secret ones as 'secrets', the rest as 'variables'.")
         token = claude_key_for_github(ctx, repository)
         if repository is not None and _save_wanted(
             ctx, repository, len(secrets) + (token is not None), len(variables)
@@ -101,7 +101,6 @@ def _save_wanted(ctx: SetupContext, repository: str, secrets: int, variables: in
     """Whether to save with the GitHub CLI now: asked, except in an express run."""
     what = f"{secrets} secrets and {variables} variables in {repository}"
     if ctx.session.express:
-        ctx.io.say(f"Saving {what} with the GitHub CLI.")
         return True
     return ctx.io.confirm(f"Save {what} with the GitHub CLI now?", default=True)
 
@@ -184,8 +183,14 @@ async def _save_with_cli(
     """Save every value with the GitHub CLI, naming each one and showing none, then start."""
     save_on_github(ctx, repository, secrets, variables, token)
     _remove_emptied(ctx, repository, secrets, variables)
-    ctx.io.say("Done. GitHub has everything it needs to run Threadline on your copy.")
-    return await start_first_run(
+    if ctx.session.express:
+        ctx.io.say(
+            f"Saved {len(secrets) + (token is not None)} secrets and {len(variables)} "
+            f"variables in {repository}."
+        )
+    else:
+        ctx.io.say("Done. GitHub has everything it needs to run Threadline on your copy.")
+    return start_first_run(
         ctx,
         repository,
         summary_by_email=summary_by_email,

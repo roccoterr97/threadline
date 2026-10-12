@@ -1,8 +1,9 @@
-"""The one-line installer for macOS and Linux, checked without running it.
+"""The one-line installers, checked without running them.
 
-``install.sh`` installs software and signs in to accounts, so it is never run
-here. Its syntax is checked with ``sh -n``, and the one piece of pure logic in
-it, the comparison of GitHub tool versions, is run on its own.
+``install.sh`` and ``install.ps1`` install software and sign in to accounts, so
+neither is run here. The syntax of ``install.sh`` is checked with ``sh -n``, and
+single functions of it are run on their own, with the commands they call
+faked. ``install.ps1`` is checked by reading it.
 """
 
 from __future__ import annotations
@@ -171,23 +172,62 @@ def test_the_windows_installer_also_checks_the_name_github_answers_with() -> Non
     assert "if ($Facts.name -ne $CopyName)" in windows
 
 
+def installer_functions(*names: str) -> str:
+    """Return several functions of ``install.sh``, as written there."""
+    return "\n".join(installer_function(name) for name in names)
+
+
+BACKGROUND_HELPERS = ("say", "note", "stop", "wait_for_job", "show_log", "keep_log")
+
+
+def background_settings(tmp_path: Path) -> str:
+    """Return the installer settings that its background jobs use, inside ``tmp_path``."""
+    copy = tmp_path / "threadline"
+    copy.mkdir(exist_ok=True)
+    return "\n".join(
+        [
+            f'WORK_DIR="{tmp_path}"; COPY_FOLDER="{copy}"',
+            'LOG_LINES_SHOWN=5; INSTALL_LOG="install.log"; PYTHON_VERSION="3.12"',
+            'PYTHON_JOB=""; CLAUDE_JOB=""',
+        ]
+    )
+
+
 def install_claude_code_with(
     tmp_path: Path, *, found: bool, downloads: bool = True, installs: bool = True
 ) -> subprocess.CompletedProcess[str]:
-    """Run the installer's Claude Code step with the network and the install faked."""
+    """Run the installer's Claude Code steps with the network and the install faked.
+
+    The faked installer only finishes once the script has gone on past
+    ``start_claude_code``, so an installer that is not run in the background
+    makes the script time out.
+    """
     folder = tmp_path / "local-bin"
+    if found:
+        folder.mkdir()
+        (folder / "claude").write_text("#!/bin/sh\n")
+        (folder / "claude").chmod(0o755)
     script = "\n".join(
         [
             f'CLAUDE_INSTALLER="https://claude.ai/install.sh"; CLAUDE_FOLDER="{folder}"',
-            f'WORK_DIR="{tmp_path}"; PATH="/usr/bin:/bin"',
-            installer_function("say"),
-            installer_function("note"),
-            installer_function("install_claude_code"),
-            installer_function("use_claude_folder"),
-            f'has() {{ [ "$1" = bash ] || {{ [ "$1" = claude ] && {str(found).lower()}; }}; }}',
+            background_settings(tmp_path),
+            'PATH="/usr/bin:/bin"',
+            installer_functions(
+                *BACKGROUND_HELPERS, "start_claude_code", "finish_claude_code", "use_claude_folder"
+            ),
+            'has() { case "$1" in bash) true ;; claude) [ -x "$CLAUDE_FOLDER/claude" ] ;; '
+            "*) false ;; esac; }",
             f'download() {{ echo "download $1"; {str(downloads).lower()}; }}',
-            f"bash() {{ echo 'ran the installer'; {str(installs).lower()}; }}",
-            'install_claude_code; echo "exit $?"; echo "path $PATH"',
+            "bash() {",
+            '  until [ -f "$WORK_DIR/go" ]; do sleep 0.1; done',
+            "  echo 'ran the installer'",
+            f"  {str(installs).lower()} || {{ echo 'no space left'; return 1; }}",
+            '  mkdir -p "$CLAUDE_FOLDER"; printf "#!/bin/sh\\n" >"$CLAUDE_FOLDER/claude"',
+            '  chmod +x "$CLAUDE_FOLDER/claude"',
+            "}",
+            'start_claude_code; echo "job ${CLAUDE_JOB:-none}" | sed "s/[0-9][0-9]*/started/"',
+            'touch "$WORK_DIR/go"',
+            'finish_claude_code; echo "exit $?"; echo "path $PATH"',
         ]
     )
     return run_shell(script)
@@ -197,34 +237,123 @@ def install_claude_code_with(
 def test_claude_code_already_there_is_not_installed_again(tmp_path: Path) -> None:
     result = install_claude_code_with(tmp_path, found=True)
 
-    assert "Claude Code is installed." in result.stdout
     assert "download" not in result.stdout
+    assert "job none" in result.stdout
+    assert f"path {tmp_path / 'local-bin'}:" in result.stdout
 
 
 @needs_posix_shell
-def test_claude_code_is_installed_with_anthropics_installer_and_found_this_session(
+def test_claude_code_is_installed_in_the_background_and_found_this_session(
     tmp_path: Path,
 ) -> None:
     result = install_claude_code_with(tmp_path, found=False)
 
     assert "download https://claude.ai/install.sh" in result.stdout
-    assert "ran the installer" in result.stdout
+    assert "Installing Claude Code in the background." in result.stdout
+    assert "job started" in result.stdout
+    assert "ran the installer" not in result.stdout
+    assert "paste the key" not in result.stdout
+    assert "exit 0" in result.stdout
     assert f"path {tmp_path / 'local-bin'}:" in result.stdout
 
 
-@pytest.mark.parametrize(
-    ("downloads", "installs", "said"),
-    [(False, True, "could not be downloaded"), (True, False, "did not install")],
-)
 @needs_posix_shell
-def test_a_failed_claude_code_install_is_said_and_the_installer_carries_on(
-    tmp_path: Path, downloads: bool, installs: bool, said: str
+def test_a_claude_code_download_that_fails_is_said_and_the_installer_carries_on(
+    tmp_path: Path,
 ) -> None:
-    result = install_claude_code_with(tmp_path, found=False, downloads=downloads, installs=installs)
+    result = install_claude_code_with(tmp_path, found=False, downloads=False)
 
-    assert said in result.stdout
-    assert "paste the key" in result.stdout
+    assert "could not be downloaded; the set-up will ask you to paste the key" in result.stdout
+    assert "job none" in result.stdout
     assert "exit 0" in result.stdout
+
+
+@needs_posix_shell
+def test_a_failed_claude_code_install_is_said_with_its_last_lines_and_kept(
+    tmp_path: Path,
+) -> None:
+    result = install_claude_code_with(tmp_path, found=False, installs=False)
+    install_log = tmp_path / "threadline" / "install.log"
+
+    assert "Claude Code did not install; the set-up will ask you to paste the key." in result.stdout
+    assert "    ran the installer\n    no space left\n" in result.stdout
+    assert f"The full report is in {install_log}." in result.stdout
+    assert "no space left" in install_log.read_text()
+    assert "exit 0" in result.stdout
+
+
+def run_python_download(tmp_path: Path, *, downloads: bool) -> subprocess.CompletedProcess[str]:
+    """Run the installer's background Python download and its wait, with uv faked."""
+    script = "\n".join(
+        [
+            background_settings(tmp_path),
+            installer_functions(*BACKGROUND_HELPERS, "start_python_download", "wait_for_python"),
+            f'uv() {{ echo "uv $*"; echo "no network"; {str(downloads).lower()}; }}',
+            'start_python_download; echo "job ${PYTHON_JOB:+started}"',
+            'wait_for_python; echo "exit $?"',
+        ]
+    )
+    return run_shell(script)
+
+
+@needs_posix_shell
+def test_python_is_downloaded_in_the_background_and_said_nothing_about(tmp_path: Path) -> None:
+    result = run_python_download(tmp_path, downloads=True)
+
+    assert result.stdout.splitlines() == ["job started", "exit 0"]
+    assert "uv python install 3.12" in (tmp_path / "python.log").read_text()
+
+
+@needs_posix_shell
+def test_a_failed_python_download_is_one_line_and_not_fatal(tmp_path: Path) -> None:
+    result = run_python_download(tmp_path, downloads=False)
+    install_log = tmp_path / "threadline" / "install.log"
+
+    assert result.stdout.splitlines() == [
+        "job started",
+        f"    Python did not download in advance (see {install_log}); trying again now.",
+        "exit 0",
+    ]
+    assert "no network" in install_log.read_text()
+
+
+@needs_posix_shell
+def test_failing_threadline_parts_show_their_last_lines_and_stop(tmp_path: Path) -> None:
+    backend = tmp_path / "threadline" / "backend"
+    backend.mkdir(parents=True)
+    (backend / "pyproject.toml").write_text("")
+    script = "\n".join(
+        [
+            background_settings(tmp_path),
+            installer_functions(*BACKGROUND_HELPERS, "wait_for_python", "install_threadline_parts"),
+            'uv() { echo "Resolved 40 packages"; echo "No solution found"; return 1; }',
+            'install_threadline_parts; echo "carried on"',
+        ]
+    )
+
+    result = run_shell(script)
+
+    assert result.returncode == 1
+    assert "carried on" not in result.stdout
+    assert "    Resolved 40 packages\n    No solution found\n" in result.stdout
+    assert "Threadline's parts could not be installed." in result.stderr
+    assert "No solution found" in (tmp_path / "threadline" / "install.log").read_text()
+
+
+@needs_posix_shell
+def test_stopping_the_installer_ends_its_background_jobs(tmp_path: Path) -> None:
+    script = "\n".join(
+        [
+            background_settings(tmp_path),
+            installer_functions("has", "cleanup", "stop_job"),
+            "sleep 30 & CLAUDE_JOB=$!; job=$CLAUDE_JOB",
+            'cleanup; wait "$job"; echo "ended $?"',
+        ]
+    )
+
+    result = run_shell(script)
+
+    assert "ended 143" in result.stdout
 
 
 def test_both_installers_use_anthropics_official_claude_code_installers() -> None:
@@ -232,11 +361,103 @@ def test_both_installers_use_anthropics_official_claude_code_installers() -> Non
     assert "$ClaudeInstaller = 'https://claude.ai/install.ps1'" in WINDOWS_INSTALLER.read_text()
 
 
-def test_claude_code_is_installed_after_git_and_before_the_github_sign_in() -> None:
+def test_the_windows_installer_runs_claude_code_and_python_in_the_background() -> None:
+    windows = WINDOWS_INSTALLER.read_text()
+
+    assert "Start-Background 'claude-code' $PowerShell $Arguments $WorkFolder" in windows
+    assert "Start-Background 'python' $Uv @('python', 'install', $PythonVersion)" in windows
+    assert "Start-Background 'threadline-parts' $Uv @('sync') $Backend" in windows
+    assert "RedirectStandardInput = (Join-Path $WorkFolder 'no-input.txt')" in windows
+    assert "$null = $Job.Process.Handle" in windows
+    assert "Say 'Installing Claude Code in the background.'" in windows
+
+
+def test_both_installers_download_the_python_that_threadline_runs_on() -> None:
+    expected = (REPOSITORY_ROOT / "backend" / ".python-version").read_text().strip()
+    shell = re.search(r'^PYTHON_VERSION="([\d.]+)"$', INSTALLER.read_text(), re.M)
+    windows = re.search(r"^\$PythonVersion = '([\d.]+)'$", WINDOWS_INSTALLER.read_text(), re.M)
+
+    assert shell is not None
+    assert windows is not None
+    assert shell.group(1) == expected
+    assert windows.group(1) == expected
+
+
+def sign_in_with(scopes: str, *, signed_in: bool) -> subprocess.CompletedProcess[str]:
+    """Run the installer's GitHub sign-in with ``gh`` faked, printing how it is called."""
+    script = "\n".join(
+        [
+            'GITHUB_WORKFLOW_SCOPE="workflow"',
+            installer_functions(
+                "say", "note", "stop", "ensure_workflow_permission", "sign_in_to_github"
+            ),
+            f'gh() {{ if [ "$1 $2" = "auth status" ]; then {str(signed_in).lower()}; '
+            'return; fi; echo "gh $*"; }',
+            f"github_scopes() {{ echo '{scopes}'; }}",
+            "ensure_git_identity() { :; }",
+            "sign_in_to_github",
+        ]
+    )
+    return run_shell(script)
+
+
+@needs_posix_shell
+def test_the_github_sign_in_puts_its_code_on_the_clipboard() -> None:
+    result = sign_in_with("", signed_in=False)
+
+    assert (
+        "gh auth login --hostname github.com --web --clipboard --git-protocol https "
+        "--scopes workflow"
+    ) in result.stdout
+    assert "The code is on your clipboard" in result.stdout
+    assert "Use a different account" in result.stdout
+
+
+@needs_posix_shell
+def test_the_extra_workflow_permission_also_puts_its_code_on_the_clipboard() -> None:
+    result = sign_in_with("scopes: repo, read:org", signed_in=True)
+
+    assert "gh auth refresh --hostname github.com --clipboard --scopes workflow" in result.stdout
+    assert "gh auth login" not in result.stdout
+
+
+def test_the_windows_sign_in_also_puts_its_code_on_the_clipboard() -> None:
+    windows = WINDOWS_INSTALLER.read_text()
+
+    assert "& gh auth login --hostname github.com --web --clipboard --git-protocol https" in windows
+    assert "& gh auth refresh --hostname github.com --clipboard --scopes" in windows
+    assert "Use a different account" in windows
+
+
+def test_claude_code_starts_before_the_github_sign_in_and_is_waited_for_after() -> None:
     shell_order = re.findall(r"^  (\w+)$", INSTALLER.read_text(), re.M)
     windows_order = re.findall(r"^    ([A-Z]\w+-\w+)$", WINDOWS_INSTALLER.read_text(), re.M)
 
-    assert shell_order.index("check_git") < shell_order.index("install_claude_code")
-    assert shell_order.index("install_claude_code") < shell_order.index("sign_in_to_github")
-    assert windows_order.index("Install-Git") < windows_order.index("Install-ClaudeCode")
-    assert windows_order.index("Install-ClaudeCode") < windows_order.index("Connect-GitHub")
+    shell_steps = [
+        "check_git",
+        "install_uv",
+        "start_python_download",
+        "start_claude_code",
+        "sign_in_to_github",
+        "get_copy",
+        "install_threadline_parts",
+        "finish_claude_code",
+        "start_setup",
+    ]
+    windows_steps = [
+        "Install-Git",
+        "Install-Uv",
+        "Start-PythonDownload",
+        "Start-ClaudeCode",
+        "Connect-GitHub",
+        "Get-Copy",
+        "Install-Parts",
+        "Complete-ClaudeCode",
+        "Start-Setup",
+    ]
+    assert [shell_order.index(step) for step in shell_steps] == sorted(
+        shell_order.index(step) for step in shell_steps
+    )
+    assert [windows_order.index(step) for step in windows_steps] == sorted(
+        windows_order.index(step) for step in windows_steps
+    )

@@ -3,7 +3,7 @@
 Outlook is optional once another mailbox is read: the step then asks before
 signing in, because only an Outlook mailbox or the Outlook calendar needs it.
 A "no" is remembered, so a later full run does not ask again. An express run
-does not ask: it leaves Outlook out and says how to add it.
+does not ask: it leaves Outlook out, and the closing summary says how to add it.
 """
 
 from __future__ import annotations
@@ -59,7 +59,6 @@ def _wanted(ctx: SetupContext) -> bool:
     if skipped_earlier(ctx, StepName.MICROSOFT, "To add it"):
         return False
     if ctx.session.express:
-        io.say(f"Outlook left out. To add it or its calendar: {_COMMAND} {StepName.MICROSOFT}")
         return False
     io.say("Outlook is optional: Threadline already reads another mailbox. It is")
     io.say("only needed for an Outlook or Hotmail mailbox, or for your Outlook calendar.")

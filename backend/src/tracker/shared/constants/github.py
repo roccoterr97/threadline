@@ -49,26 +49,14 @@ ALLOWED_ACTIONS_ALL: Final[str] = "all"
 #: About how long a daily run takes before the summary e-mail is sent.
 FIRST_SUMMARY_MINUTES: Final[int] = 10
 
-#: How long the set-up follows the first run it started, and how often it
-#: looks. A key Claude refuses stops the run in its first minute, so two
-#: minutes catch that and keep the set-up waiting no longer.
-FIRST_RUN_WATCH_SECONDS: Final[int] = 120
-FIRST_RUN_POLL_SECONDS: Final[int] = 10
-
 #: The title GitHub shows on a daily run, set by the workflow's ``run-name``.
-#: The first run is found by it, so a refresh is never taken for it.
+#: ``tracker doctor`` finds the newest daily run by it, so a refresh is never
+#: taken for one.
 DAILY_RUN_TITLE: Final[str] = "Threadline daily run"
 
-#: How far this computer's clock may be off GitHub's when the first run is
-#: told apart from runs started before it.
-FIRST_RUN_CLOCK_SKEW_SECONDS: Final[int] = 60
-
-#: How many of the newest runs started with 'Run workflow' are read when
-#: looking for the first run; others may start next to it.
+#: How many of the workflow's newest runs ``tracker doctor`` reads when looking
+#: for the newest daily run; refreshes may have started since.
 RECENT_RUNS_LIMIT: Final[int] = 20
-
-#: The event of a run started with 'Run workflow', by hand or by the set-up.
-RUN_EVENT_BY_HAND: Final[str] = "workflow_dispatch"
 
 #: A run's status once it has ended, and the conclusion of one that ended well.
 RUN_STATUS_COMPLETED: Final[str] = "completed"

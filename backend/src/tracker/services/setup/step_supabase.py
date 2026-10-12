@@ -1,13 +1,16 @@
 """Steps 1 and 2: the Supabase project and its keys, and the encryption key.
 
 With one Supabase access token the step finds or creates the project and reads
-its address and both keys itself; nothing is copied between screens. Someone
-who prefers it can still type an existing project's address and keys.
+its address and both keys itself; nothing is copied between screens. While a
+new project starts, the step hands the wait to what the wizard gives it (a
+full run asks for the mailbox then). Someone who prefers it can still type an
+existing project's address and keys.
 """
 
 from __future__ import annotations
 
 import binascii
+from collections.abc import Sequence
 from typing import Final
 
 from cryptography.fernet import Fernet
@@ -17,7 +20,7 @@ from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.fresh_project import ask_until_it_answers
 from tracker.services.setup.models import StepName
-from tracker.services.setup.supabase_project import find_or_create_project, read_keys
+from tracker.services.setup.supabase_project import Meanwhile, find_or_create_project, read_keys
 from tracker.services.setup.supabase_session import full_access_needed, require_supabase_token
 from tracker.shared.constants.setup import (
     SUPABASE_API_KEYS_PAGE,
@@ -31,12 +34,26 @@ PUBLISHABLE_KEY: Final[str] = "SUPABASE_ANON_KEY"
 SECRET_KEY: Final[str] = "SUPABASE_SERVICE_ROLE_KEY"
 ENCRYPTION_KEY: Final[str] = "TOKEN_ENCRYPTION_KEY"
 
+#: What the step needs from the owner, said before the Supabase page opens.
+_ACCOUNT_NEEDED: Final[str] = (
+    "Supabase keeps your data, in a free account; the set-up creates the project there."
+)
+
 
 class SupabaseStep:
     """Saves the project address and its two keys, once each is accepted live."""
 
     name = StepName.SUPABASE
     title = "Your Supabase project"
+
+    def __init__(self, meanwhile: Sequence[Meanwhile] = ()) -> None:
+        """Bind the step to what the owner may do while a new project starts.
+
+        Args:
+            meanwhile: Asked in order while a project that is not up yet
+                starts, until it is up; none of it may need the database.
+        """
+        self._meanwhile = meanwhile
 
     async def is_done(self, ctx: SetupContext) -> bool:
         """Done when all three values are in ``.env``."""
@@ -45,20 +62,20 @@ class SupabaseStep:
     async def run(self, ctx: SetupContext) -> None:
         """Keep the saved project, or find or create one with the token, or take typed values."""
         io = ctx.io
-        io.say("Supabase is the database that keeps your people and conversations.")
+        ctx.detail("Supabase is the database that keeps your people and conversations.")
         replacing = await self.is_done(ctx)
         if replacing and _keep_saved_project(ctx):
             return
-        io.say("You need a free Supabase account; the set-up creates the project in it.")
+        io.say(_ACCOUNT_NEEDED)
         if ctx.session.express or io.confirm(
             "Create the project (or pick an existing one) for you?", default=True
         ):
-            url, publishable, secret = await _from_the_account(ctx)
+            url, publishable, secret = await _from_the_account(ctx, self._meanwhile)
         else:
             url, publishable, secret = await _typed_by_hand(ctx)
         for name, value in ((URL, url), (PUBLISHABLE_KEY, publishable), (SECRET_KEY, secret)):
             _save(ctx, name, value, replacing=replacing)
-        io.say("Supabase accepted the address and both keys.")
+        ctx.detail("Supabase accepted the address and both keys.")
 
 
 def _keep_saved_project(ctx: SetupContext) -> bool:
@@ -102,14 +119,16 @@ def project_url(project_ref: str) -> str:
     return f"https://{project_ref}{SUPABASE_HOST_SUFFIX}"
 
 
-async def _from_the_account(ctx: SetupContext) -> tuple[str, str, str]:
+async def _from_the_account(
+    ctx: SetupContext, meanwhile: Sequence[Meanwhile]
+) -> tuple[str, str, str]:
     """Find or create the project with this run's token, then read its keys."""
     token = await require_supabase_token(ctx)
     with full_access_needed(ctx):
-        project = await find_or_create_project(ctx, token)
+        project = await find_or_create_project(ctx, token, meanwhile=meanwhile)
         publishable, secret = await read_keys(ctx, token, project.ref)
     url = project_url(project.ref)
-    ctx.io.say(f"Read the address and both keys of '{project.name}'. Neither key is shown.")
+    ctx.detail(f"Read the address and both keys of '{project.name}'. Neither key is shown.")
     hint = (
         f"It exists, so give it a minute, then run 'uv run tracker setup {StepName.SUPABASE}' "
         "again and pick it from the list."
@@ -171,14 +190,14 @@ class EncryptionStep:
     async def run(self, ctx: SetupContext) -> None:
         """Keep a usable key; otherwise make one and save it without showing it."""
         io = ctx.io
-        io.say("This key locks the Microsoft sign-in that is kept in your database,")
-        io.say("so a copy of the database alone reveals nothing. It is made for you.")
+        ctx.detail("This key locks the Microsoft sign-in that is kept in your database,")
+        ctx.detail("so a copy of the database alone reveals nothing. It is made for you.")
         if is_usable_key(ctx.env.get(ENCRYPTION_KEY)):
             io.say("A usable key is already saved; it is kept. Changing it would mean")
             io.say("signing in to Microsoft again.")
             return
         if ctx.write(ENCRYPTION_KEY, ctx.gateways.make_encryption_key()):
-            io.say("A new key was made and saved. It is never shown on screen.")
+            ctx.detail("A new key was made and saved. It is never shown on screen.")
 
 
 def is_usable_key(value: str | None) -> bool:

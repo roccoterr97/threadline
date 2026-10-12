@@ -15,16 +15,17 @@
 #   1. Checks that git is installed (on a Mac, the system offers to install it).
 #   2. Installs uv, the tool that runs Threadline, if it is missing. uv's own
 #      installer also adds uv to your terminal's PATH: it adds a line to your
-#      shell's start-up file (such as .zshrc or .profile).
+#      shell's start-up file (such as .zshrc or .profile). Then uv starts
+#      downloading the Python that Threadline runs on, in the background.
 #   3. Installs the GitHub command-line tool (gh) if it is missing or too old:
 #      with Homebrew on a Mac, or from GitHub's own package source on Linux.
 #      Where those cannot be used, it downloads GitHub's release into
 #      ~/.local/bin and checks it against the release's checksums.
-#   4. Installs Claude Code if it is missing, with Anthropic's own installer,
-#      which puts the "claude" command in ~/.local/bin. The set-up uses it to
-#      make the key that lets the daily run use your Claude subscription. If
-#      it cannot be installed, the installer carries on: the set-up then asks
-#      you to paste that key instead.
+#   4. Starts installing Claude Code in the background if it is missing, with
+#      Anthropic's own installer, which puts the "claude" command in
+#      ~/.local/bin. The set-up uses it to make the key that lets the daily run
+#      use your Claude subscription. If it cannot be installed, the installer
+#      carries on: the set-up then asks you to paste that key instead.
 #   5. Signs you in to GitHub in the browser if you are not signed in yet, with
 #      the extra permission that saving the daily-run file needs. Then it runs
 #      "gh auth setup-git", which adds a line to your git settings so that git
@@ -37,7 +38,12 @@
 #      already exists, on GitHub or in that folder, is reused and brought up
 #      to date, after checking that it is private and yours. An earlier
 #      set-up in ~/tracker is offered instead of a second copy.
-#   7. Installs Threadline's parts and starts the guided set-up.
+#   7. Installs Threadline's parts, waits for the background downloads of
+#      steps 2 and 4, and starts the guided set-up.
+#
+# The background downloads write what they print to log files in a temporary
+# folder. When one fails, its log is also added to install.log in the copy's
+# folder, which git ignores, so it can be read or sent later.
 #
 # How the terminal is kept: with "curl | sh", the shell reads this script from
 # the pipe, so the keyboard is not where "stdin" points. The whole script is
@@ -88,8 +94,22 @@ LOCAL_BIN="$HOME/.local/bin"
 # Where uv puts itself, so it works in this very session.
 UV_FOLDER="${UV_INSTALL_DIR:-$HOME/.local/bin}"
 
-# Where downloads are kept while the installer runs; made in main, removed at the end.
+# The Python that Threadline runs on, downloaded in the background while you
+# sign in. Keep equal to backend/.python-version.
+PYTHON_VERSION="3.12"
+
+# Where downloads and logs are kept while the installer runs; made in main,
+# removed at the end.
 WORK_DIR=""
+
+# The process numbers of the background jobs while they run (empty otherwise).
+PYTHON_JOB=""
+CLAUDE_JOB=""
+
+# How many of a log's last lines are shown when something fails, and the file
+# in the copy's folder that keeps the whole log (git ignores *.log files).
+LOG_LINES_SHOWN=5
+INSTALL_LOG="install.log"
 
 # The permission a GitHub sign-in needs to save the daily-run file (a workflow).
 GITHUB_WORKFLOW_SCOPE="workflow"
@@ -132,7 +152,41 @@ ask_yes_no() {
 }
 
 cleanup() {
+  stop_job "$PYTHON_JOB"
+  stop_job "$CLAUDE_JOB"
   [ -z "$WORK_DIR" ] || rm -rf "$WORK_DIR"
+}
+
+# Ends background job $1 and what it started, when it is still running.
+stop_job() {
+  [ -n "$1" ] || return 0
+  if has pkill; then
+    pkill -P "$1" 2>/dev/null || true
+  fi
+  kill "$1" 2>/dev/null || true
+}
+
+# Waits for background job $1 and succeeds when it worked. Called in an "if",
+# so a failed job is answered rather than ending the installer.
+wait_for_job() {
+  [ -n "$1" ] || return 0
+  wait "$1"
+}
+
+# Shows the last lines of log $1, then keeps the whole log in install.log in
+# the copy's folder, under the heading $2, and says where it is.
+show_log() {
+  tr '\r' '\n' <"$1" | sed '/^[[:space:]]*$/d' | tail -n "$LOG_LINES_SHOWN" | sed 's/^/    /'
+  if keep_log "$1" "$2"; then
+    note "The full report is in $COPY_FOLDER/$INSTALL_LOG."
+  fi
+}
+
+# Adds log $1 to install.log in the copy's folder, under the heading $2.
+# Fails when there is no copy folder to keep it in.
+keep_log() {
+  [ -d "$COPY_FOLDER" ] || return 1
+  { printf '\n=== %s\n' "$2"; cat "$1"; } >>"$COPY_FOLDER/$INSTALL_LOG"
 }
 
 # Downloads $1 into the file $2: secure connection only, and any failure
@@ -182,10 +236,7 @@ check_curl() {
 }
 
 install_uv() {
-  if has uv; then
-    say "uv is installed."
-    return
-  fi
+  has uv && return
   say "Installing uv, the tool that runs Threadline."
   # Saved first and run second: piped straight into the shell, a failed download
   # would look like a successful empty install.
@@ -205,32 +256,65 @@ install_uv() {
     "Close this terminal, open a new one, and paste the line again."
 }
 
-# Claude Code makes the key that lets the daily run use your Claude
-# subscription. Without it the set-up still works, with the key pasted by
-# hand, so a failure here is said and the installer carries on.
-install_claude_code() {
-  if has claude || [ -x "$CLAUDE_FOLDER/claude" ]; then
-    use_claude_folder
-    say "Claude Code is installed."
+# Downloads the Python that Threadline runs on in the background, so that it
+# is there by the time Threadline's parts are installed.
+start_python_download() {
+  uv python install "$PYTHON_VERSION" >"$WORK_DIR/python.log" 2>&1 </dev/null &
+  PYTHON_JOB=$!
+}
+
+# A failed download is not serious: installing Threadline's parts downloads
+# Python itself, so this says one line and carries on.
+wait_for_python() {
+  if wait_for_job "$PYTHON_JOB"; then
+    PYTHON_JOB=""
     return
   fi
-  say "Installing Claude Code, which makes the key for your Claude subscription."
+  PYTHON_JOB=""
+  if keep_log "$WORK_DIR/python.log" "Downloading Python $PYTHON_VERSION"; then
+    note "Python did not download in advance (see $COPY_FOLDER/$INSTALL_LOG); trying again now."
+  else
+    note "Python did not download in advance; trying again now."
+  fi
+}
+
+# Claude Code makes the key that lets the daily run use your Claude
+# subscription. Without it the set-up still works, with the key pasted by
+# hand, so a failure here is said and the installer carries on. Its installer
+# needs nothing from you, so it runs in the background while you sign in to
+# GitHub, and finish_claude_code waits for it.
+start_claude_code() {
+  if has claude || [ -x "$CLAUDE_FOLDER/claude" ]; then
+    use_claude_folder
+    return
+  fi
   if ! has bash; then
-    note "Claude Code needs bash, which is missing; the set-up will ask you to paste the key."
+    say "Claude Code needs bash, which is missing; the set-up will ask you to paste the key."
     return
   fi
   # Saved first and run second, as for uv.
   claude_installer="$WORK_DIR/claude-install.sh"
   if ! download "$CLAUDE_INSTALLER" "$claude_installer"; then
-    note "Claude Code could not be downloaded; the set-up will ask you to paste the key."
+    say "Claude Code could not be downloaded; the set-up will ask you to paste the key."
     return
   fi
-  if ! bash "$claude_installer"; then
-    note "Claude Code did not install; the set-up will ask you to paste the key."
+  say "Installing Claude Code in the background."
+  bash "$claude_installer" >"$WORK_DIR/claude-code.log" 2>&1 </dev/null &
+  CLAUDE_JOB=$!
+}
+
+# Waits for the Claude Code installer started by start_claude_code, if any.
+finish_claude_code() {
+  [ -n "$CLAUDE_JOB" ] || return 0
+  if wait_for_job "$CLAUDE_JOB"; then
+    CLAUDE_JOB=""
+    use_claude_folder
+    has claude || say "Claude Code cannot be found yet; the set-up will ask you to paste the key."
     return
   fi
-  use_claude_folder
-  has claude || note "Claude Code cannot be found yet; the set-up will ask you to paste the key."
+  CLAUDE_JOB=""
+  say "Claude Code did not install; the set-up will ask you to paste the key."
+  show_log "$WORK_DIR/claude-code.log" "Installing Claude Code"
 }
 
 # The installer adds Claude Code to future terminals, or says how; this session needs it now.
@@ -263,10 +347,7 @@ version_at_least() {
 install_github_cli() {
   if has gh; then
     version="$(github_cli_version)"
-    if version_at_least "$version" "$GITHUB_CLI_MINIMUM"; then
-      say "The GitHub tool (gh) is installed."
-      return
-    fi
+    version_at_least "$version" "$GITHUB_CLI_MINIMUM" && return
     say "Updating the GitHub tool (gh)."
     note "Version ${version:-unknown} is older than the $GITHUB_CLI_MINIMUM that Threadline needs."
   else
@@ -438,8 +519,9 @@ ensure_workflow_permission() {
     *,"$GITHUB_WORKFLOW_SCOPE",*) return 0 ;;
   esac
   say "Your GitHub sign-in needs one more permission, to save the daily-run file."
-  note "A browser window opens: follow what it says."
-  gh auth refresh --hostname github.com --scopes "$GITHUB_WORKFLOW_SCOPE" \
+  note "A browser window opens. The code is on your clipboard: paste it on the GitHub page."
+  # --clipboard is in every GitHub tool since well before GITHUB_CLI_MINIMUM.
+  gh auth refresh --hostname github.com --clipboard --scopes "$GITHUB_WORKFLOW_SCOPE" \
     || stop "The extra GitHub permission was not added." \
       "Run 'gh auth login --scopes $GITHUB_WORKFLOW_SCOPE' (if you set GH_TOKEN, give that token" \
       "the '$GITHUB_WORKFLOW_SCOPE' permission), then paste the line again."
@@ -482,13 +564,14 @@ ensure_git_identity() {
 
 sign_in_to_github() {
   if gh auth status >/dev/null 2>&1; then
-    say "You are signed in to GitHub."
     ensure_workflow_permission
   else
-    say "Signing you in to GitHub: a browser window opens, follow what it says."
-    note "Before you click Authorize, check the account name at the top of the GitHub page:"
-    note "if it is not the account you want Threadline on, click 'Use a different account'."
-    gh auth login --hostname github.com --web --git-protocol https \
+    say "Signing you in to GitHub in the browser."
+    note "The code is on your clipboard: paste it on the GitHub page."
+    note "Check the account name at the top before you click Authorize ('Use a different account' if it is wrong)."
+    # The installer has made sure the GitHub tool is at least GITHUB_CLI_MINIMUM,
+    # and every version since well before that has --clipboard.
+    gh auth login --hostname github.com --web --clipboard --git-protocol https \
       --scopes "$GITHUB_WORKFLOW_SCOPE" \
       || stop "The GitHub sign-in did not finish." "Paste the line again to retry."
   fi
@@ -618,19 +701,29 @@ get_copy() {
   download_copy
 }
 
-start_setup() {
+# Installs what Threadline needs to run, in the copy's backend folder, once
+# the background download of Python is over.
+install_threadline_parts() {
   [ -f "$COPY_FOLDER/backend/pyproject.toml" ] || stop "$COPY_FOLDER does not hold Threadline's files." \
     "Move or rename that folder, then paste the line again."
-  say "Installing Threadline's parts. The first time, this can download Python and take a few minutes."
+  say "Installing Threadline's parts. The first time, this can take a few minutes."
   cd "$COPY_FOLDER/backend"
-  uv sync
-  say "Starting the guided set-up. From now on it asks you what it needs."
+  wait_for_python
+  parts_log="$WORK_DIR/threadline-parts.log"
+  if uv sync >"$parts_log" 2>&1 </dev/null; then
+    return
+  fi
+  show_log "$parts_log" "Installing Threadline's parts"
+  stop "Threadline's parts could not be installed." "Paste the line again to retry."
+}
+
+start_setup() {
   shown_folder="$COPY_FOLDER"
   case "$COPY_FOLDER" in
     "$HOME"/*) shown_folder="~${COPY_FOLDER#"$HOME"}" ;;
   esac
-  note "To come back later: open a terminal, type 'cd $shown_folder/backend', then"
-  note "'uv run tracker setup'."
+  say "Starting the guided set-up; it asks you what it needs."
+  note "To come back later, open a terminal and type: cd $shown_folder/backend && uv run tracker setup"
   # exec replaces this shell, so the exit trap would never run.
   cleanup
   exec uv run tracker setup
@@ -639,13 +732,20 @@ start_setup() {
 main() {
   WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/threadline-install.XXXXXX")"
   trap cleanup EXIT
+  # Ctrl-C and a closed terminal end the installer through its exit trap, which
+  # also stops the background jobs (they do not get Ctrl-C themselves).
+  trap 'exit 130' HUP INT TERM
+  say "Getting Threadline ready on this computer."
   check_git
   check_curl
   install_uv
+  start_python_download
   install_github_cli
-  install_claude_code
+  start_claude_code
   sign_in_to_github
   get_copy
+  install_threadline_parts
+  finish_claude_code
   start_setup
 }
 

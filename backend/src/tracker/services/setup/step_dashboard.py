@@ -4,7 +4,7 @@ By default the owner uses Threadline's shared dashboard: one page for every
 owner, with nothing to create and no key to paste. The data stays in the
 owner's own Supabase project; a personal link tells the page which project to
 open (see ``tracker.domain.dashboard_link``). The step shows that link and
-opens it once.
+opens it once; an express run does that in its closing lines instead.
 
 The owner may publish their own copy on Netlify instead (``netlify_publish``),
 which an owner who already has a Netlify site is offered first, so running the
@@ -62,7 +62,7 @@ class DashboardStep:
             ValidationFailedError: If no dashboard is chosen at all, so a full
                 set-up stops here and carries on from here next time.
         """
-        ctx.io.say("Your dashboard is a private web page: open it on your computer or your phone.")
+        ctx.detail("Your dashboard is a private web page: open it on your computer or your phone.")
         address = await _chosen_address(ctx)
         link = _personal_link(ctx) if address == HOSTED_DASHBOARD_URL else None
         await _save(ctx, address)
@@ -109,8 +109,6 @@ async def _chosen_address(ctx: SetupContext) -> str:
             return HOSTED_DASHBOARD_URL
         return await _hosted_elsewhere(ctx)
     if ctx.session.express:
-        io.say("You get Threadline's shared dashboard: nothing to create, and only you can")
-        io.say(f"sign in to your data. Your own copy instead: uv run tracker setup {ADDRESS_STEP}")
         return HOSTED_DASHBOARD_URL
     if _shared_wanted(ctx):
         return HOSTED_DASHBOARD_URL
@@ -132,7 +130,13 @@ def _shared_wanted(ctx: SetupContext) -> bool:
 
 
 def _give_personal_link(ctx: SetupContext, link: str) -> None:
-    """Show the personal link, put it on the clipboard and open it once."""
+    """Show the personal link, put it on the clipboard and open it once.
+
+    An express run leaves that to its closing lines, once the set-up is done,
+    so the dashboard does not open while there is still something to do here.
+    """
+    if ctx.session.express:
+        return
     io = ctx.io
     io.say("Your personal link opens your dashboard on any computer or phone:")
     io.say(f"  {link}")
@@ -217,7 +221,7 @@ async def point_supabase_at(ctx: SetupContext, address: str) -> None:
     """
     ref = values.project_ref(ctx.require("SUPABASE_URL", StepName.SUPABASE))
     if await _pointed_through_the_api(ctx, ref, address):
-        ctx.io.say("Supabase's sign-in links now open your dashboard.")
+        ctx.detail("Supabase's sign-in links now open your dashboard.")
         return
     _point_by_hand(ctx, ref, address)
 
@@ -251,9 +255,9 @@ async def _pointed_through_the_api(ctx: SetupContext, ref: str, address: str) ->
 def _say_redirect_change(ctx: SetupContext, entry: str, known: tuple[str, ...]) -> None:
     """Tell which Redirect URL was added, or that it was already there."""
     if entry in known:
-        ctx.io.say(f"Supabase's redirect addresses already hold {entry}.")
+        ctx.detail(f"Supabase's redirect addresses already hold {entry}.")
         return
-    ctx.io.say(f"Added {entry} to Supabase's redirect addresses.")
+    ctx.detail(f"Added {entry} to Supabase's redirect addresses.")
     if known:
         ctx.io.say("The ones you already had were left as they were.")
 

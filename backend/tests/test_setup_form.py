@@ -171,6 +171,18 @@ def test_form_io_keeps_its_paste_field_rather_than_watching_the_clipboard() -> N
     assert echoed == ["? Paste the Gmail app password"]
 
 
+def test_form_io_asks_for_a_code_in_a_text_field_rather_than_watching_the_clipboard() -> None:
+    talk = Conversation()
+    echoed: list[str] = []
+    io = FormIO(talk, echoed.append)
+    answer_soon(talk, "77635001")
+
+    answer = io.ask_or_copied("Verification code from the Supabase page", lambda _text: True)
+
+    assert answer == SecretAnswer("77635001", copied=False)
+    assert echoed == ["? Verification code from the Supabase page"]
+
+
 def test_form_io_falls_back_to_the_default_on_an_empty_answer() -> None:
     talk = Conversation()
     io = FormIO(talk, lambda _: None)

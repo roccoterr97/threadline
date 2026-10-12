@@ -9,6 +9,11 @@ a code the Claude page may show. The key is checked by its shape
 (``claude_key``) and handed on exactly as a pasted one is: straight to GitHub,
 never written anywhere. Anything that goes wrong ends in one plain line and the
 paste prompt of before.
+
+A full run makes the key earlier when it can, while Supabase is still starting
+a new project (:func:`make_while_project_starts`), so the owner's last click
+does not wait for the database. The key is then held in this run's memory
+until the GitHub step sends it.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from pydantic import SecretStr
 
 from tracker.services.setup.claude_key import ask_claude_key, claude_key_problem
 from tracker.services.setup.context import SetupContext
+from tracker.services.setup.github_copy import linked_copy
 from tracker.services.setup.ports import ClaudeCodeState, ClaudeKeyScreen, SetupIO
 from tracker.shared.constants.claude import (
     CLAUDE_CODE_SETUP_PAGE,
@@ -74,6 +80,14 @@ class _OwnerTold:
         self._io.say("If the Claude page shows a code, paste it here and press Enter.")
 
 
+#: What follows a key that was not made, at the GitHub step and while the project starts.
+_PASTE_IT: Final[str] = "Paste it by hand instead."
+_LATER: Final[str] = "It is made again at the end."
+
+#: Said before the key is made while Supabase still starts the project.
+MEANWHILE_KEY: Final[str] = "Supabase is still starting, so meanwhile, the Claude key."
+
+
 class KeyNotTaken(StrEnum):
     """Why a key that ``claude setup-token`` ended with was not taken."""
 
@@ -105,6 +119,10 @@ def claude_key_for_github(ctx: SetupContext, repository: str | None) -> SecretSt
     Raises:
         ValidationFailedError: If every pasted key was not whole.
     """
+    held = ctx.session.claude_key
+    if held is not None:
+        ctx.session.claude_key = None
+        return held
     has_key = repository is not None and claude_key_on_github(ctx, repository) is True
     if not _claude_code_ready(ctx):
         return ask_claude_key(ctx)
@@ -116,6 +134,29 @@ def claude_key_for_github(ctx: SetupContext, repository: str | None) -> SecretSt
         ctx.io.say(f"To make a new one: {_NEW_KEY_COMMAND}")
         return None
     return ask_claude_key(ctx)
+
+
+async def make_while_project_starts(ctx: SetupContext) -> None:
+    """Make the Claude key while Supabase still starts the project, for the GitHub step.
+
+    Only a full express run does it, only when Claude Code can make the key
+    here, and only for the owner's own copy that holds no key yet: an express
+    run keeps a key GitHub already has. A key that is not made is said in one
+    line, and the GitHub step makes it as usual.
+
+    Args:
+        ctx: The set-up's context; the key is held in its session, never written.
+    """
+    if ctx.session.named_step is not None or not ctx.session.express:
+        return
+    copy = linked_copy(ctx)
+    if copy is None or not copy.confirmed or claude_key_on_github(ctx, copy.name) is not False:
+        return
+    if ctx.gateways.claude_key_maker.state() is not ClaudeCodeState.READY:
+        return
+    ctx.io.say("")
+    ctx.io.say(MEANWHILE_KEY)
+    ctx.session.claude_key = _make_claude_key(ctx, then=_LATER)
 
 
 def claude_key_on_github(ctx: SetupContext, repository: str) -> bool | None:
@@ -136,16 +177,16 @@ def _claude_code_ready(ctx: SetupContext) -> bool:
     return state is not ClaudeCodeState.UNSUPPORTED
 
 
-def _make_claude_key(ctx: SetupContext) -> SecretStr | None:
-    """Run ``claude setup-token`` and take its key; ``None`` to paste it instead."""
+def _make_claude_key(ctx: SetupContext, *, then: str = _PASTE_IT) -> SecretStr | None:
+    """Run ``claude setup-token`` and take its key; ``None``, said with ``then``, when not made."""
     ctx.io.say("A Claude page opens in your browser. Sign in if it asks, then click Authorize.")
-    ctx.io.say(f"The set-up waits up to {_WAIT_MINUTES} minutes; the key is never shown.")
+    ctx.detail(f"The set-up waits up to {_WAIT_MINUTES} minutes; the key is never shown.")
     try:
         screen = ctx.gateways.claude_key_maker.make_key(_OwnerTold(ctx.io))
     except ClaudeKeyNotMadeError as error:
         _log.info("claude_key_not_made", reason=error.code)
-        return _paste_instead(ctx, error.message)
-    return _taken(ctx, screen)
+        return _not_made(ctx, error.message, then)
+    return _taken(ctx, screen, then)
 
 
 def _wants_new_key(ctx: SetupContext, *, has_key: bool) -> bool:
@@ -161,8 +202,8 @@ def _wants_new_key(ctx: SetupContext, *, has_key: bool) -> bool:
     return ctx.session.express or ctx.io.confirm(_OFFER, default=True)
 
 
-def _taken(ctx: SetupContext, screen: ClaudeKeyScreen) -> SecretStr | None:
-    """Take the key from Claude's screen, or say why not and fall back to pasting."""
+def _taken(ctx: SetupContext, screen: ClaudeKeyScreen, then: str) -> SecretStr | None:
+    """Take the key from Claude's screen, or say why not and what follows."""
     key = key_from_screen(screen.text.get_secret_value(), screen.columns)
     if screen.exit_code != 0:
         reason = KeyNotTaken.STOPPED
@@ -172,17 +213,16 @@ def _taken(ctx: SetupContext, screen: ClaudeKeyScreen) -> SecretStr | None:
         reason = KeyNotTaken.NOT_WHOLE
     else:
         _log.info("claude_key_made")
-        ctx.io.say(
-            "Got the Claude key. It goes straight to GitHub and is not kept on this computer."
-        )
+        ctx.io.say("Got the Claude key.")
+        ctx.detail("It goes straight to GitHub and is not kept on this computer.")
         return SecretStr(key)
     _log.info("claude_key_not_made", reason=reason.value)
-    return _paste_instead(ctx, _NOT_TAKEN_REASONS[reason])
+    return _not_made(ctx, _NOT_TAKEN_REASONS[reason], then)
 
 
-def _paste_instead(ctx: SetupContext, reason: str) -> None:
-    """Say in one line that the key was not made, before the paste prompt."""
-    ctx.io.say(f"The key could not be made here ({reason}). Paste it by hand instead.")
+def _not_made(ctx: SetupContext, reason: str, then: str) -> None:
+    """Say in one line that the key was not made, and what follows."""
+    ctx.io.say(f"The key could not be made here ({reason}). {then}")
 
 
 def key_from_screen(text: str, columns: int) -> str | None:

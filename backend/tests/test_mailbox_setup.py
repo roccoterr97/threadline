@@ -116,7 +116,9 @@ async def test_a_copied_gmail_password_is_picked_up_without_being_pasted(copied:
     assert world.mailbox.checked[0][1] == GOOD_APP_PASSWORD
     assert world.mailbox.saved == {GMAIL: GOOD_APP_PASSWORD}
     said = world.io.said
-    assert "Copy the 16-letter password Google shows; the set-up picks it up by itself." in said
+    assert "Then copy the 16-letter password Google shows; the set-up picks it up by itself." in (
+        said
+    )
     assert "Picked up the password from your clipboard, and emptied the clipboard." in said
     assert world.io.copied[-1] == ""
     assert world.io.secret_prompts == [
@@ -171,7 +173,7 @@ async def test_an_icloud_password_is_picked_up_in_apples_shape() -> None:
     assert world.mailbox.saved == {"sam@icloud.com": "wxyz-wxyz-wxyz-wxyz"}
     assert world.io.opened == ["https://account.apple.com"]
     said = world.io.said
-    assert "Copy the 16-letter password Apple shows; the set-up picks it up by itself." in said
+    assert "Then copy the 16-letter password Apple shows; the set-up picks it up by itself." in said
     assert not any("not available" in line for line in said)
 
 

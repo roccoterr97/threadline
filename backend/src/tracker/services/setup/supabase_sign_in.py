@@ -1,8 +1,10 @@
 """Sign in to Supabase in the browser, the way Supabase's own tool does.
 
 Instead of making an access token on Supabase's website and pasting it, the
-owner clicks Authorize on a Supabase page and types back the short code it
-shows. Supabase then makes a normal, full-access token and hands it over
+owner clicks Authorize on a Supabase page and copies the short code it shows:
+where the conversation can watch the clipboard, the code is picked up as soon
+as it is copied (only a code newly copied, never what was there before), and
+typing it works all the while. Supabase then makes a normal, full-access token and hands it over
 sealed for a key that only this computer holds (see
 :mod:`tracker.infrastructure.supabase_sign_in_crypto`), so no server of ours
 ever sees it. The token is kept in memory for this run only, exactly like a
@@ -16,6 +18,7 @@ stops the set-up.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Final
 from uuid import uuid4
@@ -32,6 +35,7 @@ from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.shared.constants.setup import (
     SUPABASE_BROWSER_SIGN_IN_PAGE,
+    SUPABASE_SIGN_IN_CODE_PATTERN,
     SUPABASE_SIGN_IN_TOKEN_PREFIX,
     SUPABASE_TOKENS_PAGE,
 )
@@ -45,6 +49,14 @@ from tracker.shared.logging import get_logger
 
 #: The question for the code the Supabase page shows; it is not secret.
 CODE_PROMPT: Final[str] = "Verification code from the Supabase page"
+
+#: The same question while the clipboard is watched for the code.
+WAITING_PROMPT: Final[str] = "Waiting for the copied code, or type it here"
+
+#: Said once the code was picked up from the clipboard.
+CODE_PICKED_UP: Final[str] = "Picked up the code from your clipboard."
+
+_CODE: Final[re.Pattern[str]] = re.compile(SUPABASE_SIGN_IN_CODE_PATTERN)
 
 #: Said when the code was refused every time, before the paste route starts.
 CODE_REFUSED: Final[str] = "Supabase did not accept the code, so let's paste a token instead."
@@ -95,14 +107,16 @@ async def sign_in_with_browser(ctx: SetupContext) -> SecretStr | None:
         the browser route did not work and a pasted token should be asked for.
     """
     sign_in = _new_sign_in(ctx)
-    _explain(ctx)
+    watching = ctx.io.watches_clipboard()
+    _explain(ctx, watching=watching)
     ctx.io.open_page(sign_in.page_url)
-    token = await _token_from_code(ctx, sign_in)
+    token = await _token_from_code(ctx, sign_in, watching=watching)
     if token is None or not await _proven(ctx, token):
         return None
     ctx.session.supabase_token_name = sign_in.token_name
-    ctx.io.say("Signed in to Supabase. Threadline keeps this access in memory for this run only.")
-    ctx.io.say(
+    ctx.io.say("Signed in to Supabase.")
+    ctx.detail("Threadline keeps this access in memory for this run only.")
+    ctx.detail(
         f"Supabase lists it under Access Tokens as '{sign_in.token_name}'; "
         "you can delete it there once the set-up is finished."
     )
@@ -136,19 +150,46 @@ def _new_sign_in(ctx: SetupContext) -> BrowserSignIn:
     )
 
 
-def _explain(ctx: SetupContext) -> None:
-    """Say what happens on the Supabase page."""
+def _explain(ctx: SetupContext, *, watching: bool) -> None:
+    """Say what happens on the Supabase page, and how its code comes back."""
     io = ctx.io
-    io.say("A Supabase page opens. Sign in if it asks, then click 'Authorize'.")
-    io.say("The page may mention the 'Supabase CLI': that is expected, Threadline signs in")
-    io.say("the same way. Supabase then shows a short verification code: type it here.")
+    io.say("A Supabase page opens: sign in if it asks, then click 'Authorize'. It names the")
+    io.say("'Supabase CLI': that is expected, Threadline signs in the same way.")
+    if watching:
+        io.say("Then copy the code Supabase shows; the set-up picks it up by itself.")
+        return
+    io.say("Supabase then shows a short verification code: type it here.")
 
 
-async def _token_from_code(ctx: SetupContext, sign_in: BrowserSignIn) -> SecretStr | None:
+def looks_like_code(text: str) -> bool:
+    """Whether copied text has the shape of the code the Supabase page shows.
+
+    Args:
+        text: What is on the clipboard.
+
+    Returns:
+        ``True`` for 6 to 10 letters and digits, give or take spaces around them.
+    """
+    return _CODE.fullmatch(text.strip()) is not None
+
+
+def _ask_code(ctx: SetupContext, *, watching: bool) -> str:
+    """Ask for the code once: picked up when copied, or typed."""
+    if not watching:
+        return ctx.io.ask(CODE_PROMPT, exact=True)
+    answer = ctx.io.ask_or_copied(WAITING_PROMPT, looks_like_code)
+    if answer.copied:
+        ctx.io.say(CODE_PICKED_UP)
+    return answer.value
+
+
+async def _token_from_code(
+    ctx: SetupContext, sign_in: BrowserSignIn, *, watching: bool
+) -> SecretStr | None:
     """Ask for the code until Supabase accepts it, then open the sealed token."""
     try:
         sealed = await ctx.ask_until_accepted(
-            lambda: ctx.io.ask(CODE_PROMPT, exact=True),
+            lambda: _ask_code(ctx, watching=watching),
             lambda raw: _collect(ctx, sign_in.session_id, raw),
         )
         return open_sealed_token(sign_in.keys, sealed)

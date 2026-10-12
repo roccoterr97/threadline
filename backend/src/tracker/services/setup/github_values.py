@@ -40,13 +40,13 @@ def save_on_github(
     github = ctx.gateways.github
     for name in secrets:
         github.set_secret(repository, name, SecretStr(ctx.env.get(name) or ""))
-        ctx.io.say(f"  secret {name} saved")
+        ctx.detail(f"  secret {name} saved")
     if claude_key is not None:
         github.set_secret(repository, CLAUDE_TOKEN_SECRET, claude_key)
-        ctx.io.say(f"  secret {CLAUDE_TOKEN_SECRET} saved (it was not written anywhere else)")
+        ctx.detail(f"  secret {CLAUDE_TOKEN_SECRET} saved (it was not written anywhere else)")
     for name in variables:
         github.set_variable(repository, name, ctx.env.get(name) or "")
-        ctx.io.say(f"  variable {name} saved")
+        ctx.detail(f"  variable {name} saved")
 
 
 def offer_to_send(ctx: SetupContext, names: Iterable[str], *, ask_first: bool = True) -> None:
