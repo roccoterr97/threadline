@@ -12,6 +12,27 @@ accounts are needed now, GitHub and Supabase.
 
 ### Added
 
+- Four more sources, each optional and read-only, each one command:
+  - **Google Calendar** (`tracker setup google-calendar`): read from the
+    calendar's secret address in iCal format, with no Google sign-in; any
+    private `.ics` address works too. Outlook and Google meetings now share one
+    event model and one filing routine.
+  - **Telegram** (`tracker setup telegram`): one-to-one chats with people, read
+    with the owner's own Telegram app (my.telegram.org) and a login made once.
+    Nothing is sent and nothing is marked as read.
+  - **Slack** (`tracker setup slack`): direct and group direct messages,
+    Slack Connect included, from one or several workspaces, through a small
+    read-only app the owner creates from one prefilled link.
+  - **Microsoft Teams chats** (`tracker setup teams`): one-to-one and group
+    chats of a work or school account, through a Teams sign-in of its own that
+    leaves the Outlook sign-in untouched.
+
+  People in Slack and Teams are filed under their e-mail address, so their
+  chats join the same person's e-mail record. Each source is its own run step
+  with its own plain-language problem messages and `tracker doctor` check;
+  database file `0018_more_channels.sql` adds the new channels and steps. The
+  dashboard labels the new channels and shows a subject line only for e-mail
+  and calendar messages.
 - A shared dashboard at <https://app.threadlineapp.com>. `tracker setup
   dashboard` offers it first: no Netlify account and no key. The owner gets a
   personal link (`#project=<ref>&key=<publishable key>`, never a secret key)

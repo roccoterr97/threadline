@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TIMELINE_MESSAGE_LIMIT } from '../constants/dashboard';
 import { sampleConversations } from '../test/__fixtures__/sampleData';
-import { previewMessage, timelineIsCut } from './timeline';
+import { hasSubjectLine, previewMessage, timelineIsCut } from './timeline';
 
 describe('previewMessage', () => {
   it('leaves a short message whole', () => {
@@ -57,5 +57,18 @@ describe('timelineIsCut', () => {
   it('is false while every conversation is below the limit', () => {
     expect(timelineIsCut([conversationOf(TIMELINE_MESSAGE_LIMIT - 1), conversationOf(0)])).toBe(false);
     expect(timelineIsCut([])).toBe(false);
+  });
+});
+
+describe('hasSubjectLine', () => {
+  it('shows a subject for e-mail and calendar', () => {
+    expect(hasSubjectLine('email')).toBe(true);
+    expect(hasSubjectLine('calendar')).toBe(true);
+  });
+
+  it('shows none for chats', () => {
+    for (const channel of ['linkedin', 'telegram', 'slack', 'teams'] as const) {
+      expect(hasSubjectLine(channel)).toBe(false);
+    }
   });
 });

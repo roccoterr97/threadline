@@ -154,12 +154,13 @@ cd backend && uv run tracker collect all --record --refresh
 ```
 
 This one command reads LinkedIn, every mailbox the owner set up (Outlook, Gmail
-or another mailbox over IMAP) and the Outlook calendar at the same time, stores
-them one after the other, and **records each source as its own step of the
-run**. Do not run `tracker run step` for anything in this step.
+or another mailbox over IMAP), the Outlook calendar and Google Calendar at the
+same time, stores them one after the other, and **records each source as its
+own step of the run**. Do not run `tracker run step` for anything in this step.
 
 It prints one block per source, starting `channel: linkedin`, `channel: email`
-and `channel: calendar`. Under each you see one of four things:
+and `channel: calendar`, twice: the first calendar block is the Outlook
+calendar, the second Google Calendar. Under each you see one of four things:
 
 - **Counts** — five lines including `conversations found: N (new: N, noise: N)`
   and `messages found: N (new: N)`. The source worked. All mailboxes together
@@ -171,20 +172,23 @@ and `channel: calendar`. Under each you see one of four things:
   the newest was read and stored, the oldest skipped — nothing to do), or, when
   one of several mailboxes failed, that mailbox's code from the list below.
 - **`not configured — skipped`** — the owner has not set that source up. That is
-  not a failure and nothing is recorded for it. Say "LinkedIn not set up" or
-  "Calendar not set up (it needs Outlook)" in your report.
+  not a failure and nothing is recorded for it. Say "LinkedIn not set up",
+  "Calendar not set up (it needs Outlook)" or "Google Calendar not set up" in
+  your report.
 - **`failed · code=<code>`** — that source failed, and the failure is already
   recorded. The others were still read and stored. The codes you may see are
   `source_auth_failed` (the key or sign-in was refused),
   `mailbox_password_refused` (a Gmail or other IMAP mailbox refused its app
   password), `source_unavailable` (the other service did not answer),
-  `database_unavailable`, `configuration_invalid`, `validation_failed` and
-  `source_failed` (that source stopped on something unexpected).
+  `database_unavailable`, `configuration_invalid`, `validation_failed`,
+  `download_too_large` (the Google calendar file is larger than Threadline
+  reads) and `source_failed` (that source stopped on something unexpected).
 
 It ends with `sources collected: N` — how many sources were read and stored,
 in full or in part — and `steps recorded`.
 
-A `source_auth_failed` means LinkedIn or Microsoft refused the stored key;
+A `source_auth_failed` means LinkedIn or Microsoft refused the stored key, or
+Google Calendar no longer accepts its secret address;
 `mailbox_password_refused` means Gmail (or another IMAP mailbox) refused its
 app password. **Do not attempt to sign in, to renew a key or to make a new
 password** — all need the owner in front of a screen. Carry on; the summary
@@ -381,7 +385,7 @@ the files yourself and do not run `tracker ai clean`.
 Six short lines, in plain English, for somebody who does not write software:
 
 1. what was collected (the counts step 2 printed for each source, or "LinkedIn
-   not set up", "Calendar not set up"),
+   not set up", "Calendar not set up", "Google Calendar not set up"),
    and how many people were merged and how many new questions were asked in
    step 3;
 2. what was judged (the line from `/assess`);

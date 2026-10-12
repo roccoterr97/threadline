@@ -253,10 +253,14 @@ async def test_the_step_is_not_done_without_a_project_or_a_connection() -> None:
     assert not await RefreshStep().is_done(offline)
 
 
-async def test_refresh_is_an_extra_between_linkedin_and_the_cloud_alternative() -> None:
+async def test_refresh_is_an_extra_between_the_calendar_and_the_cloud_alternative() -> None:
     names = [step.name for step in extra_steps()]
 
-    assert names == [StepName.LINKEDIN, StepName.REFRESH, StepName.CLOUD]
+    assert names == [
+        StepName.LINKEDIN, StepName.GOOGLE_CALENDAR, StepName.TELEGRAM,
+        StepName.SLACK, StepName.TEAMS,
+        StepName.REFRESH, StepName.CLOUD,
+    ]  # fmt: skip
 
 
 async def test_the_function_address_is_below_the_project() -> None:

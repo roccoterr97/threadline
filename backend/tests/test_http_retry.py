@@ -155,3 +155,37 @@ async def test_a_sign_in_is_retried_only_before_it_was_sent() -> None:
                 source="microsoft sign-in", retry_after_send=False, sleep=sleeper,
             )
     assert calls["read"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_longer_wait_than_the_caller_sits_out_is_handed_back_at_once() -> None:
+    calls = {"n": 0}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(429, headers={"Retry-After": "120"})
+
+    sleeper = _Sleeper()
+    async with _client(httpx.MockTransport(handle)) as client:
+        response = await get_with_retries(
+            client, "https://example.test/x", source="slack", sleep=sleeper, longest_wait=60.0
+        )
+
+    assert response.status_code == 429
+    assert calls["n"] == 1
+    assert sleeper.waits == []
+
+
+@pytest.mark.asyncio
+async def test_a_wait_within_what_the_caller_sits_out_is_retried() -> None:
+    answers = [httpx.Response(429, headers={"Retry-After": "30"}), httpx.Response(200)]
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return answers.pop(0)
+
+    async with _client(httpx.MockTransport(handle)) as client:
+        response = await get_with_retries(
+            client, "https://example.test/x", source="slack", sleep=_Sleeper(), longest_wait=60.0
+        )
+
+    assert response.status_code == 200

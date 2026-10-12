@@ -6,6 +6,10 @@ receives a long-lived key. That key is stored encrypted in the database, because
 Microsoft returns a **new** one on every renewal and a value in ``.env`` would
 be stale within a day.
 
+There are two sign-ins, each with its own permissions and its own stored key:
+Outlook (mailbox and calendar) and Teams chats, which only a work or school
+account has. Keeping the keys apart means renewing one never touches the other.
+
 The ordering rule this module exists to guarantee:
 
     **The new long-lived key is saved before the renewed access key is handed
@@ -25,7 +29,12 @@ from typing import Any, Final, Self
 
 import httpx
 
-from tracker.infrastructure.secret_store import MICROSOFT_REFRESH_TOKEN, SecretStore
+from tracker.infrastructure.microsoft.refusals import named_refusal
+from tracker.infrastructure.secret_store import (
+    MICROSOFT_REFRESH_TOKEN,
+    MICROSOFT_TEAMS_REFRESH_TOKEN,
+    SecretStore,
+)
 from tracker.shared.clock import Clock
 from tracker.shared.config import Settings
 from tracker.shared.constants.collection import (
@@ -36,6 +45,8 @@ from tracker.shared.constants.collection import (
     MICROSOFT_DEFAULT_TENANT,
     MICROSOFT_LOGIN_HOST,
     MICROSOFT_SCOPE,
+    MICROSOFT_TEAMS_SCOPE,
+    MICROSOFT_TEAMS_TENANT,
 )
 from tracker.shared.errors import SourceAuthError, SourceUnavailableError
 from tracker.shared.http import request_with_retries
@@ -76,6 +87,41 @@ Sleeper = Callable[[float], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
+class MicrosoftSignIn:
+    """What one sign-in is for.
+
+    Attributes:
+        scope: The permissions it asks for, renewal included.
+        secret_name: Where its long-lived key is stored.
+        redo_command: What the owner runs to sign in again.
+        names_refusals: Whether a refusal the organisation or the kind of
+            account causes gets an error of its own (see
+            :mod:`tracker.infrastructure.microsoft.refusals`).
+    """
+
+    scope: str
+    secret_name: str
+    redo_command: str
+    names_refusals: bool = False
+
+
+#: The Outlook mailbox and calendar: personal accounts by default.
+OUTLOOK_SIGN_IN: Final[MicrosoftSignIn] = MicrosoftSignIn(
+    scope=MICROSOFT_SCOPE,
+    secret_name=MICROSOFT_REFRESH_TOKEN,
+    redo_command="tracker microsoft login",
+)
+
+#: Teams chats: work or school accounts only.
+TEAMS_SIGN_IN: Final[MicrosoftSignIn] = MicrosoftSignIn(
+    scope=MICROSOFT_TEAMS_SCOPE,
+    secret_name=MICROSOFT_TEAMS_REFRESH_TOKEN,
+    redo_command="uv run tracker setup teams",
+    names_refusals=True,
+)
+
+
+@dataclass(frozen=True, slots=True)
 class DeviceCodePrompt:
     """What the owner must do to finish signing in.
 
@@ -110,6 +156,7 @@ class MicrosoftAuthenticator:
         *,
         client_id: str = MICROSOFT_CLIENT_ID,
         tenant: str = MICROSOFT_DEFAULT_TENANT,
+        sign_in: MicrosoftSignIn = OUTLOOK_SIGN_IN,
     ) -> None:
         """Bind the authenticator to the encrypted store and a clock.
 
@@ -118,10 +165,12 @@ class MicrosoftAuthenticator:
             clock: Supplies the moment an access key stops being usable.
             client_id: The registered application the sign-in is made through.
             tenant: Which Microsoft accounts may sign in.
+            sign_in: Which of the two sign-ins this is.
         """
         self._secret_store = secret_store
         self._clock = clock
         self._client_id = client_id
+        self._sign_in = sign_in
         self._device_code_url, self._token_url = login_urls(tenant)
         self._http: httpx.AsyncClient | None = None
         self._access_key: _AccessKey | None = None
@@ -144,6 +193,26 @@ class MicrosoftAuthenticator:
             clock,
             client_id=settings.microsoft_client_id,
             tenant=settings.microsoft_tenant,
+        )
+
+    @classmethod
+    def for_teams(cls, secret_store: SecretStore, clock: Clock, settings: Settings) -> Self:
+        """Build the Teams authenticator: the settings' application, work accounts only.
+
+        Args:
+            secret_store: Where the long-lived Teams key lives, encrypted.
+            clock: Supplies the moment an access key stops being usable.
+            settings: The process configuration.
+
+        Returns:
+            The authenticator.
+        """
+        return cls(
+            secret_store,
+            clock,
+            client_id=settings.microsoft_client_id,
+            tenant=MICROSOFT_TEAMS_TENANT,
+            sign_in=TEAMS_SIGN_IN,
         )
 
     async def __aenter__(self) -> Self:
@@ -174,7 +243,7 @@ class MicrosoftAuthenticator:
         """
         payload = await self._post(
             self._device_code_url,
-            {"client_id": self._client_id, "scope": MICROSOFT_SCOPE},
+            {"client_id": self._client_id, "scope": self._sign_in.scope},
         )
         try:
             return DeviceCodePrompt(
@@ -217,7 +286,7 @@ class MicrosoftAuthenticator:
                 await sleep(prompt.interval_seconds)
                 continue
             self._store_keys(payload)
-            _log.info("microsoft_sign_in_completed")
+            _log.info("microsoft_sign_in_completed", key=self._sign_in.secret_name)
             return
         message = "Microsoft sign-in was not completed in time — run it again"
         raise SourceAuthError(message)
@@ -258,16 +327,16 @@ class MicrosoftAuthenticator:
                 to renew.
             SourceUnavailableError: If Microsoft could not be reached.
         """
-        refresh_token = self._secret_store.get_secret(MICROSOFT_REFRESH_TOKEN)
+        refresh_token = self._secret_store.get_secret(self._sign_in.secret_name)
         if not refresh_token:
-            message = "Microsoft sign-in missing — run 'tracker microsoft login' once"
+            message = f"Microsoft sign-in missing — run '{self._sign_in.redo_command}' once"
             raise SourceAuthError(message)
         payload = await self._post(
             self._token_url,
             {
                 "grant_type": "refresh_token",
                 "client_id": self._client_id,
-                "scope": MICROSOFT_SCOPE,
+                "scope": self._sign_in.scope,
                 "refresh_token": refresh_token,
             },
         )
@@ -291,8 +360,8 @@ class MicrosoftAuthenticator:
             raise SourceAuthError(message)
         refresh_token = payload.get("refresh_token")
         if isinstance(refresh_token, str) and refresh_token:
-            self._secret_store.put_secret(MICROSOFT_REFRESH_TOKEN, refresh_token)
-            _log.info("microsoft_key_rotated")
+            self._secret_store.put_secret(self._sign_in.secret_name, refresh_token)
+            _log.info("microsoft_key_rotated", key=self._sign_in.secret_name)
         self._access_key = _AccessKey(
             value=access_token,
             expires_at=self._clock.now() + timedelta(seconds=_lifetime_seconds(payload)),
@@ -317,7 +386,8 @@ class MicrosoftAuthenticator:
             The decoded payload.
 
         Raises:
-            SourceAuthError: If Microsoft refused the request.
+            SourceAuthError: If Microsoft refused the request; for a sign-in
+                that names its refusals, a subclass saying who can fix it.
             SourceUnavailableError: If Microsoft could not be reached or
                 answered something that is not JSON.
         """
@@ -344,6 +414,9 @@ class MicrosoftAuthenticator:
         if allow_pending and error_code in PENDING_ERRORS:
             return payload
         _log.error("microsoft_request_refused", status=response.status_code, reason=error_code)
+        named = named_refusal(payload) if self._sign_in.names_refusals else None
+        if named is not None:
+            raise named
         if response.status_code in {httpx.codes.BAD_REQUEST, httpx.codes.UNAUTHORIZED}:
             message = f"Microsoft refused the sign-in ({error_code}) — sign in again"
             raise SourceAuthError(message)

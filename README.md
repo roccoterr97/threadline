@@ -9,8 +9,14 @@ alive: who you are talking to, where each conversation stands, who owes whom a
 reply, and what to do next.
 
 Once a day it reads your new LinkedIn messages and your mailbox (Gmail,
-Outlook.com, iCloud, Yahoo, Fastmail or any IMAP mailbox), plus your Outlook
-calendar if you have one, throws away the noise, and groups what is left into
+Outlook.com, iCloud, Yahoo, Fastmail or any IMAP mailbox), plus, if you use
+them, your Outlook or Google calendar, your one-to-one Telegram chats, your
+Slack direct messages and your work Teams chats. It throws away the noise and
+groups what is left into one timeline per person. An AI step, run by Claude on
+your own subscription, then judges each person: the status, who is waiting on
+whom, the next action and when it is due. You see the result on a private
+dashboard, and a short summary e-mail reaches you every morning, when a
+mailbox that can send it is connected (for example Gmail with an app password).
 one timeline per person. An AI step, run by Claude on your own subscription,
 then judges each person: the status, who is waiting on whom, the next action
 and when it is due. You see the result on a private dashboard, and a short
@@ -80,7 +86,7 @@ made up.
 ## What it is, and what it is not
 
 - **It is** a personal tool: one copy per person, on accounts you own.
-- **It is** read-only. It never writes to LinkedIn or your mailbox, and never
+- **It is** read-only. It never writes to any of the places it reads, and never
   sends anything to anybody except the one summary to you.
 - **It is not** a CRM, an outreach or auto-reply tool, or a hosted service.
   Never run one copy for several people: the database has a single owner and
@@ -98,7 +104,9 @@ raising money, freelancers, people doing sales or partnership outreach.
 LinkedIn messages ─────────┐
 Gmail, Outlook or any      │
   IMAP mailbox ────────────┼─▶ collect ─▶ drop noise ─▶ group by person ─▶ Claude judges each person
-Outlook calendar ──────────┘                                                        │
+Outlook or Google calendar ┤                                                        │
+Telegram, Slack and        │                                                        │
+  Teams chats ─────────────┘                                                        │
                                                                                     ▼
                                                            your Supabase database (checked before saving)
                                                                         │
@@ -125,8 +133,12 @@ Outlook-only set-ups). The design is described in
 | A [GitHub](https://github.com) account | Your private copy of the code, and GitHub Actions, which starts the run every day. The installer adds the [GitHub CLI](https://cli.github.com) (`gh`), which signs you in, makes your copy and saves your settings | Free (2,000 Actions minutes a month for private repositories at the time of writing; a month of runs uses about 150–300) |
 | A [Supabase](https://supabase.com) account (sign up with **Continue with GitHub**) | The database and the dashboard sign-in. The set-up creates the project after one click on **Authorize**. Its built-in sign-in e-mail only reaches the address the Supabase account was registered with (or members of its organisation) unless you set up your own sending service (custom SMTP) | Free plan |
 | At least one mailbox: Gmail, Outlook.com/Hotmail, iCloud, Yahoo, Fastmail or any IMAP mailbox | The mail that is read (read-only). Gmail and the others need an app password, which also sends you the summary; Outlook needs a one-time sign-in | Free (Fastmail: a paid plan above Basic) |
-| *Optional:* a Microsoft personal account | The calendar, which is read from Outlook only for now | Free |
 | *Optional:* a LinkedIn developer app | Reading your LinkedIn messages; only for members located in the EEA or Switzerland (see below) | Free |
+| *Optional:* a Microsoft personal account | The Outlook calendar, read with the Outlook sign-in | Free |
+| *Optional:* a Google Calendar | Your meetings, read through the calendar's secret address: no Google sign-in. Any other private `.ics` address (iCloud, Fastmail, Proton) works too | Free |
+| *Optional:* a Telegram account | Reading your one-to-one Telegram chats with people (not groups, channels or bots). You make your own small app at my.telegram.org and log in once; the set-up walks you through it | Free |
+| *Optional:* a Slack workspace | Reading your Slack direct messages, through a small read-only app you create in it with one link | Free |
+| *Optional:* a work or school Microsoft account | Reading your Teams chats. Some companies block this; then only their IT admin can allow it | Free |
 | *Optional:* [Node.js](https://nodejs.org) 22 or newer | Only the manual way of switching on the dashboard's Refresh now button; also needed for the demo above | Free |
 | *Optional:* an Azure account | Only to use your own Microsoft application instead of the public one | Free |
 | *Only for the Claude cloud route:* a Gmail account connected to Claude | Sending the summary from a Claude cloud routine, when you read Outlook alone | Free |
@@ -210,9 +222,10 @@ What happens next:
 4. LinkedIn is left for later, to keep the set-up short: the last screen
    names its command (`uv run tracker setup linkedin`, about 5 minutes, for
    profiles located in the EEA or Switzerland), and once the first summary is
-   in, the dashboard and the morning e-mail offer it too. LinkedIn, the
-   dashboard's Refresh now button and the Claude cloud route are optional
-   extras: `uv run tracker setup extras`, any time. Your own copy of
+   in, the dashboard and the morning e-mail offer it too. LinkedIn,
+   Google Calendar, Telegram, Slack, Teams, the dashboard's Refresh now button
+   and the Claude cloud route are optional extras: `uv run tracker setup
+   extras`, any time. Your own copy of
    the dashboard on Netlify is optional too (`uv run tracker setup dashboard`).
    Refresh now also switches on the on-time morning start: GitHub often starts
    its scheduled runs hours late, so your Supabase project starts the daily run
@@ -244,13 +257,17 @@ information.
 |---------|--------------|
 | `tracker setup` | The guided set-up: every unfinished core step in order, then a final check of every connection. It asks only what you must do (the Supabase code, your e-mail address and its app password) and takes the usual answer for the rest, listing every choice at the end with the command that changes it. Running it again carries on where it stopped |
 | `tracker setup --ask-everything` | The same, asking every question instead of taking the usual answers |
-| `tracker setup extras` | The optional steps, in order, each skippable: `linkedin`, `refresh` and `cloud` |
-| `tracker setup <step>` | Run one step alone, even if it was done before, asking all its questions. The core steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `dashboard`, `schedule` and `github`; the extras are `linkedin`, `refresh` and `cloud` |
+| `tracker setup extras` | The optional steps, in order, each skippable: `linkedin`, `google-calendar`, `telegram`, `slack`, `teams` (only named there: run it by name), `refresh` and `cloud` |
+| `tracker setup <step>` | Run one step alone, even if it was done before, asking all its questions. The core steps, in order, are `supabase`, `encryption`, `database`, `login`, `categories`, `timezone`, `mailbox`, `microsoft`, `dashboard`, `schedule` and `github`; the extras are `linkedin`, `google-calendar`, `telegram`, `slack`, `teams`, `refresh` and `cloud` |
 | `tracker setup [<step>] --browser` | The same, asked on a page in your web browser instead of the terminal; what is said and asked is still shown in the terminal, answers never are |
 | `tracker setup supabase` | Sign in to Supabase in the browser (or paste an access token), create your project (or reuse one), and save its address and keys; the sign-in is never saved. Typing an existing project's address and keys is also offered |
 | `tracker setup mailbox` | Choose the mailbox to read (the full run asks only the address and tells the provider from it); for Gmail and other IMAP mailboxes, check an app password live and store it encrypted (for a custom provider it also asks for the sending server, SMTP host and port) |
 | `tracker setup schedule` | Write the daily time and time zone into the GitHub workflow, and into the database for the on-time morning start; commit and push the workflow only after a yes |
 | `tracker setup github` | Save your settings and the Claude key as your repository's Actions secrets and variables (with `gh`), or list the names to add by hand; settings you cleared locally are removed from GitHub too. With `gh` it then switches the workflow on and starts the first daily run after a yes (the full run does both without asking). It only ever uses your own private copy |
+| `tracker setup google-calendar` | Paste your Google Calendar's secret address in iCal format (the step shows the three clicks to copy it); it is read once to check it, saved, and sent to GitHub without a question. Enter skips |
+| `tracker setup telegram` | Make your own small Telegram app at my.telegram.org (the step shows how), then log in once with your phone number and the code Telegram sends; saved and sent to GitHub without a question |
+| `tracker setup slack` | Create a small read-only Slack app from one prefilled link, install it and paste its User OAuth Token; checked, saved and sent to GitHub. Run it again to add another workspace |
+| `tracker setup teams` | Sign in to Teams with a work or school account (its own sign-in, apart from Outlook) and switch Teams chats on, here and on GitHub. Asks nothing else |
 | `tracker setup refresh` | Switch on the dashboard's Refresh now button: deploy the `refresh-now` function and its settings through Supabase's Management API, with a GitHub key that can only start your workflow. It also switches on the on-time morning start: a timer in your database that starts the daily run at its time, every 15 minutes checking whether it is due |
 | `tracker setup cloud` | The Claude cloud route, the alternative to GitHub: what a Claude cloud routine needs |
 | `tracker doctor` | Check that every account and setting is in order |
@@ -266,6 +283,10 @@ information.
 | `tracker collect linkedin [--since YYYY-MM-DD] [--show-folders]` | Read the LinkedIn archive and store the recent conversations; `--show-folders` also prints the distinct LinkedIn folder values |
 | `tracker collect email [--since YYYY-MM-DD \| --refresh]` | Read every mailbox you set up (Outlook, Gmail…) and store the conversations worth keeping; `--refresh` reads only what is new since the mailboxes were last read successfully |
 | `tracker collect calendar` | Read the Outlook calendar and store the meetings with other people |
+| `tracker collect slack [--since YYYY-MM-DD]` | Read the direct messages of every Slack workspace you set up |
+| `tracker collect teams [--since YYYY-MM-DD]` | Read your Teams one-to-one and group chats and store the ones written in recently |
+| `tracker collect telegram [--since YYYY-MM-DD]` | Read your one-to-one Telegram chats with people and store the recent ones |
+| `tracker collect google-calendar` | Read the Google calendar from its secret address and store the meetings with other people |
 | `tracker collect all [--since YYYY-MM-DD \| --refresh] [--record] [--run ID]` | Read every source at the same time, then store them one after the other. `--record` also records each source as its step of the run and carries on past a source that failed; with `--refresh` it records into the refresh that is open, never the daily run — this is the command the daily run uses |
 | `tracker people list` | Show everybody the collectors have found, most recent first |
 | `tracker people merge` | Join the records you have confirmed are one person |
@@ -305,7 +326,7 @@ See [`docs/customising.md`](./docs/customising.md).
 |---------|--------------|
 | `tracker run start [--trigger github\|cloud\|refresh\|mac\|manual] [--prepare] [--force]` | Open today's run and print its identifier (default trigger: `cloud`). `--prepare` goes on to `tracker healthcheck` and `tracker profile apply` and ends with `ready: yes` or `ready: no` — this is how the daily run opens. It refuses while another run of the same kind is going; `--force` starts anyway and closes that one as interrupted |
 | `tracker healthcheck` | The daily run's own check of the configuration, the database and the secret store, run by `run start --prepare`. By hand, `tracker doctor` says more |
-| `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID \| --refresh]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `assess` or `summary_email`. `--refresh` records into the refresh that is open rather than the daily run |
+| `tracker run step --step STEP --result success\|failed [--found N] [--new N] [--error-code CODE] [--error-detail TEXT] [--run ID \| --refresh]` | Record what one part of the run did. `STEP` is `collect_linkedin`, `collect_email`, `collect_calendar`, `collect_google_calendar`, `collect_telegram`, `collect_slack`, `collect_teams`, `assess` or `summary_email`. `--refresh` records into the refresh that is open rather than the daily run |
 | `tracker run finish [--run ID \| --refresh] [--clean]` | Close the run with the status its steps add up to. `--refresh` closes the refresh that is open rather than the daily run. `--clean` then removes the exchanged files, as `tracker ai clean` does — this is how the daily run closes |
 | `tracker summary build [--out PATH] [--run ID] [--send-again]` | Write the morning summary to a file, ready to send, and say how it is sent (`delivery: smtp` or `gmail_connector`). When another daily run already sent today's summary it writes nothing, records the e-mail as skipped and prints `summary skipped · …`; `--send-again` builds it anyway |
 | `tracker summary send [--file PATH] [--run ID] [--send-again]` | Send that file from your own mailbox by SMTP, exactly as built and only to your configured recipient, and record the step. Like `summary build`, it skips the e-mail when today's summary already went out with another daily run, unless given `--send-again` |
@@ -334,7 +355,9 @@ waiting-on value means is defined in
   the project's authors. The Claude key goes only into your own repository's
   secrets; Threadline never stores it.
 - The mailbox and calendar are read with read-only permissions. Nothing is
-  ever written to LinkedIn or the mailbox.
+  ever written to LinkedIn, the mailbox, the calendar or any chat. The Google
+  calendar's secret address, the Telegram login and the Slack keys are kept
+  like passwords: in `.env` and as GitHub secrets, never in a log.
 - Message text is treated as untrusted input. Only a restricted helper with no
   shell and no network reads it, and its answers are validated strictly before
   anything is saved, so an e-mail saying "ignore your instructions" cannot act.

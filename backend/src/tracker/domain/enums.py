@@ -16,6 +16,9 @@ class Channel(StrEnum):
     LINKEDIN = "linkedin"
     EMAIL = "email"
     CALENDAR = "calendar"
+    TELEGRAM = "telegram"
+    SLACK = "slack"
+    TEAMS = "teams"
 
 
 class Direction(StrEnum):
@@ -97,6 +100,10 @@ class RunStep(StrEnum):
     COLLECT_LINKEDIN = "collect_linkedin"
     COLLECT_EMAIL = "collect_email"
     COLLECT_CALENDAR = "collect_calendar"
+    COLLECT_GOOGLE_CALENDAR = "collect_google_calendar"
+    COLLECT_TELEGRAM = "collect_telegram"
+    COLLECT_SLACK = "collect_slack"
+    COLLECT_TEAMS = "collect_teams"
     ASSESS = "assess"
     SUMMARY_EMAIL = "summary_email"
 

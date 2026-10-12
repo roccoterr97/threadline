@@ -15,34 +15,31 @@ Drafts and Outbox are skipped.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import TracebackType
-from typing import Any, Final, Protocol, Self
+from typing import Any, Final, Self
 from urllib.parse import quote
 
-import httpx
-
+from tracker.domain.calendar import CalendarEvent, MeetingResponse
 from tracker.domain.mail import MailMessage
+from tracker.infrastructure.microsoft.graph_session import (
+    VALUE,
+    AccessTokenProvider,
+    GraphSession,
+    parse_timestamp,
+)
 from tracker.shared.concurrency import gather_all
 from tracker.shared.constants.collection import (
     CALENDAR_FIELDS,
     GRAPH_CALENDAR_MESSAGE_TYPE,
     GRAPH_CALENDAR_RESCUE_FOLDER,
-    GRAPH_CONCURRENT_REQUESTS,
     GRAPH_EXCLUDED_FOLDERS,
-    GRAPH_MAX_PAGES,
     GRAPH_PAGE_SIZE,
-    HTTP_TIMEOUT_SECONDS,
     LIST_UNSUBSCRIBE_HEADER,
     MICROSOFT_GRAPH_URL,
     UTC_TIME_PREFERENCE,
 )
-from tracker.shared.errors import SourceAuthError, SourceUnavailableError
-from tracker.shared.http import get_with_retries
-from tracker.shared.logging import get_logger
 
 #: Fields the metadata pass asks for. Deliberately no ``body``.
 METADATA_FIELDS: Final[str] = (
@@ -61,52 +58,20 @@ PLAIN_TEXT_PREFERENCE: Final[str] = 'outlook.body-content-type="text"'
 #: else that could change the address (``/``, ``?``, ``#``, ``%``…) is encoded.
 _IDENTIFIER_SAFE_CHARACTERS: Final[str] = "="
 
-_NEXT_LINK: Final[str] = "@odata.nextLink"
-
 #: Graph writes event times with seven decimals; ``YYYY-MM-DDTHH:MM:SS`` is enough.
 _GRAPH_SECONDS_PRECISION: Final[int] = 19
-_VALUE: Final[str] = "value"
 
-_log = get_logger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class GraphEvent:
-    """One calendar event as the reader saw it, without its description.
-
-    Attributes:
-        event_id: Graph's identifier for this event or occurrence.
-        ical_uid: The identifier every calendar gives the same meeting.
-        subject: The meeting's title, empty when there is none.
-        start: When it starts, in UTC.
-        end: When it ends, in UTC.
-        organizer: The organiser, as an ``(address, name)`` pair.
-        attendees: Everybody invited, as ``(address, name)`` pairs.
-        is_cancelled: Whether the meeting was called off.
-        is_organizer: Whether the owner organised it.
-        response: The owner's answer, as Graph spells it ("accepted"…).
-        changed_at: When the event was created or last changed, in UTC.
-    """
-
-    event_id: str
-    ical_uid: str
-    subject: str
-    start: datetime
-    end: datetime
-    organizer: tuple[str, str]
-    attendees: tuple[tuple[str, str], ...]
-    is_cancelled: bool
-    is_organizer: bool
-    response: str
-    changed_at: datetime
+#: What the owner runs to sign in to the mailbox again.
+_REDO_COMMAND: Final[str] = "tracker microsoft login"
 
 
-class AccessTokenProvider(Protocol):
-    """Supplies a usable mailbox key, renewing it when it has expired."""
-
-    async def access_token(self) -> str:
-        """Return an access key that is valid right now."""
-        ...
+#: The owner's answer to an invitation, as Graph spells it; anything else is no answer.
+_GRAPH_RESPONSES: Final[dict[str, MeetingResponse]] = {
+    "accepted": MeetingResponse.ACCEPTED,
+    "tentativelyAccepted": MeetingResponse.TENTATIVE,
+    "declined": MeetingResponse.DECLINED,
+    "organizer": MeetingResponse.ORGANIZER,
+}
 
 
 class GraphMailbox:
@@ -118,17 +83,13 @@ class GraphMailbox:
         Args:
             tokens: Supplies a valid access key before every call.
         """
-        self._tokens = tokens
-        self._http: httpx.AsyncClient | None = None
-        # Callers may ask for many things at once; this is the one place that
-        # keeps the mailbox from being sent more than Microsoft accepts.
-        self._slots = asyncio.Semaphore(GRAPH_CONCURRENT_REQUESTS)
+        self._graph = GraphSession(tokens, what="mailbox", redo_command=_REDO_COMMAND)
         self._excluded_folder_ids: frozenset[str] | None = None
         self._rescue_folder_id: str | None = None
 
     async def __aenter__(self) -> Self:
         """Open the connection pool."""
-        self._http = httpx.AsyncClient(timeout=HTTP_TIMEOUT_SECONDS)
+        await self._graph.__aenter__()
         return self
 
     async def __aexit__(
@@ -138,9 +99,7 @@ class GraphMailbox:
         traceback: TracebackType | None,
     ) -> None:
         """Close the connection pool."""
-        if self._http is not None:
-            await self._http.aclose()
-            self._http = None
+        await self._graph.__aexit__(exc_type, exc_value, traceback)
 
     @property
     def window_capped(self) -> bool:
@@ -193,7 +152,7 @@ class GraphMailbox:
         )
         return [message for message, folder_id in entries if self._readable(message, folder_id)]
 
-    async def list_events(self, start: datetime, end: datetime) -> list[GraphEvent]:
+    async def list_events(self, start: datetime, end: datetime) -> list[CalendarEvent]:
         """Read the calendar between two moments, occurrences expanded.
 
         Args:
@@ -206,29 +165,25 @@ class GraphMailbox:
         Raises:
             SourceUnavailableError: If the listing never ends.
         """
-        headers = {"Prefer": UTC_TIME_PREFERENCE}
-        next_url: str | None = f"{MICROSOFT_GRAPH_URL}/me/calendarView"
-        params: dict[str, Any] | None = {
+        params: dict[str, Any] = {
             "startDateTime": _graph_moment(start),
             "endDateTime": _graph_moment(end),
             "$select": CALENDAR_FIELDS,
             "$top": GRAPH_PAGE_SIZE,
         }
-        events: list[GraphEvent] = []
-        for _ in range(GRAPH_MAX_PAGES):
-            if next_url is None:
-                return events
-            payload = await self._get(next_url, params, headers=headers)
+        events: list[CalendarEvent] = []
+        pages = self._graph.pages(
+            f"{MICROSOFT_GRAPH_URL}/me/calendarView",
+            params,
+            headers={"Prefer": UTC_TIME_PREFERENCE},
+        )
+        async for payload in pages:
             events.extend(
                 event
-                for item in payload.get(_VALUE) or []
+                for item in payload.get(VALUE) or []
                 if isinstance(item, dict) and (event := _parse_event(item)) is not None
             )
-            following = payload.get(_NEXT_LINK)
-            next_url = following if isinstance(following, str) and following else None
-            params = None
-        message = f"calendar listing did not end within {GRAPH_MAX_PAGES} pages"
-        raise SourceUnavailableError(message)
+        return events
 
     async def fetch_body(self, message_id: str) -> str:
         """Read one message's body as plain text.
@@ -239,7 +194,7 @@ class GraphMailbox:
         Returns:
             The body text, empty when the message has none.
         """
-        payload = await self._get(
+        payload = await self._graph.get(
             f"{MICROSOFT_GRAPH_URL}/me/messages/{_path_segment(message_id)}",
             {"$select": BODY_FIELDS},
             headers={"Prefer": PLAIN_TEXT_PREFERENCE},
@@ -280,7 +235,7 @@ class GraphMailbox:
             return self._excluded_folder_ids
         identifiers: set[str] = set()
         for name in GRAPH_EXCLUDED_FOLDERS:
-            payload = await self._get(
+            payload = await self._graph.get(
                 f"{MICROSOFT_GRAPH_URL}/me/mailFolders/{name}",
                 {"$select": "id"},
                 allow_missing=True,
@@ -312,101 +267,9 @@ class GraphMailbox:
             SourceUnavailableError: If the listing never ends.
         """
         collected: list[tuple[MailMessage, str]] = []
-        next_url: str | None = url
-        next_params: dict[str, Any] | None = params
-        for _ in range(GRAPH_MAX_PAGES):
-            if next_url is None:
-                return collected
-            payload = await self._get(next_url, next_params)
+        async for payload in self._graph.pages(url, params):
             collected.extend(_parse_page(payload))
-            following = payload.get(_NEXT_LINK)
-            next_url = following if isinstance(following, str) and following else None
-            next_params = None
-        message = f"mailbox listing did not end within {GRAPH_MAX_PAGES} pages"
-        raise SourceUnavailableError(message)
-
-    async def _get(
-        self,
-        url: str,
-        params: dict[str, Any] | None = None,
-        *,
-        headers: dict[str, str] | None = None,
-        allow_missing: bool = False,
-    ) -> dict[str, Any]:
-        """Send one authenticated request and read its JSON answer.
-
-        Args:
-            url: The address to call.
-            params: Query parameters, or ``None`` for a ready-made link.
-            headers: Extra headers, such as the plain-text preference.
-            allow_missing: Whether a 404 is an expected, empty answer.
-
-        Returns:
-            The decoded object, empty when a tolerated 404 came back.
-
-        Raises:
-            SourceAuthError: If the mailbox key was rejected.
-            SourceUnavailableError: If Graph could not be reached or answered an
-                unexpected status.
-        """
-        if self._http is None:
-            message = "mailbox client used outside its context manager"
-            raise SourceUnavailableError(message)
-        # The slot is held through the retries too: a request waiting because
-        # Microsoft said "slow down" must not make room for another one.
-        async with self._slots:
-            try:
-                response = await get_with_retries(
-                    self._http,
-                    url,
-                    params=params,
-                    headers=headers,
-                    fresh_headers=self._authorisation,
-                    source="mailbox",
-                )
-            except httpx.HTTPError as error:
-                _log.error("graph_unreachable", error_type=type(error).__name__)
-                message = "the mailbox could not be reached"
-                raise SourceUnavailableError(message) from error
-        return _read(response, allow_missing=allow_missing)
-
-    async def _authorisation(self) -> dict[str, str]:
-        """The authorisation header, with a key valid at this very attempt."""
-        return {"Authorization": f"Bearer {await self._tokens.access_token()}"}
-
-
-def _read(response: httpx.Response, *, allow_missing: bool) -> dict[str, Any]:
-    """Turn a Graph response into a payload, or into a typed error.
-
-    Args:
-        response: The response to read.
-        allow_missing: Whether a 404 is an expected, empty answer.
-
-    Returns:
-        The decoded object.
-
-    Raises:
-        SourceAuthError: If the mailbox key was rejected.
-        SourceUnavailableError: If the status or the body was unusable.
-    """
-    if allow_missing and response.status_code == httpx.codes.NOT_FOUND:
-        return {}
-    if response.status_code == httpx.codes.UNAUTHORIZED:
-        message = "the mailbox key was rejected — run 'tracker microsoft login' again"
-        raise SourceAuthError(message)
-    if not response.is_success:
-        _log.error("graph_request_failed", status=response.status_code)
-        message = f"the mailbox answered status {response.status_code}"
-        raise SourceUnavailableError(message)
-    try:
-        payload: Any = response.json()
-    except ValueError as error:
-        message = "the mailbox answered with something that is not JSON"
-        raise SourceUnavailableError(message) from error
-    if not isinstance(payload, dict):
-        message = "the mailbox answered with an unexpected payload shape"
-        raise SourceUnavailableError(message)
-    return payload
+        return collected
 
 
 def _parse_page(payload: dict[str, Any]) -> list[tuple[MailMessage, str]]:
@@ -419,7 +282,7 @@ def _parse_page(payload: dict[str, Any]) -> list[tuple[MailMessage, str]]:
         Each readable message with the identifier of its folder.
     """
     parsed: list[tuple[MailMessage, str]] = []
-    for item in payload.get(_VALUE) or []:
+    for item in payload.get(VALUE) or []:
         if not isinstance(item, dict):
             continue
         message = _parse_message(item)
@@ -438,7 +301,7 @@ def _parse_message(item: dict[str, Any]) -> MailMessage | None:
         The message, or ``None`` when it has no identifier or no readable date.
     """
     message_id = str(item.get("id", ""))
-    sent_at = _parse_timestamp(item.get("sentDateTime") or item.get("receivedDateTime"))
+    sent_at = parse_timestamp(item.get("sentDateTime") or item.get("receivedDateTime"))
     if not message_id or sent_at is None:
         return None
     address, name = _mailbox_of(item.get("from") or item.get("sender"))
@@ -449,9 +312,7 @@ def _parse_message(item: dict[str, Any]) -> MailMessage | None:
         sent_at=sent_at,
         sender_address=address,
         sender_name=name,
-        recipients=tuple(
-            _mailbox_of(recipient) for recipient in item.get("toRecipients") or []
-        ),
+        recipients=tuple(_mailbox_of(recipient) for recipient in item.get("toRecipients") or []),
         has_list_unsubscribe=_has_unsubscribe_header(item.get("internetMessageHeaders")),
         body=None,
         reply_to=tuple(_mailbox_of(entry) for entry in item.get("replyTo") or []),
@@ -461,7 +322,7 @@ def _parse_message(item: dict[str, Any]) -> MailMessage | None:
     )
 
 
-def _parse_event(item: dict[str, Any]) -> GraphEvent | None:
+def _parse_event(item: dict[str, Any]) -> CalendarEvent | None:
     """Turn one Graph calendar event into a record.
 
     Args:
@@ -473,13 +334,15 @@ def _parse_event(item: dict[str, Any]) -> GraphEvent | None:
     event_id = str(item.get("id", ""))
     start = _event_time(item.get("start"))
     end = _event_time(item.get("end"))
-    changed_at = _parse_timestamp(item.get("lastModifiedDateTime") or item.get("createdDateTime"))
+    changed_at = parse_timestamp(item.get("lastModifiedDateTime") or item.get("createdDateTime"))
     if not event_id or start is None or end is None or changed_at is None:
         return None
     response = item.get("responseStatus")
-    return GraphEvent(
+    answer = str(response.get("response", "")) if isinstance(response, dict) else ""
+    return CalendarEvent(
         event_id=event_id,
         ical_uid=str(item.get("iCalUId") or event_id),
+        revision=changed_at.isoformat(),
         subject=str(item.get("subject") or "").strip(),
         start=start,
         end=end,
@@ -487,7 +350,7 @@ def _parse_event(item: dict[str, Any]) -> GraphEvent | None:
         attendees=tuple(_mailbox_of(entry) for entry in item.get("attendees") or []),
         is_cancelled=bool(item.get("isCancelled")),
         is_organizer=bool(item.get("isOrganizer")),
-        response=str(response.get("response", "")) if isinstance(response, dict) else "",
+        response=_GRAPH_RESPONSES.get(answer, MeetingResponse.NOT_ANSWERED),
         changed_at=changed_at,
     )
 
@@ -557,23 +420,3 @@ def _has_unsubscribe_header(headers: Any) -> bool:  # noqa: ANN401 - raw Graph p
         isinstance(header, dict) and str(header.get("name", "")).strip().lower() == wanted
         for header in headers
     )
-
-
-def _parse_timestamp(raw: Any) -> datetime | None:  # noqa: ANN401 - raw Graph payload
-    """Read a Graph timestamp.
-
-    Args:
-        raw: A value such as ``2026-09-18T07:14:22Z``.
-
-    Returns:
-        The instant in UTC, or ``None`` when the value cannot be read.
-    """
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    try:
-        moment = datetime.fromisoformat(raw.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    if moment.tzinfo is None:
-        return moment.replace(tzinfo=UTC)
-    return moment.astimezone(UTC)

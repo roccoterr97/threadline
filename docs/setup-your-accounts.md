@@ -556,9 +556,9 @@ Threadline needs **at least one mailbox**: Gmail, Outlook.com/Hotmail, iCloud,
 Yahoo, Fastmail, or any other mailbox that offers IMAP. It only ever reads:
 nothing is sent, moved, deleted, or even marked as read.
 
-**The calendar is read from Outlook only, for now.** With Gmail alone,
-Threadline reads your e-mail, including interview invitations that arrive by
-mail, but not your Google Calendar.
+**Calendars.** Outlook brings its calendar with it. Google Calendar is an
+extra that takes about a minute: one paste, no Google sign-in (see
+[8e](#8e-google-calendar-tracker-setup-google-calendar)).
 
 ### 4a. Choose your mailbox (`tracker setup mailbox`)
 
@@ -1135,18 +1135,24 @@ something.
 
 ## 8. Extras (optional, later)
 
-Three extras can be added at any time. None of them is needed for the morning
+Seven extras can be added at any time. None of them is needed for the morning
 summary, though Refresh now also makes it arrive on time. The full set-up
-leaves LinkedIn for later and names its command at the end. To go through all
-three in order, each one skippable:
+leaves LinkedIn for later and names its command at the end. To go through
+them in order, each one skippable:
 
 ```bash
 uv run tracker setup extras
 ```
 
-It shows `Step 1 of 3` (LinkedIn), `Step 2 of 3` (Refresh now) and
-`Step 3 of 3` (the Claude cloud route). To do one alone, name it:
-`uv run tracker setup linkedin`, `uv run tracker setup refresh` or
+It shows `Step 1 of 7` (LinkedIn), `Step 2 of 7` (Google Calendar, see
+[8e](#8e-google-calendar-tracker-setup-google-calendar)), `Step 3 of 7`
+(Telegram, [8f](#8f-telegram-tracker-setup-telegram)), `Step 4 of 7` (Slack,
+[8g](#8g-slack-tracker-setup-slack)), `Step 5 of 7` (Teams chats, which it only
+names: see [8h](#8h-teams-chats-tracker-setup-teams)), `Step 6 of 7` (Refresh
+now) and `Step 7 of 7` (the Claude cloud route). To do one alone, name it:
+`uv run tracker setup linkedin`, `uv run tracker setup google-calendar`,
+`uv run tracker setup telegram`, `uv run tracker setup slack`,
+`uv run tracker setup teams`, `uv run tracker setup refresh` or
 `uv run tracker setup cloud`.
 
 One more choice is in [8d](#8d-your-own-dashboard-on-netlify-tracker-setup-dashboard):
@@ -1642,3 +1648,201 @@ newer).
 Your own copy stays as it was when it was published. To publish a newer one,
 for example after you updated Threadline, run `uv run tracker setup dashboard`
 again.
+
+### 8e. Google Calendar (`tracker setup google-calendar`)
+
+Threadline reads your Google Calendar through its **secret address**, a private
+link Google gives every calendar. There is no Google sign-in and nothing to
+approve. Meetings with other people are filed under those people, like Outlook
+meetings. Your own entries with nobody else (the gym, a flight) are never
+stored, and neither is what an organiser wrote in an invitation.
+
+**What you do:**
+
+1. Run `uv run tracker setup google-calendar`. Google Calendar's settings open
+   in your browser.
+2. On the left, under **Settings for my calendars**, click your calendar (it
+   has your name).
+3. Click **Integrate calendar**.
+4. Under **Secret address in iCal format**, click the copy button.
+5. Paste it in the terminal and press Enter. It stays hidden.
+
+Threadline reads the calendar once to check it, saves the address and sends it
+to your copy on GitHub. Nothing else is asked. To skip, press Enter without
+pasting anything.
+
+**✅ Check:** it says `Your calendar answered: … in the last 30 days and the
+next 60.` and `secret GOOGLE_CALENDAR_URL saved`.
+
+**If not:**
+
+- **There is no "Secret address in iCal format"**: on a work or school
+  account, your organisation's Google administrator has turned it off. Press
+  Enter to skip.
+- **`the calendar no longer accepts this secret address`**: the address is
+  old or was reset. Copy it again.
+- **`did not give a calendar file`**: you copied another address on that page.
+  Copy the one under **Secret address in iCal format**.
+- **`To send them later, run: uv run tracker setup github`**: the GitHub tool
+  is not signed in. Run that command.
+
+**Keep it private.** Anyone with this address can read your calendar.
+Threadline keeps it like a password: in `.env` on your computer and as a
+GitHub secret, never in a log. If it may have leaked, click **Reset** next to
+it in Google Calendar, then run `uv run tracker setup google-calendar` again
+with the new one.
+
+An iCloud, Fastmail or Proton calendar works the same way: paste its private
+address in iCal format at the same step.
+
+### 8f. Telegram (`tracker setup telegram`)
+
+Threadline can read your one-to-one Telegram chats with people. It leaves out
+groups, channels, bots and your Saved Messages. It only reads: it never sends a
+message and never marks anything as read. Photos, voice messages and files are
+noted as `[photo]`, `[voice message]` and so on; their content is not read.
+
+It takes about three minutes. Run:
+
+```bash
+uv run tracker setup telegram
+```
+
+**First, your own small Telegram app.** Telegram wants every program that reads
+an account to have its own. The set-up opens https://my.telegram.org:
+
+1. Type your phone number with its country code (such as `+39 333 123 4567`)
+   and click **Next**.
+2. Telegram sends a code to your Telegram app, as a message from "Telegram".
+   Type it on the page and click **Sign In**.
+3. Click **API development tools**.
+4. Fill in **App title**: `Threadline`, **Short name**: `threadline`,
+   **Platform**: Desktop. Leave the rest and click **Create application**.
+   The page sometimes only says **ERROR**: wait a minute and click again. If it
+   keeps saying it, switch off any VPN or ad blocker, or try another browser.
+5. Copy **App api_id** and **App api_hash** and paste them into the set-up.
+
+**Then, log in once.** The set-up asks for your phone number, then the code
+Telegram sends to your Telegram app. If your account has a two-step
+verification password, it asks for that too. The password is used for this
+login only and is never saved.
+
+That is all: the set-up saves the login and sends it to GitHub by itself.
+
+**Good to know:**
+
+- Telegram shows a **new login** message in your app. That is Threadline.
+- The saved login is full access to your Telegram account, so it is kept as a
+  secret, like your other keys. To end it at any time: Telegram → **Settings**
+  → **Devices**, then end **Threadline**. To connect again later, run
+  `uv run tracker setup telegram` (it only asks for your phone number and the
+  code).
+- Telegram can end a login that is used from two places at the same moment.
+  So avoid running `tracker collect telegram` or `tracker doctor` on your
+  computer while the morning run is going on GitHub.
+- Telegram is read by the daily run on GitHub only; the Claude cloud route
+  cannot reach Telegram.
+
+**✅ Check:** you see `Logged in to Telegram as …` and
+`secret TELEGRAM_SESSION saved`.
+
+**If not:** the set-up says what Telegram did not accept. Run the same command
+again; what is finished is kept.
+
+### 8g. Slack (`tracker setup slack`)
+
+Threadline can read your Slack direct messages: one-to-one messages, small
+group messages, and messages with people from other companies (Slack Connect).
+It never reads channels, and it never posts anything.
+
+You make a small app in your own Slack workspace. The set-up opens Slack's
+page with everything already filled in, so you only click.
+
+**What you do:** run
+
+```bash
+uv run tracker setup slack
+```
+
+On the Slack page that opens:
+
+1. Pick your workspace, click **Next**, then **Create**.
+2. On the left, open **Install App**, click **Install to …**, then **Allow**.
+3. Slack shows a **User OAuth Token** (it starts with `xoxp-`). Copy it.
+4. Paste it into the set-up. It is not shown on screen.
+
+The set-up checks the token with Slack once, saves it, and sends it to your
+copy on GitHub so the daily run reads Slack too. Its last question is
+`Add another Slack workspace?`: answer **y** for each other workspace you use,
+or press Enter to finish.
+
+**✅ Check:** you see `Slack accepted the token for the … workspace.`
+
+**If not:**
+
+- **Slack shows "Request to Install" instead of "Install".** Your workspace
+  admin must approve the app first. Send the request; once they approve it,
+  run `uv run tracker setup slack` again.
+- **"that is not the User OAuth Token".** You copied the Bot token. Copy the
+  one that starts with `xoxp-`.
+- **The morning summary says Slack would not accept its key.** The app was
+  removed or the token was revoked. Run `uv run tracker setup slack` again; the
+  old token for that workspace is replaced.
+
+Good to know: Threadline files each person under their e-mail address when
+Slack shows it, so a Slack message lands on the same person as their e-mails.
+Bots and apps are left out.
+
+### 8h. Teams chats (`tracker setup teams`)
+
+Threadline can also read your Microsoft Teams chats: one-to-one chats and group
+chats, read-only. A Teams chat with somebody joins that person's e-mail record.
+Meeting chats are left out (the meeting itself comes from your calendar).
+
+Teams works **only with a work or school account**: Microsoft does not let any
+app read the Teams chats of a personal (Outlook.com or Hotmail) account. The
+work account can be a different one from your Outlook mailbox; it is a sign-in
+of its own.
+
+**Be aware:** many companies do not let their people allow apps like this one.
+If yours does not, only your company's IT admin can allow it, and Threadline
+simply carries on without Teams.
+
+**What you do:**
+
+1. Run `uv run tracker setup teams`. (`tracker setup extras` only names this
+   command, because most people have no work Teams to connect.)
+2. Type the code shown in the terminal on the Microsoft page that opens.
+3. Sign in with the account you use for Teams at work or school.
+4. Microsoft lists the permissions: **read your chat messages**, **sign you in
+   and read your profile**, and **keep access**. All are read-only. Click
+   **Accept**.
+
+Nothing else is asked. The set-up stores the key encrypted in your database,
+switches Teams on (`TEAMS_ENABLED=true` in `.env`) and, when your copy is on
+GitHub, sends that setting there too.
+
+**✅ Check:** you see `Signed in to Teams as you@company.example.` Your chats
+are read from the next run on.
+
+**If not:**
+
+- `your organisation's IT admin has to allow this`: your company blocks it.
+  Ask the IT admin to allow the application you signed in to, with the
+  permission "Read user chat messages" (Chat.Read).
+- `only with a work or school account`: you signed in with a personal account.
+  Run the command again and use your work or school account.
+- The code expired: run `uv run tracker setup teams` again; you have fifteen
+  minutes to type it.
+- `Microsoft does not open this sign-in application to work or school
+  accounts`: register your own application as in
+  [Your own Microsoft application](#your-own-microsoft-application-optional),
+  but with account type **Accounts in any organizational directory**, the
+  delegated permissions `Chat.Read`, `User.Read` and `offline_access`, and its
+  ID in `.env` as `MICROSOFT_CLIENT_ID=…`. Then run the command again. (Outlook
+  uses the same `MICROSOFT_CLIENT_ID`, so an application for both needs
+  **Accounts in any organizational directory and personal Microsoft accounts**
+  and all five permissions.)
+
+To stop reading Teams, set `TEAMS_ENABLED=false` in `.env`, then run
+`uv run tracker setup github` so the daily run on GitHub knows too.

@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, SecretStr, ValidationError, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from tracker.shared.calendar_address import calendar_feed_address
 from tracker.shared.constants.collection import MICROSOFT_CLIENT_ID, MICROSOFT_DEFAULT_TENANT
 from tracker.shared.constants.mailbox import (
     IMAP_PRESETS,
@@ -28,6 +29,7 @@ from tracker.shared.constants.mailbox import (
     ImapProvider,
     MailSource,
 )
+from tracker.shared.constants.slack import SLACK_TOKEN_SEPARATOR
 from tracker.shared.errors import ConfigurationError
 from tracker.shared.time_zones import UTC_ZONE, canonical_zone_name
 
@@ -288,6 +290,12 @@ class Settings(BaseSettings):
 
     # --- Microsoft sign-in application (end) ---------------------------------
 
+    # --- Microsoft Teams chats (begin) ---------------------------------------
+    #: Whether Teams chats are read. ``tracker setup teams`` turns it on once
+    #: the separate work-account sign-in has worked.
+    teams_enabled: bool = False
+    # --- Microsoft Teams chats (end) -----------------------------------------
+
     # --- Mailboxes (begin) --------------------------------------------------
     #: Which mailboxes are read: ``outlook``, ``imap`` or both. At least one.
     mail_sources: Annotated[tuple[MailSource, ...], NoDecode] = DEFAULT_MAIL_SOURCES
@@ -410,6 +418,77 @@ class Settings(BaseSettings):
 
     # --- Mailboxes (end) ----------------------------------------------------
 
+    # --- Slack (begin) -------------------------------------------------------
+    #: One User OAuth Token (``xoxp-…``) per Slack workspace, comma-separated.
+    #: Optional: without one, Slack is skipped.
+    slack_user_tokens: SecretStr | None = None
+
+    @property
+    def slack_tokens(self) -> tuple[SecretStr, ...]:
+        """Every saved Slack workspace's token, each once, in the order saved."""
+        return tuple(SecretStr(token) for token in split_slack_tokens(self.slack_user_tokens))
+
+    @property
+    def slack_enabled(self) -> bool:
+        """Whether at least one Slack workspace is set up."""
+        return bool(self.slack_tokens)
+
+    # --- Slack (end) ---------------------------------------------------------
+
+    # --- Telegram (begin) ---------------------------------------------------
+    #: The owner's own application at my.telegram.org: its number and key.
+    telegram_api_id: int | None = None
+    telegram_api_hash: SecretStr | None = None
+    #: The saved login ``tracker setup telegram`` makes: full access to the
+    #: account, so it is a secret and is never shown or logged.
+    telegram_session: SecretStr | None = None
+
+    @field_validator("telegram_api_id")
+    @classmethod
+    def _require_positive_api_id(cls, value: int | None) -> int | None:
+        """Accept the application's number as my.telegram.org shows it, or nothing."""
+        if value is not None and value <= 0:
+            message = "TELEGRAM_API_ID must be the number my.telegram.org shows as App api_id"
+            raise ValueError(message)
+        return value
+
+    @property
+    def telegram_enabled(self) -> bool:
+        """Whether Telegram is set up: the application and a saved login are all present."""
+        return (
+            self.telegram_api_id is not None
+            and self.telegram_api_hash is not None
+            and self.telegram_session is not None
+        )
+
+    # --- Telegram (end) -----------------------------------------------------
+
+    # --- Google Calendar (begin) ---------------------------------------------
+    #: The calendar's "secret address in iCal format". Anyone with it can read
+    #: the calendar, so it is a secret. Without it the Google calendar is skipped.
+    google_calendar_url: SecretStr | None = None
+
+    @field_validator("google_calendar_url", mode="before")
+    @classmethod
+    def _check_calendar_address(cls, value: Any) -> Any:  # noqa: ANN401 - raw env input
+        """Accept a web address (``webcal://`` becomes ``https://``); never repeat it."""
+        if not isinstance(value, str):
+            return value
+        if not value.strip():
+            return None
+        try:
+            return calendar_feed_address(value)
+        except ValueError as error:
+            message = "GOOGLE_CALENDAR_URL must be the calendar's secret address (https://...)"
+            raise ValueError(message) from error
+
+    @property
+    def google_calendar_enabled(self) -> bool:
+        """Whether a calendar is read from its secret address."""
+        return self.google_calendar_url is not None
+
+    # --- Google Calendar (end) -----------------------------------------------
+
     @field_validator("supabase_url")
     @classmethod
     def _require_https_url(cls, value: str) -> str:
@@ -451,6 +530,20 @@ def get_settings() -> Settings:
     except ValidationError as error:
         message = f"invalid configuration: {_describe(error)}"
         raise ConfigurationError(message) from error
+
+
+def split_slack_tokens(value: SecretStr | str | None) -> tuple[str, ...]:
+    """Split ``SLACK_USER_TOKENS`` into its tokens, dropping blanks and repeats.
+
+    Args:
+        value: The setting as saved, secret or plain, or nothing.
+
+    Returns:
+        The tokens, in the order saved.
+    """
+    raw = value.get_secret_value() if isinstance(value, SecretStr) else (value or "")
+    tokens = (part.strip() for part in raw.split(SLACK_TOKEN_SEPARATOR))
+    return tuple(dict.fromkeys(token for token in tokens if token))
 
 
 def _reads_imap(info: ValidationInfo) -> bool:

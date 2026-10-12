@@ -7,10 +7,15 @@ license = "MIT"
 dependencies = [
     "cryptography>=43.0.0",
     "httpx>=0.27.0",
+    "icalendar==7.3.0",
     "pydantic>=2.8.0",
     "pydantic-settings>=2.4.0",
+    "recurring-ical-events==3.8.2",
     "structlog>=24.4.0",
     "supabase>=2.7.0",
+    # Telegram's own user API (MTProto), read-only; pinned because it speaks a
+    # private protocol whose layer changes between releases.
+    "telethon==1.45.0",
     "typer>=0.12.0",
     # Windows ships no time-zone database; macOS and Linux use their own.
     "tzdata>=2025.2; sys_platform == 'win32'",

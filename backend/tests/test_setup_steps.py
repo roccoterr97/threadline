@@ -894,7 +894,11 @@ async def test_the_core_and_the_extras_split_every_step_between_them() -> None:
     core = [step.name for step in core_steps()]
     extras = [step.name for step in extra_steps()]
 
-    assert extras == [StepName.LINKEDIN, StepName.REFRESH, StepName.CLOUD]
+    assert extras == [
+        StepName.LINKEDIN, StepName.GOOGLE_CALENDAR, StepName.TELEGRAM,
+        StepName.SLACK, StepName.TEAMS,
+        StepName.REFRESH, StepName.CLOUD,
+    ]  # fmt: skip
     assert core == [
         StepName.SUPABASE, StepName.ENCRYPTION, StepName.DATABASE, StepName.LOGIN,
         StepName.CATEGORIES, StepName.TIME_ZONE, StepName.MAILBOX, StepName.MICROSOFT,
@@ -906,20 +910,30 @@ async def test_the_core_and_the_extras_split_every_step_between_them() -> None:
 
 
 async def test_the_extras_run_alone_in_order_and_each_can_be_skipped() -> None:
-    # No LinkedIn; Refresh now has no dashboard yet so asks nothing; no cloud routine.
-    world = make_world([False, False], configured_env())
+    # No LinkedIn; Enter skips the calendar; no Telegram, no Slack; Teams only
+    # by name; Refresh now has no dashboard yet so asks nothing; no cloud routine.
+    world = make_world([False, "", False, False, False], configured_env())
 
     finished = await SetupWizard(world.context(), default_steps()).run_extras()
 
     assert finished
     steps = [line for line in world.io.said if line.startswith("Step ")]
     assert steps == [
-        "Step 1 of 3: LinkedIn (optional)",
-        "Step 2 of 3: The Refresh now button",
-        "Step 3 of 3: The alternative: a Claude cloud routine",
+        "Step 1 of 7: LinkedIn (optional)",
+        "Step 2 of 7: Google Calendar (optional)",
+        "Step 3 of 7: Telegram (optional)",
+        "Step 4 of 7: Slack (optional)",
+        "Step 5 of 7: Microsoft Teams chats (work or school account)",
+        "Step 6 of 7: The Refresh now button",
+        "Step 7 of 7: The alternative: a Claude cloud routine",
     ]
     text = world.io.text()
     assert "Skipped. Run 'uv run tracker setup linkedin' whenever you want it." in text
+    assert "Skipped. Run 'uv run tracker setup google-calendar' whenever you want it." in text
+    assert "Skipped. Run 'uv run tracker setup telegram' whenever you want it." in text
+    assert "Skipped. Run 'uv run tracker setup slack' whenever you want it." in text
+    assert "To add them: uv run tracker setup teams" in text
+    assert world.microsoft.teams_accesses == []
     assert "Skipped. To set it up later: uv run tracker setup cloud" in text
     assert "Set-up done." not in text
 

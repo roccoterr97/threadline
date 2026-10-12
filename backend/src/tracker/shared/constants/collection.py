@@ -127,6 +127,35 @@ GRAPH_CALENDAR_RESCUE_FOLDER: Final[str] = "deleteditems"
 #: replies are all ``#microsoft.graph.eventMessage`` or a subtype of it.
 GRAPH_CALENDAR_MESSAGE_TYPE: Final[str] = "#microsoft.graph.eventMessage"
 
+# --- Microsoft Teams chats --------------------------------------------------
+
+#: Tenant the Teams sign-in always uses: work or school accounts only, because
+#: Microsoft Graph does not expose a personal account's Teams chats.
+MICROSOFT_TEAMS_TENANT: Final[str] = "organizations"
+
+#: Read-only chats, the signed-in person's own profile, and renewal without
+#: the owner. Delegated ``Chat.Read`` needs no admin consent by default, but an
+#: organisation can still require it. The same warning as ``MICROSOFT_SCOPE``
+#: applies: a permission added here needs a new sign-in first.
+MICROSOFT_TEAMS_SCOPE: Final[str] = (
+    "https://graph.microsoft.com/Chat.Read https://graph.microsoft.com/User.Read offline_access"
+)
+
+#: Chats requested per page; Graph accepts at most fifty.
+TEAMS_CHAT_PAGE_SIZE: Final[int] = 50
+
+#: Chat messages requested per page; Graph accepts at most fifty.
+TEAMS_MESSAGE_PAGE_SIZE: Final[int] = 50
+
+#: The kinds of chat read: one-to-one and group chats. A meeting's chat is
+#: left out: the meeting itself already arrives through the calendar, and its
+#: chat is mostly the logistics of everybody invited.
+TEAMS_CHAT_TYPES: Final[frozenset[str]] = frozenset({"oneOnOne", "group"})
+
+#: The one ``messageType`` that is somebody writing; system events, typing
+#: notices and the rest are skipped.
+TEAMS_PERSON_MESSAGE_TYPE: Final[str] = "message"
+
 #: Seconds between two polls while the owner types the one-time code.
 DEVICE_CODE_POLL_SECONDS: Final[float] = 5.0
 

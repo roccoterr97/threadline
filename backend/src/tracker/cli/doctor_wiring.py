@@ -12,6 +12,7 @@ safe to share:
   would overlap on that client.
 * The three Microsoft checks share one authenticator, which renews the key
   under a lock: whichever asks first renews, and the other two reuse that key.
+  The Teams check renews a different key, so it has an authenticator of its own.
 * Every other check opens a connection of its own.
 """
 
@@ -29,24 +30,30 @@ from supabase import Client
 
 from tracker.domain.dashboard_link import dashboard_address
 from tracker.infrastructure.database import create_database_client, probe_database
+from tracker.infrastructure.ical.feed import CalendarFeed
 from tracker.infrastructure.imap.reader import ImapMailbox, MailboxSurvey
 from tracker.infrastructure.imap.session import ImapSession
 from tracker.infrastructure.linkedin.client import LinkedInSnapshotClient
 from tracker.infrastructure.microsoft.auth import MicrosoftAuthenticator
 from tracker.infrastructure.microsoft.probe import GraphProbe
+from tracker.infrastructure.microsoft.teams import TeamsChats
 from tracker.infrastructure.secret_store import SecretStore
+from tracker.infrastructure.slack.client import check_slack_token
 from tracker.infrastructure.smtp import SmtpMailer
 from tracker.infrastructure.supabase_admin import SupabaseAdmin
 from tracker.infrastructure.supabase_platform import SupabasePlatform
+from tracker.infrastructure.telegram.reader import open_telegram
 from tracker.infrastructure.web_probe import WebProbe
 from tracker.repositories import build_repositories
 from tracker.services.collection.mailboxes import imap_account, saved_app_password
+from tracker.services.collection.telegram_collector import telegram_account
 from tracker.services.database_structure import list_migration_files
 from tracker.services.doctor.checks import (
     CalendarCheck,
     DailyStartCheck,
     DashboardCheck,
     DatabaseCheck,
+    GoogleCalendarCheck,
     ImapMailboxCheck,
     LinkedInExpiryCheck,
     LinkedInKeyCheck,
@@ -58,7 +65,10 @@ from tracker.services.doctor.checks import (
     RefreshNowCheck,
     SecretStoreCheck,
     SignUpsCheck,
+    SlackCheck,
     SmtpLoginCheck,
+    TeamsCheck,
+    TelegramCheck,
     WorkflowTime,
 )
 from tracker.services.doctor.models import Check, CheckResult, CheckStatus, ok, problem, skipped
@@ -70,7 +80,11 @@ from tracker.services.setup.workflow_schedule import read_schedule
 from tracker.services.summary.sender import smtp_account
 from tracker.shared.clock import SystemClock
 from tracker.shared.config import Settings, get_settings
-from tracker.shared.constants.collection import INITIAL_WINDOW_DAYS
+from tracker.shared.constants.collection import (
+    CALENDAR_FUTURE_DAYS,
+    CALENDAR_PAST_DAYS,
+    INITIAL_WINDOW_DAYS,
+)
 from tracker.shared.constants.github import WORKFLOW_FILE
 from tracker.shared.constants.mailbox import IMAP_PRESETS, DeliveryRoute
 from tracker.shared.constants.retry import HEALTHCHECK_ATTEMPTS, HEALTHCHECK_DELAY_SECONDS
@@ -97,10 +111,14 @@ DEPENDENT_CHECKS: Final[tuple[str, ...]] = (
     "Microsoft sign-in",
     "Mailbox",
     "Calendar",
+    "Teams chats",
+    "Google Calendar",
     "IMAP mailbox",
     "Summary e-mail",
     "LinkedIn key",
     "LinkedIn expiry date",
+    "Slack",
+    "Telegram",
     "Dashboard address",
     "Refresh now",
     "On-time morning start",
@@ -205,6 +223,8 @@ def _checks(settings: Settings, clients: _Clients) -> tuple[Check, ...]:
         OwnerCheck(admin),
         SecretStoreCheck(clients.store, SECRET_PROBE_NAME, SECRET_PROBE_VALUE),
         *_outlook_checks(settings, clients),
+        _teams_check(settings, clients.store),
+        GoogleCalendarCheck(_google_calendar_count(settings)),
         ImapMailboxCheck(
             _imap_survey(settings, clients.store), IMAP_PRESETS[settings.imap_provider].label
         ),
@@ -213,6 +233,8 @@ def _checks(settings: Settings, clients: _Clients) -> tuple[Check, ...]:
         ),
         LinkedInKeyCheck(_linkedin_check(token) if token else None),
         LinkedInExpiryCheck(token is not None, settings.linkedin_token_expires_on, SystemClock()),
+        SlackCheck(_slack_check(settings.slack_tokens) if settings.slack_enabled else None),
+        TelegramCheck(_telegram_account_name(settings)),
         DashboardCheck(
             WebProbe().status_of,
             dashboard_address(
@@ -246,6 +268,39 @@ def _outlook_checks(settings: Settings, clients: _Clients) -> tuple[Check, ...]:
         NotConnectedCheck("Mailbox", detail),
         NotConnectedCheck("Calendar", "the calendar is read from Outlook only"),
     )
+
+
+def _teams_check(settings: Settings, store: SecretStore) -> TeamsCheck:
+    """Renew the Teams key and read who signed in, when Teams is connected."""
+    if not settings.teams_enabled:
+        return TeamsCheck(None)
+
+    async def signed_in_address() -> str:
+        authenticator = MicrosoftAuthenticator.for_teams(store, SystemClock(), settings)
+        async with authenticator, TeamsChats(authenticator) as teams:
+            return (await teams.signed_in_user()).email
+
+    return TeamsCheck(signed_in_address)
+
+
+def _google_calendar_count(settings: Settings) -> Callable[[], Awaitable[int]] | None:
+    """Read the calendar from its secret address and count its events, when one is saved."""
+    address = settings.google_calendar_url
+    if address is None:
+        return None
+
+    async def count() -> int:
+        now = SystemClock().now()
+        found = await CalendarFeed().read(
+            address,
+            start=now - timedelta(days=CALENDAR_PAST_DAYS),
+            end=now + timedelta(days=CALENDAR_FUTURE_DAYS),
+            owner_addresses=settings.owner_email_addresses,
+            zone=settings.owner_zone,
+        )
+        return len(found.events)
+
+    return count
 
 
 def _imap_survey(
@@ -290,6 +345,29 @@ def _linkedin_check(token: SecretStr) -> Callable[[], Awaitable[None]]:
             await client.check_access()
 
     return check
+
+
+def _slack_check(tokens: tuple[SecretStr, ...]) -> Callable[[], Awaitable[tuple[str, ...]]]:
+    """Ask Slack whose key each configured token is, and name the workspaces."""
+
+    async def check() -> tuple[str, ...]:
+        identities = [await check_slack_token(token) for token in tokens]
+        return tuple(identity.team_name for identity in identities)
+
+    return check
+
+
+def _telegram_account_name(settings: Settings) -> Callable[[], Awaitable[str]] | None:
+    """Connect with the saved Telegram login and read the account's name, when there is one."""
+    account = telegram_account(settings)
+    if account is None:
+        return None
+
+    async def account_name() -> str:
+        async with open_telegram(account) as reader:
+            return await reader.account_name()
+
+    return account_name
 
 
 def _workflow_time() -> WorkflowTime | None:

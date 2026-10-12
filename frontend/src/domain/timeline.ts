@@ -17,6 +17,17 @@ export interface TimelineEntry {
 }
 
 /**
+ * The channels whose conversations carry a subject line. Chats (LinkedIn,
+ * Telegram, Slack, Teams) have none, so no "no subject" line is shown for them.
+ */
+const CHANNELS_WITH_SUBJECT: ReadonlySet<Channel> = new Set<Channel>(['email', 'calendar']);
+
+/** Whether a message on this channel shows a subject line. */
+export function hasSubjectLine(channel: Channel): boolean {
+  return CHANNELS_WITH_SUBJECT.has(channel);
+}
+
+/**
  * Flattens a person's conversations into one list across every channel,
  * newest message first — the order the owner reads a history in.
  */

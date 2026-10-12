@@ -122,9 +122,10 @@ def setup(
     schedule and github, which starts the first daily run. Only what you must
     do is asked; every other choice takes the usual answer and is listed at
     the end with the command that changes it. Running it again carries on
-    where it stopped. 'extras' runs the optional steps: linkedin, refresh (the
+    where it stopped. 'extras' runs the optional steps: linkedin, slack, refresh (the
     dashboard's Refresh now button and the on-time daily start) and cloud (the
-    alternative to GitHub). A step's name runs that step alone.
+    alternative to GitHub); 'teams' (Teams chats, with a work or school
+    account) runs only by name. A step's name runs that step alone.
     """
     request = parse_target(target)
     _check_build_here(request, build_here=build_here)

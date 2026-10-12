@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 from tracker.domain.supabase import PROJECT_REF_PATTERN, project_ref_of
 from tracker.shared.constants.setup import LINKEDIN_PROFILE_PREFIX, SUPABASE_HOST_SUFFIX
+from tracker.shared.constants.telegram import TELEGRAM_API_HASH_LENGTH
 from tracker.shared.errors import ValidationFailedError
 from tracker.shared.time_zones import canonical_zone_name
 
@@ -398,5 +399,82 @@ def repository_name(raw: str) -> str:
     cleaned = raw.strip()
     if not _REPOSITORY_NAME.match(cleaned) or cleaned in {".", ".."}:
         message = "use only letters, digits, '-', '_' or '.', such as threadline"
+        raise ValidationFailedError(message)
+    return cleaned
+
+
+#: A Telegram application's api_id: the number my.telegram.org shows.
+_TELEGRAM_API_ID: Final[re.Pattern[str]] = re.compile(r"^[1-9]\d{0,11}$")
+
+#: A Telegram application's api_hash: 32 hexadecimal characters.
+_TELEGRAM_API_HASH: Final[re.Pattern[str]] = re.compile(
+    rf"^[0-9a-f]{{{TELEGRAM_API_HASH_LENGTH}}}$"
+)
+
+#: A phone number in international form, once spaces, dashes and brackets are gone.
+_PHONE_NUMBER: Final[re.Pattern[str]] = re.compile(r"^\+[1-9]\d{6,14}$")
+_PHONE_PUNCTUATION: Final[re.Pattern[str]] = re.compile(r"[\s().-]")
+_INTERNATIONAL_PREFIX: Final[str] = "00"
+
+
+def telegram_api_id(raw: str) -> int:
+    """Accept the "App api_id" from my.telegram.org.
+
+    Args:
+        raw: What was typed.
+
+    Returns:
+        The number.
+
+    Raises:
+        ValidationFailedError: If it is not a whole number.
+    """
+    cleaned = raw.strip()
+    if not _TELEGRAM_API_ID.match(cleaned):
+        message = "the api_id is a number, shown as 'App api_id' on my.telegram.org"
+        raise ValidationFailedError(message)
+    return int(cleaned)
+
+
+def telegram_api_hash(raw: str) -> str:
+    """Accept the "App api_hash" from my.telegram.org.
+
+    Args:
+        raw: What was typed.
+
+    Returns:
+        The key in lower case, without surrounding spaces.
+
+    Raises:
+        ValidationFailedError: If it is not 32 letters and numbers.
+    """
+    cleaned = raw.strip().lower()
+    if not _TELEGRAM_API_HASH.match(cleaned):
+        message = (
+            f"the api_hash is {TELEGRAM_API_HASH_LENGTH} letters and numbers, shown as "
+            "'App api_hash' on my.telegram.org"
+        )
+        raise ValidationFailedError(message)
+    return cleaned
+
+
+def phone_number(raw: str) -> str:
+    """Accept a phone number with its country code, such as ``+39 333 123 4567``.
+
+    Args:
+        raw: What was typed; spaces, dashes and brackets are allowed, and
+            ``00`` may stand for ``+``.
+
+    Returns:
+        The number as ``+`` and digits only.
+
+    Raises:
+        ValidationFailedError: If it has no country code or is not a phone number.
+    """
+    cleaned = _PHONE_PUNCTUATION.sub("", raw)
+    if cleaned.startswith(_INTERNATIONAL_PREFIX):
+        cleaned = "+" + cleaned.removeprefix(_INTERNATIONAL_PREFIX)
+    if not _PHONE_NUMBER.match(cleaned):
+        message = "type the number with its country code, such as +39 333 123 4567"
         raise ValidationFailedError(message)
     return cleaned

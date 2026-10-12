@@ -23,6 +23,11 @@ from tracker.shared.errors import ConfigurationError
 #: Name under which the Microsoft Graph refresh key is stored.
 MICROSOFT_REFRESH_TOKEN = "microsoft_refresh_token"
 
+#: Name under which the Teams sign-in's refresh key is stored. It is a sign-in
+#: of its own, often with another (work) account, so renewing one never
+#: replaces the other.
+MICROSOFT_TEAMS_REFRESH_TOKEN = "microsoft_teams_refresh_token"
+
 
 def imap_password_name(username: str) -> str:
     """Name under which one IMAP mailbox's app password is stored.

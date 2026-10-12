@@ -592,6 +592,9 @@ export const channelLabels: Record<Channel, string> = {
   linkedin: 'LinkedIn',
   email: 'Email',
   calendar: 'Calendar',
+  telegram: 'Telegram',
+  slack: 'Slack',
+  teams: 'Teams',
 };
 
 export const directionLabels: Record<Direction, string> = {
@@ -610,6 +613,10 @@ export const runStepLabels: Record<RunStep, string> = {
   collect_linkedin: 'Reading LinkedIn messages',
   collect_email: 'Reading your mailbox',
   collect_calendar: 'Reading your calendar',
+  collect_google_calendar: 'Reading your Google calendar',
+  collect_telegram: 'Reading Telegram chats',
+  collect_slack: 'Reading Slack messages',
+  collect_teams: 'Reading Teams chats',
   assess: 'Working out where each person stands',
   summary_email: 'Sending your morning email',
 };
@@ -632,6 +639,12 @@ export const runErrors: Record<string, string> = {
     'The run stopped here and never finished (for example, GitHub stopped it). It was closed when the next run started.',
   mailbox_window_capped:
     'Your mailbox had more new mail than is read in one go. The newest was read; older mail in that folder from this stretch was skipped. Nothing to do: a skipped conversation is read in full as soon as somebody writes in it again.',
+  admin_approval_required:
+    "Your organisation does not let Threadline read your Teams chats. Your organisation's IT admin has to allow this.",
+  work_account_required:
+    'Teams chats can be read only with a work or school account, not a personal Microsoft account.',
+  telegram_flood_wait:
+    'Telegram asked Threadline to pause, so not every chat was read. Nothing to do: the next run reads what was missed.',
   tracker_error: 'Something went wrong in this step.',
 };
 

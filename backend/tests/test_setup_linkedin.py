@@ -646,8 +646,9 @@ async def test_a_full_run_does_not_name_linkedin_once_it_is_connected() -> None:
 
     assert world.io.asked == []
     assert not any(line.startswith("LinkedIn can be added later") for line in world.io.said)
-    assert "Extras you can add any time: the dashboard's Refresh now button, which also" in (
-        world.io.said
+    assert (
+        "Extras you can add any time: Google Calendar, Telegram, Slack, Teams chats,"
+        in world.io.said
     )
 
 
@@ -667,6 +668,10 @@ async def test_ask_everything_ends_by_offering_linkedin_and_a_yes_connects_it() 
     assert "LinkedIn is optional" not in world.io.text()
     assert "messages reach Threadline a day or two late." in world.io.said
     assert _LATER_LINE not in world.io.said
+    assert (
+        "Extras you can add any time: Google Calendar, Telegram, Slack, Teams chats,"
+        in world.io.said
+    )
 
 
 async def test_ask_everything_where_linkedin_is_declined_names_the_command_for_later() -> None:

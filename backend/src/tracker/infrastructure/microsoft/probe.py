@@ -12,7 +12,7 @@ from typing import Any, Final, Self
 
 import httpx
 
-from tracker.infrastructure.microsoft.client import AccessTokenProvider
+from tracker.infrastructure.microsoft.graph_session import AccessTokenProvider
 from tracker.shared.constants.collection import HTTP_TIMEOUT_SECONDS, MICROSOFT_GRAPH_URL
 from tracker.shared.errors import SourceAuthError, SourceUnavailableError
 from tracker.shared.http import get_with_retries

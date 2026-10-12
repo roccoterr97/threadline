@@ -97,6 +97,7 @@ VARIABLE_SETTINGS: Final[frozenset[str]] = frozenset(
         "SUMMARY_SUBJECT_PREFIX",
         "MICROSOFT_CLIENT_ID",
         "MICROSOFT_TENANT",
+        "TEAMS_ENABLED",
         "MAIL_SOURCES",
         "IMAP_PROVIDER",
         "IMAP_HOST",

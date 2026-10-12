@@ -10,7 +10,15 @@ from tracker.domain.models import RunStepLog
 
 #: The steps that read a source; a run that recorded none of them collected nothing.
 COLLECT_STEPS: Final[frozenset[RunStep]] = frozenset(
-    {RunStep.COLLECT_LINKEDIN, RunStep.COLLECT_EMAIL, RunStep.COLLECT_CALENDAR}
+    {
+        RunStep.COLLECT_LINKEDIN,
+        RunStep.COLLECT_EMAIL,
+        RunStep.COLLECT_CALENDAR,
+        RunStep.COLLECT_GOOGLE_CALENDAR,
+        RunStep.COLLECT_TELEGRAM,
+        RunStep.COLLECT_SLACK,
+        RunStep.COLLECT_TEAMS,
+    }
 )
 
 

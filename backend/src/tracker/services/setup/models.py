@@ -27,6 +27,10 @@ class StepName(StrEnum):
     MAILBOX = "mailbox"
     MICROSOFT = "microsoft"
     LINKEDIN = "linkedin"
+    GOOGLE_CALENDAR = "google-calendar"
+    TELEGRAM = "telegram"
+    SLACK = "slack"
+    TEAMS = "teams"
     DASHBOARD = "dashboard"
     SCHEDULE = "schedule"
     GITHUB = "github"
@@ -41,7 +45,15 @@ class StepName(StrEnum):
 
 #: The optional steps, run together by ``tracker setup extras``. Every other step is core.
 EXTRA_STEPS: Final[frozenset[StepName]] = frozenset(
-    {StepName.LINKEDIN, StepName.REFRESH, StepName.CLOUD}
+    {
+        StepName.LINKEDIN,
+        StepName.GOOGLE_CALENDAR,
+        StepName.TELEGRAM,
+        StepName.SLACK,
+        StepName.TEAMS,
+        StepName.REFRESH,
+        StepName.CLOUD,
+    }
 )
 
 

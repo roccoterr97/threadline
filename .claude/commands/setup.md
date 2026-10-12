@@ -184,6 +184,11 @@ part 4) with `uv run tracker setup linkedin --browser`. After that first
 time, a new key is that same command and one click on LinkedIn's **Allow**
 button, about once a year.
 
+Slack (part 8g) is optional too: `uv run tracker setup slack --browser` opens
+Slack's page with the app already filled in; they pick the workspace, click
+Create, Install and Allow, and paste the User OAuth Token (`xoxp-…`). If Slack
+shows "Request to Install", their workspace admin must approve the app first.
+
 **Check:** they can sign in at <https://supabase.com>; the app password
 exists. No Netlify account is needed: the dashboard is shared (part 4 below).
 

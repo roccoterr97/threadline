@@ -33,8 +33,28 @@ _log = get_logger(__name__)
 RETRYABLE_STATUSES: Final[frozenset[int]] = frozenset({408, 425, 429, 500, 502, 503, 504})
 
 
+def _asked_wait_seconds(response: httpx.Response) -> float | None:
+    """Read a ``Retry-After`` header expressed in seconds, as the source asked.
+
+    Args:
+        response: The answer that asked us to wait.
+
+    Returns:
+        The wait, or ``None`` when the header is absent or not a number.
+    """
+    raw = response.headers.get("Retry-After")
+    if raw is None:
+        return None
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        # The header may also hold a date. Falling back to the fixed delay is
+        # simpler than parsing it, and the cap applies either way.
+        return None
+
+
 def _retry_after_seconds(response: httpx.Response) -> float | None:
-    """Read a ``Retry-After`` header expressed in seconds.
+    """Read a ``Retry-After`` header expressed in seconds, capped.
 
     Args:
         response: The answer that asked us to wait.
@@ -42,16 +62,16 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
     Returns:
         The capped wait, or ``None`` when the header is absent or not a number.
     """
-    raw = response.headers.get("Retry-After")
-    if raw is None:
-        return None
-    try:
-        seconds = float(raw)
-    except ValueError:
-        # The header may also hold a date. Falling back to the fixed delay is
-        # simpler than parsing it, and the cap applies either way.
-        return None
-    return min(max(seconds, 0.0), SOURCE_RETRY_AFTER_CAP_SECONDS)
+    seconds = _asked_wait_seconds(response)
+    return None if seconds is None else min(seconds, SOURCE_RETRY_AFTER_CAP_SECONDS)
+
+
+def _asks_too_long(response: httpx.Response, longest_wait: float | None) -> bool:
+    """Whether the source asked for a longer wait than the caller sits out."""
+    if longest_wait is None:
+        return False
+    asked = _asked_wait_seconds(response)
+    return asked is not None and asked > longest_wait
 
 
 #: Failures that happened before the request reached the source, so nothing can
@@ -81,6 +101,7 @@ async def request_with_retries(
     delay: float | None = None,
     sleep: Callable[[float], Awaitable[None]] | None = None,
     timeout: float | None = None,
+    longest_wait: float | None = None,
 ) -> httpx.Response:
     """Send one request, trying again when the failure looks temporary.
 
@@ -112,6 +133,10 @@ async def request_with_retries(
             omitted.
         sleep: How to wait; replaced in tests so they never really wait.
         timeout: Seconds one attempt may take; the pool's own limit when omitted.
+        longest_wait: When the source asks to wait longer than this many
+            seconds, its answer is returned at once instead of waited out, so
+            the caller can stop cleanly. Waits of any length are sat out (up to
+            the cap) when omitted.
 
     The three defaults are read when the call is made, not when this module is
     imported, so a test can shorten them for the whole suite.
@@ -153,7 +178,7 @@ async def request_with_retries(
                 return response
             last_error = None
             wait = _retry_after_seconds(response) or delay
-            if attempt == attempts:
+            if attempt == attempts or _asks_too_long(response, longest_wait):
                 return response
         _log.warning(
             "source_request_retried",
@@ -183,6 +208,7 @@ async def get_with_retries(
     delay: float | None = None,
     sleep: Callable[[float], Awaitable[None]] | None = None,
     timeout: float | None = None,
+    longest_wait: float | None = None,
 ) -> httpx.Response:
     """Send one GET, trying again when the failure looks temporary.
 
@@ -204,4 +230,5 @@ async def get_with_retries(
         delay=delay,
         sleep=sleep,
         timeout=timeout,
+        longest_wait=longest_wait,
     )

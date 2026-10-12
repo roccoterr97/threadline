@@ -178,6 +178,37 @@ class LinkedInSignInError(SourceAuthError):
         self.problem = problem
 
 
+class TelegramLoginError(SourceAuthError):
+    """Logging in to Telegram during the set-up did not go through.
+
+    Attributes:
+        problem: Why, as far as the set-up must tell apart; a
+            :class:`~tracker.domain.telegram.TelegramLoginProblem` value.
+    """
+
+    code = "telegram_login_failed"
+
+    def __init__(self, message: str, problem: str) -> None:
+        """Store the owner-facing message and why it happened.
+
+        Args:
+            message: Short, plain explanation, free of secrets.
+            problem: Why, as a ``TelegramLoginProblem`` value.
+        """
+        super().__init__(message)
+        self.problem = problem
+
+
+class TelegramFloodWaitError(SourceUnavailableError):
+    """Telegram asked Threadline to wait longer than a run waits, so reading stopped.
+
+    It has its own code so the summary can say Telegram asked for a pause,
+    which passes by itself, rather than that Telegram did not answer.
+    """
+
+    code = "telegram_flood_wait"
+
+
 class SupabaseSignInError(TrackerError):
     """Supabase's browser sign-in handed over an access token that could not be opened.
 
@@ -207,6 +238,21 @@ class AppPasswordUnavailableError(TrackerError):
     """
 
     code = "app_password_unavailable"
+
+
+class AdminApprovalRequiredError(SourceAuthError):
+    """A work or school account's organisation does not let its people allow Threadline.
+
+    Signing in again cannot help: only the organisation's IT admin can.
+    """
+
+    code = "admin_approval_required"
+
+
+class WorkAccountRequiredError(SourceAuthError):
+    """A personal Microsoft account was used where only a work or school one works."""
+
+    code = "work_account_required"
 
 
 class MailboxWindowCappedError(TrackerError):
@@ -255,3 +301,25 @@ class WorkFileError(TrackerError):
     """A file exchanged with the assistant could not be removed after use."""
 
     code = "work_file_not_removed"
+
+
+class SlackTokenRefusedError(SourceAuthError):
+    """Slack no longer accepts a saved token: revoked, removed with its app, or never valid.
+
+    It has its own code so the morning summary can say that running the Slack
+    set-up again is the fix.
+    """
+
+    code = "slack_token_refused"
+
+
+class SlackApprovalNeededError(SourceAuthError):
+    """A workspace admin has not let the owner's Slack app in yet."""
+
+    code = "slack_approval_needed"
+
+
+class SlackRateLimitedError(SourceUnavailableError):
+    """Slack asked Threadline to wait longer than it waits; the next run reads the rest."""
+
+    code = "slack_rate_limited"

@@ -1,5 +1,5 @@
 import * as copy from '../copy/en';
-import type { TimelineEntry } from '../domain/timeline';
+import { hasSubjectLine, type TimelineEntry } from '../domain/timeline';
 import { formatDateTime } from '../lib/format';
 import { Badge } from './Badge';
 import { ChannelIcon } from './ChannelIcon';
@@ -32,7 +32,7 @@ export function Timeline({ entries }: TimelineProps) {
             </time>
           </div>
 
-          {entry.channel !== 'linkedin' && (
+          {hasSubjectLine(entry.channel) && (
             <p className="mt-2 font-medium break-words text-ink">{entry.subject ?? copy.person.noSubject}</p>
           )}
 

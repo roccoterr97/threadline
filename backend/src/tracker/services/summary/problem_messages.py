@@ -22,7 +22,16 @@ from tracker.shared.constants.mailbox import (
     ImapProvider,
 )
 from tracker.shared.constants.runs import RUN_INTERRUPTED_CODE
-from tracker.shared.errors import MailboxPasswordError, MailboxWindowCappedError
+from tracker.shared.errors import (
+    AdminApprovalRequiredError,
+    MailboxPasswordError,
+    MailboxWindowCappedError,
+    SlackApprovalNeededError,
+    SlackRateLimitedError,
+    SlackTokenRefusedError,
+    TelegramFloodWaitError,
+    WorkAccountRequiredError,
+)
 
 #: What to do when there is, honestly, nothing to do.
 _WAIT_IT_OUT: Final[str] = (
@@ -35,6 +44,12 @@ _CHECK_THE_RUN_PAGE: Final[str] = (
     "Open the run page on the dashboard to see which part stopped. If tomorrow's "
     "summary says the same thing, see 'When something keeps failing' in "
     "docs/operations.md."
+)
+
+#: What to do when the Teams sign-in has to be made again.
+_SIGN_IN_TO_TEAMS_AGAIN: Final[str] = (
+    "Sign in to Teams again with your work or school account: run "
+    "'uv run tracker setup teams' on your computer. It takes about a minute."
 )
 
 #: Sentences chosen by the step *and* the code, where the source matters.
@@ -74,6 +89,81 @@ _BY_STEP_AND_CODE: Final[dict[tuple[RunStep, str], tuple[str, str]]] = {
         "Your calendar did not answer this morning, so no new meetings were read.",
         _WAIT_IT_OUT,
     ),
+    (RunStep.COLLECT_SLACK, SlackTokenRefusedError.code): (
+        "Slack would not accept its saved key this morning, so no new Slack messages "
+        "were read from that workspace.",
+        "Connect Slack again: run 'uv run tracker setup slack' on your computer and "
+        "paste a new User OAuth Token. The steps are in the Slack part of "
+        "docs/setup-your-accounts.md.",
+    ),
+    (RunStep.COLLECT_SLACK, SlackApprovalNeededError.code): (
+        "Slack would not let Threadline read a workspace this morning: your workspace "
+        "admin must approve the Threadline app first.",
+        "Ask your Slack admin to approve the app, then run 'uv run tracker setup slack' "
+        "on your computer.",
+    ),
+    (RunStep.COLLECT_SLACK, SlackRateLimitedError.code): (
+        "Slack asked Threadline to slow down, so some Slack messages were not read this morning.",
+        "Nothing to do — the next run reads the rest.",
+    ),
+    (RunStep.COLLECT_SLACK, "source_unavailable"): (
+        "Slack did not answer this morning, so no new Slack messages were read.",
+        _WAIT_IT_OUT,
+    ),
+    (RunStep.COLLECT_TEAMS, "source_auth_failed"): (
+        "Your Teams chats could not be read this morning: Microsoft refused the saved "
+        "Teams sign-in.",
+        _SIGN_IN_TO_TEAMS_AGAIN,
+    ),
+    (RunStep.COLLECT_TEAMS, AdminApprovalRequiredError.code): (
+        "Your Teams chats could not be read: your organisation does not allow "
+        "Threadline to read them.",
+        "Your organisation's IT admin has to allow this. Until then Threadline "
+        "carries on with your other sources.",
+    ),
+    (RunStep.COLLECT_TEAMS, WorkAccountRequiredError.code): (
+        "Your Teams chats could not be read: Teams works only with a work or school "
+        "account, not a personal Microsoft account.",
+        _SIGN_IN_TO_TEAMS_AGAIN,
+    ),
+    (RunStep.COLLECT_TEAMS, "source_unavailable"): (
+        "Teams did not answer this morning, so no new Teams messages were read.",
+        _WAIT_IT_OUT,
+    ),
+    (RunStep.COLLECT_TELEGRAM, "source_auth_failed"): (
+        "Telegram no longer accepts Threadline's login, so no new Telegram messages were read.",
+        "Log in again: run 'uv run tracker setup telegram' on your computer. It takes "
+        "about a minute (your phone number and the code Telegram sends you).",
+    ),
+    (RunStep.COLLECT_TELEGRAM, "source_unavailable"): (
+        "Telegram did not answer this morning, so no new Telegram messages were read.",
+        _WAIT_IT_OUT,
+    ),
+    (RunStep.COLLECT_TELEGRAM, TelegramFloodWaitError.code): (
+        "Telegram asked Threadline to pause, so not every Telegram chat was read this morning.",
+        "Nothing to do — the pause passes by itself and the next run reads what was missed.",
+    ),
+    (RunStep.COLLECT_GOOGLE_CALENDAR, "source_auth_failed"): (
+        "Your Google Calendar could not be read this morning: Google says its secret "
+        "address no longer works.",
+        "Make a new secret address and save it with 'uv run tracker setup google-calendar' "
+        "- it takes about a minute. If Google no longer shows a secret address, your "
+        "organisation's Google Workspace administrator has turned it off.",
+    ),
+    (RunStep.COLLECT_GOOGLE_CALENDAR, "source_unavailable"): (
+        "Your Google Calendar did not answer this morning, so no new meetings were read.",
+        _WAIT_IT_OUT,
+    ),
+    (RunStep.COLLECT_GOOGLE_CALENDAR, "download_too_large"): (
+        "Your Google Calendar is larger than Threadline reads, so no new meetings were read.",
+        "Nothing breaks; the Google meetings are just left out. If this keeps appearing, "
+        "see 'When something keeps failing' in docs/operations.md.",
+    ),
+    (RunStep.COLLECT_GOOGLE_CALENDAR, "validation_failed"): (
+        "Your Google Calendar's secret address did not give a calendar this morning.",
+        "Copy the 'Secret address in iCal format' again and save it with "
+        "'uv run tracker setup google-calendar'.",
+    ),
 }
 
 #: What to do when a standard mailbox refused its app password.
@@ -95,6 +185,22 @@ _BY_STEP: Final[dict[RunStep, tuple[str, str]]] = {
     ),
     RunStep.COLLECT_CALENDAR: (
         "Your calendar could not be read this morning.",
+        _CHECK_THE_RUN_PAGE,
+    ),
+    RunStep.COLLECT_SLACK: (
+        "Your Slack messages could not be read this morning.",
+        _CHECK_THE_RUN_PAGE,
+    ),
+    RunStep.COLLECT_TEAMS: (
+        "Your Teams chats could not be read this morning.",
+        _CHECK_THE_RUN_PAGE,
+    ),
+    RunStep.COLLECT_TELEGRAM: (
+        "Your Telegram chats could not be read this morning.",
+        _CHECK_THE_RUN_PAGE,
+    ),
+    RunStep.COLLECT_GOOGLE_CALENDAR: (
+        "Your Google Calendar could not be read this morning.",
         _CHECK_THE_RUN_PAGE,
     ),
     RunStep.ASSESS: (

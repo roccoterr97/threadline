@@ -27,6 +27,7 @@ from tracker.domain.rules import RulePack
 from tracker.infrastructure.database import create_database_client
 from tracker.infrastructure.microsoft.auth import MicrosoftAuthenticator
 from tracker.infrastructure.secret_store import MICROSOFT_REFRESH_TOKEN, SecretStore
+from tracker.infrastructure.telegram.reader import open_telegram
 from tracker.repositories import Repositories, build_repositories
 from tracker.services.collection.all_sources import (
     AllSourcesCollector,
@@ -36,8 +37,12 @@ from tracker.services.collection.all_sources import (
 )
 from tracker.services.collection.calendar_collector import CalendarCollector
 from tracker.services.collection.email_collector import EmailCollector
+from tracker.services.collection.google_calendar_collector import GoogleCalendarCollector
 from tracker.services.collection.linkedin_collector import LinkedInCollector
 from tracker.services.collection.models import CollectionReport
+from tracker.services.collection.slack_collector import SlackCollector
+from tracker.services.collection.teams_collector import TeamsCollector
+from tracker.services.collection.telegram_collector import TelegramCollector
 from tracker.services.collection.window import refresh_since
 from tracker.services.identity.directory import DirectoryEntry, PeopleDirectory
 from tracker.services.identity.linker import PeopleLinker
@@ -159,6 +164,44 @@ def collect_calendar() -> None:
     settings, repositories = _wiring()
     clock = SystemClock(settings.owner_zone)
     _print(CalendarCollector(repositories, settings, clock, _rules(repositories)).collect())
+
+
+@collect_app.command("slack")
+def collect_slack(since: SinceOption = None) -> None:
+    """Read the direct messages of every Slack workspace you set up."""
+    settings, repositories = _wiring()
+    clock = SystemClock(settings.owner_zone)
+    collector = SlackCollector(repositories, settings, clock, _rules(repositories))
+    _print(collector.collect(since=_parse_since(since, settings.owner_zone)))
+
+
+@collect_app.command("teams")
+def collect_teams(since: SinceOption = None) -> None:
+    """Read your Microsoft Teams chats (work or school account) and store the recent ones."""
+    settings, repositories = _wiring()
+    clock = SystemClock(settings.owner_zone)
+    collector = TeamsCollector(repositories, settings, clock, _rules(repositories))
+    _print(collector.collect(since=_parse_since(since, settings.owner_zone)))
+
+
+@collect_app.command("telegram")
+def collect_telegram(since: SinceOption = None) -> None:
+    """Read your one-to-one Telegram chats and store the recent ones."""
+    settings, repositories = _wiring()
+    clock = SystemClock(settings.owner_zone)
+    collector = TelegramCollector(
+        repositories, settings, clock, _rules(repositories), open_telegram
+    )
+    _print(collector.collect(since=_parse_since(since, settings.owner_zone)))
+
+
+@collect_app.command("google-calendar")
+def collect_google_calendar() -> None:
+    """Read the Google calendar from its secret address and store the meetings with people."""
+    settings, repositories = _wiring()
+    clock = SystemClock(settings.owner_zone)
+    collector = GoogleCalendarCollector(repositories, settings, clock, _rules(repositories))
+    _print(collector.collect())
 
 
 @collect_app.command("all")
@@ -331,16 +374,23 @@ def _sources(
         repositories: The repository container.
         settings: The process configuration.
         clock: Supplies the current instant.
-        start: An explicit start for LinkedIn, or ``None`` for the usual window.
+        start: An explicit start for the chat sources, or ``None`` for the
+            usual window.
         mail_start: An explicit start for the mailboxes, or ``None``.
 
     Returns:
-        LinkedIn on its own; the mailboxes and the calendar together.
+        LinkedIn on its own; the mailboxes and the Outlook calendar together;
+        the Google calendar, Teams and Telegram each on their own; Slack on its
+        own, stored last so the people it joins by e-mail already exist.
     """
     rules = _rules(repositories)
     linkedin = LinkedInCollector(repositories, settings, clock, rules)
     email = EmailCollector(repositories, settings, clock, rules)
     calendar = CalendarCollector(repositories, settings, clock, rules)
+    slack = SlackCollector(repositories, settings, clock, rules)
+    teams = TeamsCollector(repositories, settings, clock, rules)
+    telegram = TelegramCollector(repositories, settings, clock, rules, open_telegram)
+    google_calendar = GoogleCalendarCollector(repositories, settings, clock, rules)
     return (
         (Source(Channel.LINKEDIN, RunStep.COLLECT_LINKEDIN, lambda: linkedin.read(since=start)),),
         # An Outlook mailbox and the calendar renew the same Microsoft key, and
@@ -349,6 +399,16 @@ def _sources(
             Source(Channel.EMAIL, RunStep.COLLECT_EMAIL, lambda: email.read(since=mail_start)),
             Source(Channel.CALENDAR, RunStep.COLLECT_CALENDAR, calendar.read),
         ),
+        # Stored after the mail, like the Outlook calendar: both look up who
+        # an invitation e-mail was filed under.
+        (Source(Channel.CALENDAR, RunStep.COLLECT_GOOGLE_CALENDAR, google_calendar.read),),
+        # Teams has a sign-in and a key of its own, so it renews nothing the
+        # Outlook lane renews and is read alongside it. A refresh reads its
+        # usual window: a chat is read newest first and stops at the window's
+        # start, so the extra overlap costs little.
+        (Source(Channel.TEAMS, RunStep.COLLECT_TEAMS, lambda: teams.read(since=start)),),
+        (Source(Channel.TELEGRAM, RunStep.COLLECT_TELEGRAM, lambda: telegram.read(since=start)),),
+        (Source(Channel.SLACK, RunStep.COLLECT_SLACK, lambda: slack.read(since=start)),),
     )
 
 

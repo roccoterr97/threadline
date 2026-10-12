@@ -21,7 +21,7 @@ import type {
  * two can never drift apart without a type error.
  */
 
-export const channelSchema = z.enum(['linkedin', 'email', 'calendar']);
+export const channelSchema = z.enum(['linkedin', 'email', 'calendar', 'telegram', 'slack', 'teams']);
 export const directionSchema = z.enum(['inbound', 'outbound']);
 /** Same rule as the database's check on `categories.key`. */
 export const categoryKeySchema = z.string().regex(/^[a-z][a-z0-9_]{0,30}$/);
@@ -54,6 +54,10 @@ export const runStepSchema = z.enum([
   'collect_linkedin',
   'collect_email',
   'collect_calendar',
+  'collect_google_calendar',
+  'collect_telegram',
+  'collect_slack',
+  'collect_teams',
   'assess',
   'summary_email',
 ]);

@@ -9,7 +9,11 @@ guarantees. Written for anyone changing the code.
 LinkedIn (official API)     ──┐
 Outlook (Graph, read)       ──┤
 Gmail / any IMAP (read)     ──┼─▶  collect  ─▶  filter noise  ─▶  group by person
-Outlook calendar (Graph)    ──┘                                         │
+Outlook calendar (Graph)    ──┤
+Google calendar (.ics link) ──┤                                         │
+Telegram (MTProto, read)    ──┤                                         │
+Slack direct messages       ──┤                                         │
+Teams chats (Graph, work)   ──┘                                         │
                                                                     ▼
                                                         assess with Claude
                                                                     │
@@ -38,7 +42,7 @@ The backend follows the layering in
 | Domain | `tracker.domain` | Entities, enums and policy. Imports no framework, no driver, no HTTP. |
 | Repositories | `tracker.repositories` | The only code that knows the database exists. One module per table. |
 | Services | `tracker.services` | Business logic and orchestration. Talks to repositories, never to HTTP. |
-| Infrastructure | `tracker.infrastructure` | The Supabase client, the encrypted secret store, the LinkedIn and Microsoft Graph clients, IMAP and SMTP, and the GitHub CLI and git the set-up uses. |
+| Infrastructure | `tracker.infrastructure` | The Supabase client, the encrypted secret store, the LinkedIn, Microsoft Graph and Slack clients, the Telegram reader (Telethon), IMAP and SMTP, the calendar-file (iCalendar) reader, and the GitHub CLI and git the set-up uses. |
 | Shared | `tracker.shared` | Configuration, errors, logging, clock, tuning constants. |
 | CLI | `tracker.cli` | Parses arguments, calls a service, prints the result. Nothing else. |
 
@@ -188,10 +192,91 @@ retry policy; a refused app password is never retried
 and has its own code, `mailbox_password_refused`, so the summary can say
 "Google refused the app password".
 
-**The calendar** is read from Outlook only, for now, through the same Microsoft
-sign-in
-(`services/collection/calendar_collector.py`). Only meetings with somebody
-other than the owner are stored, and never an invitation's own description.
+**The calendars.** Each calendar has a thin reader that turns its events into
+one neutral `CalendarEvent` (`domain/calendar.py`); filing them is one piece of
+code for every calendar (`services/collection/meeting_filing.py`). Only
+meetings with somebody other than the owner are stored, and never an
+invitation's own description. Each occurrence of a repeating meeting is its own
+thread, and a moved or cancelled meeting gets a new message.
+
+- **Outlook** is read through the same Microsoft sign-in as the mailbox
+  (`services/collection/calendar_collector.py`).
+- **Google Calendar** is read from its "secret address in iCal format"
+  (`services/collection/google_calendar_collector.py`, `infrastructure/ical/`):
+  no Google sign-in, and any private `.ics` address works the same way. The
+  file is downloaded once per run (at most 30 MB), parsed with `icalendar`, and
+  repeating meetings are expanded inside the window with
+  `recurring-ical-events`. The address is a secret (`GOOGLE_CALENDAR_URL`):
+  every error is replaced by one that does not name it. The Google account the
+  address names is treated as the owner's own, even when it is not one of the
+  listed mailboxes. Its step, `collect_google_calendar`, is stored after the
+  mail, like Outlook's, because both look up who an invitation was filed
+  under.
+
+**Slack** is read with each owner's own User OAuth Token (`xoxp-…`), one per
+workspace, comma-separated in `SLACK_USER_TOKENS` (a secret, sent to GitHub
+like the LinkedIn key). The owner creates a read-only app in their own
+workspace from a prefilled manifest link (`shared/constants/slack.py`); an app
+installed only where it was made is an internal app, which Slack's 2025 limits
+on `conversations.history` for non-Marketplace apps leave out, and no
+Threadline server is involved. The client (`infrastructure/slack/`) makes plain
+HTTPS calls through the shared retry policy and stops cleanly when Slack asks
+to wait longer than `SLACK_LONGEST_WAIT_SECONDS`. The collector
+(`services/collection/slack_collector.py`, `slack_threads.py`) reads every
+direct and group direct message, Slack Connect ones included, with
+`conversations.history` from the window start (`oldest`), plus the replies of a
+thread whose first message is inside the window; it reads only the window, not
+a conversation's whole history. One conversation is one thread, keyed by
+Slack's channel identifier, so a Slack Connect conversation seen from two
+workspaces is one thread. Bots, apps, Slackbot and removed accounts are
+skipped. A person is filed under their e-mail address (`users.info`) on the
+e-mail channel, so a Slack message joins their e-mail record; only without
+one under their Slack user identifier. Workspaces are read side by side; one
+that fails never loses the others, as with the mailboxes.
+**Teams chats** are read through a Microsoft sign-in of their own
+(`services/collection/teams_collector.py`, `infrastructure/microsoft/teams.py`):
+tenant `organizations` (Graph shows no personal account's Teams chats), scope
+`Chat.Read User.Read offline_access`, and a key stored apart from Outlook's
+(`microsoft_teams_refresh_token`), so renewing one never replaces the other.
+Both sign-ins share one authenticator class and one Graph session
+(`infrastructure/microsoft/graph_session.py`), which renews the key before each
+attempt, honours Microsoft's `Retry-After` and caps requests in flight.
+`GET /me/chats?$expand=members,lastMessagePreview` lists the one-to-one and
+group chats (meeting chats are left out: the calendar has the meeting); a chat
+whose last message is older than the window is skipped, and the others are read
+with `GET /chats/{id}/messages`, newest first, stopping at the window's start.
+Only messages people wrote are kept (no system events, deleted messages or
+bots), HTML bodies become text, and each person is filed under their e-mail
+address on the e-mail channel (their Teams directory id when Graph gives no
+address), so a chat joins that person's e-mail record. A refusal the
+organisation causes (`AADSTS65001`, `90094`…) becomes `admin_approval_required`
+and a personal account `work_account_required`, each with its own plain
+sentence. `TEAMS_ENABLED`, which `tracker setup teams` sets after the sign-in,
+decides whether the step is part of the run.
+**Telegram** is read with the owner's own account through Telegram's user API
+(MTProto), with the Telethon library (`infrastructure/telegram/`), the only
+code that imports it. The collector (`services/collection/telegram_collector.py`)
+talks to a small port (`services/collection/telegram_reader.py`) and is tested
+with a fake. The owner registers their own application at my.telegram.org
+(Telegram expects one per program; none is shipped) and `tracker setup
+telegram` logs in once on their computer: phone number, the code Telegram
+sends, and the two-step password when there is one, used for that login and
+never kept. The resulting string session is full account access, so it
+travels like `LINKEDIN_ACCESS_TOKEN`: `TELEGRAM_SESSION` in `.env` and in the
+repository's Actions secrets, never logged. Reading is read-only: the chat
+list and each chat's history, with updates switched off, nothing sent and
+nothing marked as read. The list is read newest first until the first unpinned
+chat older than the window (at most `TELEGRAM_MAX_CHATS`); only private chats
+with a living human count (`domain/telegram.py`: no groups, channels, bots,
+Telegram's notices or Saved Messages). Each chat is one thread keyed by the
+other person's Telegram user id, which never changes, with its newest
+`TELEGRAM_MAX_MESSAGES_PER_CHAT` messages; direction comes from Telegram's
+`out` flag, and media is stored as a mark such as `[photo]`. People are matched
+by the usual rules only. A pause Telegram asks for of up to a minute is waited
+out; a longer one stops the read with `telegram_flood_wait`, and a login
+Telegram no longer accepts is `source_auth_failed`, which the summary turns
+into "run `uv run tracker setup telegram` again". The window counts from the
+last run in which `collect_telegram` succeeded.
 
 **The window** (`services/collection/window.py`): the first run reads the last
 30 days; later runs read from the last *successful* run minus a two-day overlap;
@@ -254,22 +339,28 @@ with no duplicates. It also keeps a decision already made by the assessment or
 by the owner: the prefilter never overwrites a richer answer.
 
 Without Outlook in `MAIL_SOURCES` the calendar reports "not configured" and
-the run leaves its step out, as it does for LinkedIn without a key.
+the run leaves its step out, as it does for every optional source that is not
+set up: LinkedIn without a key, Google Calendar without an address, Telegram
+without a saved login, Slack without a token and Teams without `TEAMS_ENABLED`.
 
-**All sources in one step.** `tracker collect all` reads LinkedIn, the
-mailboxes and the calendar at the same time and then stores them one after the
-other (`services/collection/all_sources.py`). Each collector is two halves for
+**All sources in one step.** `tracker collect all` reads every source that is
+set up at the same time and then stores them one after the other
+(`services/collection/all_sources.py`): LinkedIn, the mailboxes and the Outlook
+calendar, the Google calendar, Teams, Telegram, and Slack last, so the people
+it joins by e-mail already exist. Each collector is two halves for
 this: `read` makes every request to the source and hands back the step that
 makes every database write. Storing stays in a fixed order because each source
 adds people to a list it has just read, and the calendar looks up who the mail
 collector filed an invitation under. The mailboxes and the calendar are read
-one after the other, not together: both renew the same Microsoft key. With
+one after the other, not together: both renew the same Microsoft key. Teams
+renews a key of its own, so it is read alongside them. With
 `--record` the command records each source as its own step of the run and ends
 normally even when a source failed, which is how the daily run uses it.
 
-Commands: `tracker collect linkedin|email|all [--since YYYY-MM-DD]`,
+Commands: `tracker collect linkedin|email|telegram|slack|teams|all [--since YYYY-MM-DD]`,
 `tracker collect all --record [--refresh]`,
-`tracker collect calendar`, `tracker collect linkedin --show-folders`,
+`tracker collect calendar|google-calendar`,
+`tracker collect linkedin --show-folders`,
 `tracker microsoft login|forget`, `tracker setup mailbox`,
 `tracker people list|merge|link|tidy|untangle`.
 

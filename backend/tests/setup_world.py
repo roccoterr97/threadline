@@ -8,7 +8,8 @@ from __future__ import annotations
 import hashlib
 import os
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, time
 from pathlib import Path
@@ -31,6 +32,7 @@ from tracker.domain.supabase import (
     SealedAccessToken,
     SupabaseProject,
 )
+from tracker.domain.telegram import TelegramApp, TelegramLogin, TelegramLoginProblem
 from tracker.infrastructure.claude_setup_token import (
     ClaudeCodeState,
     ClaudeKeyListener,
@@ -68,6 +70,7 @@ from tracker.shared.errors import (
     SourcePermissionError,
     SourceRequestRejectedError,
     SourceUnavailableError,
+    TelegramLoginError,
     WorkflowNotEnabledError,
     WorkflowNotStartedError,
 )
@@ -603,6 +606,10 @@ class FakeMicrosoft:
     address: str = OWNER_EMAIL
     refuse: bool = False
     accesses: list[MicrosoftAccess] = field(default_factory=list)
+    teams_signed_in: bool = False
+    teams_address: str = "sam.rivera@work.example"
+    teams_refusal: SourceAuthError | None = None
+    teams_accesses: list[MicrosoftAccess] = field(default_factory=list)
 
     async def is_signed_in(self, access: MicrosoftAccess) -> bool:
         return self.signed_in
@@ -615,6 +622,17 @@ class FakeMicrosoft:
             raise SourceAuthError(message)
         self.signed_in = True
         return self.address
+
+    async def is_signed_in_to_teams(self, access: MicrosoftAccess) -> bool:
+        return self.teams_signed_in
+
+    async def sign_in_to_teams(self, access: MicrosoftAccess, show_code: ShowCode) -> str:
+        self.teams_accesses.append(access)
+        show_code("https://microsoft.example/link", "TEAMS-123")
+        if self.teams_refusal is not None:
+            raise self.teams_refusal
+        self.teams_signed_in = True
+        return self.teams_address
 
 
 @dataclass
@@ -1069,6 +1087,86 @@ class FakeLocalBuild:
         return self.files
 
 
+GOOD_TELEGRAM_API_ID = "1234567"
+# Made up, and joined from parts so the secret scan does not take it for a real key.
+GOOD_TELEGRAM_API_HASH = "".join(["0123", "4567", "89ab", "cdef"]) * 2
+GOOD_TELEGRAM_PHONE = "+393331234567"
+GOOD_TELEGRAM_CODE = "12345"
+TELEGRAM_SESSION_VALUE = "1BVtsOK4made-up-telegram-session"
+
+
+def _telegram_refusal(problem: TelegramLoginProblem) -> TelegramLoginError:
+    return TelegramLoginError(f"made-up refusal: {problem}", problem)
+
+
+@dataclass
+class FakeTelegram:
+    """Telegram's login: accepts only the good app, phone, code and (when set) password."""
+
+    #: The account's two-step verification password, or ``None`` for an account without one.
+    password: str | None = None
+    #: Whether every code typed has expired already.
+    code_expired: bool = False
+    #: Whether Telegram asks for a pause as soon as a code is asked for.
+    too_many_tries: bool = False
+    #: Whether Telegram cannot be reached at all.
+    unreachable: bool = False
+    #: The api_id each login connected with, in turn.
+    opened: list[int] = field(default_factory=list)
+    phones: list[str] = field(default_factory=list)
+    codes: list[str] = field(default_factory=list)
+    passwords: list[str] = field(default_factory=list)
+    disconnected: int = 0
+
+    @asynccontextmanager
+    async def open(self, app: TelegramApp) -> AsyncIterator[FakeTelegramFlow]:
+        self.opened.append(app.api_id)
+        if self.unreachable:
+            message = "Telegram could not be reached"
+            raise SourceUnavailableError(message)
+        try:
+            yield FakeTelegramFlow(self, app)
+        finally:
+            self.disconnected += 1
+
+
+@dataclass
+class FakeTelegramFlow:
+    """One login in progress against :class:`FakeTelegram`."""
+
+    telegram: FakeTelegram
+    app: TelegramApp
+
+    async def send_code(self, phone: str) -> None:
+        self.telegram.phones.append(phone)
+        good_app = (
+            str(self.app.api_id) == GOOD_TELEGRAM_API_ID
+            and self.app.api_hash.get_secret_value() == GOOD_TELEGRAM_API_HASH
+        )
+        if not good_app:
+            raise _telegram_refusal(TelegramLoginProblem.APP_REFUSED)
+        if self.telegram.too_many_tries:
+            raise _telegram_refusal(TelegramLoginProblem.TOO_MANY_TRIES)
+        if phone != GOOD_TELEGRAM_PHONE:
+            raise _telegram_refusal(TelegramLoginProblem.PHONE_REFUSED)
+
+    async def enter_code(self, code: str) -> bool:
+        self.telegram.codes.append(code)
+        if self.telegram.code_expired:
+            raise _telegram_refusal(TelegramLoginProblem.CODE_EXPIRED)
+        if code != GOOD_TELEGRAM_CODE:
+            raise _telegram_refusal(TelegramLoginProblem.CODE_WRONG)
+        return self.telegram.password is not None
+
+    async def enter_password(self, password: SecretStr) -> None:
+        self.telegram.passwords.append(password.get_secret_value())
+        if password.get_secret_value() != self.telegram.password:
+            raise _telegram_refusal(TelegramLoginProblem.PASSWORD_WRONG)
+
+    async def finish(self) -> TelegramLogin:
+        return TelegramLogin(session=SecretStr(TELEGRAM_SESSION_VALUE), account_name="Sam Rivera")
+
+
 @dataclass
 class FakeClaudeKeyMaker:
     """``claude setup-token``: out of reach unless a test says otherwise, as on Windows."""
@@ -1134,6 +1232,7 @@ class World:
     #: The random ends of new site names, in turn.
     suffixes: list[str] = field(default_factory=lambda: ["abc123", "def456", "ghi789"])
     claude: FakeClaudeKeyMaker = field(default_factory=FakeClaudeKeyMaker)
+    telegram: FakeTelegram = field(default_factory=FakeTelegram)
 
     def context(self) -> SetupContext:
         async def check_linkedin(token: SecretStr) -> None:
@@ -1201,6 +1300,7 @@ class World:
             page_of=page_of,
             site_name_suffix=lambda: self.suffixes.pop(0),
             claude_key_maker=self.claude,
+            telegram=self.telegram,
         )
         return SetupContext(io=self.io, env=self.env, gateways=gateways)
 

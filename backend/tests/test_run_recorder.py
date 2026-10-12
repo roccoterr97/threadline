@@ -17,7 +17,7 @@ from tracker.services.runs.run_recorder import (
     StepResult,
     unconfigured_steps,
 )
-from tracker.services.runs.run_status import derive_run_status
+from tracker.services.runs.run_status import COLLECT_STEPS, derive_run_status
 from tracker.shared.clock import FixedClock
 from tracker.shared.config import Settings
 from tracker.shared.constants.runs import INTERRUPTED_RUN_AFTER_HOURS, RUN_INTERRUPTED_CODE
@@ -120,7 +120,7 @@ def test_an_interrupted_refresh_is_never_blamed_on_the_summary(
 ) -> None:
     stale = _running_since(fake_client, 4, RunTrigger.REFRESH)
     earlier = RunRecorder(repositories, FixedClock(NOW))
-    for step in (RunStep.COLLECT_LINKEDIN, RunStep.COLLECT_EMAIL, RunStep.COLLECT_CALENDAR):
+    for step in sorted(COLLECT_STEPS):
         earlier.record_step(UUID(stale), StepOutcome(step, StepResult.SUCCESS))
     earlier.record_step(UUID(stale), StepOutcome(RunStep.ASSESS, StepResult.SUCCESS))
 
@@ -400,11 +400,11 @@ def test_the_recorder_writes_nothing_else_than_runs_and_their_steps(
 def test_linkedin_without_a_key_is_an_unconfigured_step(
     settings_without_linkedin_key: Settings,
 ) -> None:
-    assert unconfigured_steps(settings_without_linkedin_key) == {RunStep.COLLECT_LINKEDIN}
+    assert RunStep.COLLECT_LINKEDIN in unconfigured_steps(settings_without_linkedin_key)
 
 
 def test_linkedin_with_a_profile_and_a_key_is_configured(settings: Settings) -> None:
-    assert unconfigured_steps(settings) == frozenset()
+    assert RunStep.COLLECT_LINKEDIN not in unconfigured_steps(settings)
 
 
 def test_an_unconfigured_step_is_not_recorded(repositories: Repositories) -> None:

@@ -49,7 +49,7 @@ def save_on_github(
         ctx.io.say(f"  variable {name} saved")
 
 
-def offer_to_send(ctx: SetupContext, names: Iterable[str]) -> None:
+def offer_to_send(ctx: SetupContext, names: Iterable[str], *, ask_first: bool = True) -> None:
     """Offer to send settings an extra just saved to GitHub, or say the command that does.
 
     The GitHub step ran earlier, so GitHub does not know these settings, and
@@ -58,6 +58,8 @@ def offer_to_send(ctx: SetupContext, names: Iterable[str]) -> None:
     Args:
         ctx: The set-up's context.
         names: The settings the extra saved; those left empty are ignored.
+        ask_first: Ask before sending; without it they are sent straight
+            away, for an extra that is useless until GitHub has them.
     """
     io = ctx.io
     saved = [name for name in names if ctx.env.get(name)]
@@ -67,8 +69,8 @@ def offer_to_send(ctx: SetupContext, names: Iterable[str]) -> None:
         return
     io.say("The daily run on GitHub reads its settings there, not from this computer, so")
     io.say("it does not have these yet.")
-    if not copy.confirmed or not io.confirm(
-        f"Send them to {copy.name} on GitHub now?", default=True
+    if not copy.confirmed or (
+        ask_first and not io.confirm(f"Send them to {copy.name} on GitHub now?", default=True)
     ):
         io.say(f"To send them later, run: {command}")
         return

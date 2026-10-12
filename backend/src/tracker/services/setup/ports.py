@@ -40,6 +40,7 @@ from tracker.infrastructure.terminal_io import SecretAnswer
 from tracker.infrastructure.web_probe import WebPage
 from tracker.services.database_structure import MigrationFile, StructureProbe
 from tracker.services.profile.choice import Choice, SavedChoice
+from tracker.services.setup.telegram_login import TelegramLoginPort
 from tracker.shared.clock import Clock
 from tracker.shared.constants.github import WorkflowMode
 
@@ -257,7 +258,7 @@ class PlatformPort(Protocol):
 
 
 class MicrosoftPort(Protocol):
-    """Signing in to the mailbox and calendar."""
+    """Signing in to the mailbox and calendar, and, separately, to Teams chats."""
 
     async def is_signed_in(self, access: MicrosoftAccess) -> bool:
         """Tell whether a key is stored already."""
@@ -265,6 +266,14 @@ class MicrosoftPort(Protocol):
 
     async def sign_in(self, access: MicrosoftAccess, show_code: ShowCode) -> str:
         """Run the one-time-code sign-in and return the signed-in address."""
+        ...
+
+    async def is_signed_in_to_teams(self, access: MicrosoftAccess) -> bool:
+        """Tell whether a Teams key is stored already."""
+        ...
+
+    async def sign_in_to_teams(self, access: MicrosoftAccess, show_code: ShowCode) -> str:
+        """Run the Teams one-time-code sign-in and return the signed-in address."""
         ...
 
 
@@ -535,6 +544,7 @@ class SetupGateways:
         site_name_suffix: Makes the random end of a new Netlify site's name.
         make_daily_start_key: Generates a new key for the on-time morning start's timer.
         claude_key_maker: Makes the Claude subscription key with ``claude setup-token``.
+        telegram: Logs in to Telegram once, with the owner's own application.
     """
 
     admin_for: Callable[[str, SecretStr], SupabaseAdminPort]
@@ -563,3 +573,4 @@ class SetupGateways:
     site_name_suffix: Callable[[], str]
     make_daily_start_key: Callable[[], str]
     claude_key_maker: ClaudeKeyMakerPort
+    telegram: TelegramLoginPort

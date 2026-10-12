@@ -24,6 +24,7 @@ from tracker.infrastructure.microsoft.connection import MicrosoftConnection
 from tracker.infrastructure.netlify_api import NetlifyApi
 from tracker.infrastructure.supabase_admin import SupabaseAdmin
 from tracker.infrastructure.supabase_platform import SupabasePlatform
+from tracker.infrastructure.telegram.login import TelethonLoginGateway
 from tracker.infrastructure.terminal_io import TerminalIO
 from tracker.infrastructure.web_download import WebDownload
 from tracker.infrastructure.web_probe import WebProbe
@@ -100,6 +101,7 @@ def build_context(
         site_name_suffix=random_site_suffix,
         make_daily_start_key=make_daily_start_key,
         claude_key_maker=claude_key_maker(in_terminal=io is None),
+        telegram=TelethonLoginGateway(),
     )
     return SetupContext(
         io=io or TerminalIO(),

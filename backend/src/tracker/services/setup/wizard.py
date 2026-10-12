@@ -5,8 +5,8 @@ needs, and ``tracker setup`` runs them and ends with what happens next,
 naming the command that adds LinkedIn later: LinkedIn is left out of the full
 run to keep it short, and the dashboard and the morning e-mail offer it once
 the first summary is in. Only ``--ask-everything`` still asks about it at the
-end. The extras (LinkedIn, the Refresh now button, the Claude cloud route) are
-run together by ``tracker setup extras``, or one at a time by name.
+end. The extras (LinkedIn, Slack, the Refresh now button, the Claude cloud
+route) are run together by ``tracker setup extras``, or one at a time by name.
 """
 
 from __future__ import annotations
@@ -25,13 +25,17 @@ from tracker.services.setup.step_cloud import CloudStep
 from tracker.services.setup.step_dashboard import DashboardStep, opening_link
 from tracker.services.setup.step_database import DatabaseStep
 from tracker.services.setup.step_github import GitHubStep
+from tracker.services.setup.step_google_calendar import GoogleCalendarStep, say_calendar_tip
 from tracker.services.setup.step_linkedin import LinkedInStep, wants_linkedin_now
 from tracker.services.setup.step_login import LoginStep, login_address
 from tracker.services.setup.step_mailbox import MailboxStep
 from tracker.services.setup.step_microsoft import MicrosoftStep
 from tracker.services.setup.step_refresh import RefreshStep
 from tracker.services.setup.step_schedule import ScheduleStep
+from tracker.services.setup.step_slack import SlackStep
 from tracker.services.setup.step_supabase import EncryptionStep, SupabaseStep
+from tracker.services.setup.step_teams import TeamsStep
+from tracker.services.setup.step_telegram import TelegramStep
 from tracker.services.setup.step_time_zone import TimeZoneStep
 from tracker.services.setup.supabase_sign_in import say_sign_in_can_go
 from tracker.services.setup.workflow_schedule import read_schedule
@@ -64,7 +68,15 @@ def core_steps() -> tuple[Step, ...]:
 
 def extra_steps() -> tuple[Step, ...]:
     """The optional steps, in the order ``tracker setup extras`` runs them."""
-    return (LinkedInStep(), RefreshStep(), CloudStep())
+    return (
+        LinkedInStep(),
+        GoogleCalendarStep(),
+        TelegramStep(),
+        SlackStep(),
+        TeamsStep(),
+        RefreshStep(),
+        CloudStep(),
+    )
 
 
 def default_steps() -> tuple[Step, ...]:
@@ -120,6 +132,7 @@ class SetupWizard:
         step = next(step for step in self._steps if step.name is name)
         # Asked for by name, a step skipped on an earlier run asks again.
         forget_skip(self._ctx, name)
+        self._ctx.session.named_step = name
         self._ctx.io.say(step.title)
         return self._ended(await self._attempt(step, skip_when_done=False))
 
@@ -238,6 +251,7 @@ def _say_finish_line(
         io.say(f"After that the dashboard is updated {when}.")
         _say_no_email(io)
     say_summary(ctx, login)
+    say_calendar_tip(ctx)
     _say_extras(io, linkedin_connected=linkedin_connected)
 
 
@@ -246,9 +260,9 @@ def _say_extras(io: SetupIO, *, linkedin_connected: bool) -> None:
     if not linkedin_connected:
         io.say(f"LinkedIn can be added later: {_COMMAND} {StepName.LINKEDIN} (about 5 minutes).")
         io.say("It works if your LinkedIn profile is located in the EEA or Switzerland.")
-    io.say("Extras you can add any time: the dashboard's Refresh now button, which also")
-    io.say("makes the daily run start on time, and the Claude cloud route:")
-    io.say(f"{_COMMAND} {StepGroup.EXTRAS}")
+    io.say("Extras you can add any time: Google Calendar, Telegram, Slack, Teams chats,")
+    io.say("the dashboard's Refresh now button, which also makes the daily run start on time,")
+    io.say(f"and the Claude cloud route: {_COMMAND} {StepGroup.EXTRAS}")
 
 
 def _say_how_to_sign_in(ctx: SetupContext, login: str | None) -> None:

@@ -22,7 +22,11 @@ from tracker.services.database_structure import (
 )
 from tracker.services.doctor.models import CheckResult, ok, problem, skipped, warning
 from tracker.shared.clock import Clock
-from tracker.shared.constants.collection import INITIAL_WINDOW_DAYS
+from tracker.shared.constants.collection import (
+    CALENDAR_FUTURE_DAYS,
+    CALENDAR_PAST_DAYS,
+    INITIAL_WINDOW_DAYS,
+)
 from tracker.shared.constants.setup import FUNCTION_MISSING_STATUS, REFRESH_GUARD_STATUSES
 from tracker.shared.constants.summary import KEY_REMINDER_DAYS
 from tracker.shared.errors import DatabaseStructureMissingError
@@ -203,6 +207,42 @@ class CalendarCheck:
 
 
 @dataclass(slots=True)
+class TeamsCheck:
+    """The Teams sign-in renews and says who it is, when Teams is connected."""
+
+    signed_in_address: Callable[[], Awaitable[str]] | None
+    name: str = "Teams chats"
+    fix: str = _setup("teams")
+
+    async def run(self) -> CheckResult:
+        """Renew the Teams key and read who signed in."""
+        if self.signed_in_address is None:
+            return skipped(self.name, "Teams is not connected (optional, work or school accounts)")
+        address = await self.signed_in_address()
+        return ok(self.name, f"signed in as {address}" if address else "the Teams sign-in renewed")
+
+
+@dataclass(slots=True)
+class GoogleCalendarCheck:
+    """The calendar's secret address gives a calendar."""
+
+    count_events: Callable[[], Awaitable[int]] | None
+    name: str = "Google Calendar"
+    fix: str = _setup("google-calendar")
+
+    async def run(self) -> CheckResult:
+        """Download the calendar once and count the events around today."""
+        if self.count_events is None:
+            return skipped(self.name, "no Google Calendar is connected (optional)")
+        found = await self.count_events()
+        return ok(
+            self.name,
+            f"the calendar answered with {found} events from the last {CALENDAR_PAST_DAYS} "
+            f"days and the next {CALENDAR_FUTURE_DAYS}",
+        )
+
+
+@dataclass(slots=True)
 class ImapMailboxCheck:
     """The IMAP mailbox signs in, its inbox answers and its Sent folder is found."""
 
@@ -305,6 +345,38 @@ class LinkedInExpiryCheck:
         if days_left <= KEY_REMINDER_DAYS:
             return warning(self.name, f"the key expires on {when}, in {days_left} days", self.fix)
         return ok(self.name, f"the key is valid until {when}")
+
+
+@dataclass(slots=True)
+class SlackCheck:
+    """Slack accepts the key of every workspace that is set up."""
+
+    workspace_names: Callable[[], Awaitable[tuple[str, ...]]] | None
+    name: str = "Slack"
+    fix: str = _setup("slack")
+
+    async def run(self) -> CheckResult:
+        """Ask Slack once per workspace whose key it is."""
+        if self.workspace_names is None:
+            return skipped(self.name, "Slack is not connected (optional)")
+        names = await self.workspace_names()
+        return ok(self.name, f"Slack accepted the key for {', '.join(names)}")
+
+
+@dataclass(slots=True)
+class TelegramCheck:
+    """Telegram accepts the saved login."""
+
+    account_name: Callable[[], Awaitable[str]] | None
+    name: str = "Telegram"
+    fix: str = _setup("telegram")
+
+    async def run(self) -> CheckResult:
+        """Connect with the saved login and read the account's own name, nothing else."""
+        if self.account_name is None:
+            return skipped(self.name, "Telegram is not connected (optional)")
+        who = await self.account_name()
+        return ok(self.name, f"Telegram accepted the saved login ({who})")
 
 
 @dataclass(slots=True)

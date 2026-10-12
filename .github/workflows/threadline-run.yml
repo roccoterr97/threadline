@@ -251,6 +251,7 @@ jobs:
           OWNER_EMAIL_ADDRESSES: ${{ secrets.OWNER_EMAIL_ADDRESSES }}
           LINKEDIN_ACCESS_TOKEN: ${{ secrets.LINKEDIN_ACCESS_TOKEN }}
           LINKEDIN_TOKEN_EXPIRES_ON: ${{ vars.LINKEDIN_TOKEN_EXPIRES_ON }}
+          SLACK_USER_TOKENS: ${{ secrets.SLACK_USER_TOKENS }}
           DASHBOARD_BASE_URL: ${{ secrets.DASHBOARD_BASE_URL }}
           SUMMARY_RECIPIENT: ${{ secrets.SUMMARY_RECIPIENT }}
           OWNER_DISPLAY_NAME: ${{ secrets.OWNER_DISPLAY_NAME }}
@@ -260,6 +261,7 @@ jobs:
           SUMMARY_SUBJECT_PREFIX: ${{ vars.SUMMARY_SUBJECT_PREFIX }}
           MICROSOFT_CLIENT_ID: ${{ vars.MICROSOFT_CLIENT_ID }}
           MICROSOFT_TENANT: ${{ vars.MICROSOFT_TENANT }}
+          TEAMS_ENABLED: ${{ vars.TEAMS_ENABLED }}
           MAIL_SOURCES: ${{ vars.MAIL_SOURCES }}
           IMAP_PROVIDER: ${{ vars.IMAP_PROVIDER }}
           IMAP_HOST: ${{ vars.IMAP_HOST }}
@@ -268,6 +270,10 @@ jobs:
           SUMMARY_DELIVERY: ${{ vars.SUMMARY_DELIVERY }}
           SMTP_HOST: ${{ vars.SMTP_HOST }}
           SMTP_PORT: ${{ vars.SMTP_PORT }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          GOOGLE_CALENDAR_URL: ${{ secrets.GOOGLE_CALENDAR_URL }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           github_token: ${{ github.token }}

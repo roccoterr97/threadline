@@ -7,6 +7,8 @@ through the Gmail connector, such as one who reads Outlook alone.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 from tracker.services.setup import values
 from tracker.services.setup.context import SetupContext
 from tracker.services.setup.first_run import workflow_page
@@ -14,6 +16,7 @@ from tracker.services.setup.github_copy import linked_copy
 from tracker.services.setup.mail_sources import saved_sources
 from tracker.services.setup.models import StepName
 from tracker.shared.config import Settings
+from tracker.shared.constants.calendar_feed import GOOGLE_CALENDAR_URL_SETTING
 from tracker.shared.constants.github import DISABLE_WORKFLOW_COMMAND
 from tracker.shared.constants.mailbox import IMAP_PRESETS, ImapProvider, MailSource
 from tracker.shared.constants.setup import (
@@ -22,6 +25,7 @@ from tracker.shared.constants.setup import (
     CLOUD_OUTLOOK_HOST,
     LOCAL_ONLY_SETTINGS,
 )
+from tracker.shared.constants.slack import CLOUD_SLACK_HOST
 from tracker.shared.errors import SourceUnavailableError
 
 
@@ -116,6 +120,10 @@ def allowed_hosts(ctx: SetupContext) -> tuple[str, ...]:
         hosts.append(imap_host)
     if ctx.env.get("LINKEDIN_ACCESS_TOKEN"):
         hosts.append(CLOUD_LINKEDIN_HOST)
+    if ctx.env.get("SLACK_USER_TOKENS"):
+        hosts.append(CLOUD_SLACK_HOST)
+    if calendar_host := urlsplit(ctx.env.get(GOOGLE_CALENDAR_URL_SETTING) or "").hostname:
+        hosts.append(calendar_host)
     return tuple(hosts)
 
 

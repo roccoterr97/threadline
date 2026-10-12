@@ -39,6 +39,9 @@ class SetupSession:
         linkedin_wanted: The owner already said yes to connecting LinkedIn,
             at the end of a full ``--ask-everything`` run, so the LinkedIn
             step does not ask again.
+        named_step: The step the owner asked for by name, if any
+            (``tracker setup teams``): an optional step run that way needs no
+            "connect it now?" question. ``None`` for the core steps or the extras.
     """
 
     supabase_token: SecretStr | None = None
@@ -46,6 +49,7 @@ class SetupSession:
     build_dashboard_here: bool = False
     express: bool = False
     linkedin_wanted: bool = False
+    named_step: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

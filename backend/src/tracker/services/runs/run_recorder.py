@@ -102,8 +102,12 @@ def unconfigured_steps(settings: Settings) -> frozenset[RunStep]:
 
     Returns:
         The steps to leave out of the run: ``collect_linkedin`` when LinkedIn
-        has no profile address or no key, and ``collect_calendar`` when
-        Outlook is not one of the mailboxes (the calendar is Outlook's).
+        has no profile address or no key, ``collect_calendar`` when Outlook
+        is not one of the mailboxes (that calendar is Outlook's),
+        ``collect_google_calendar`` when no calendar secret address is saved,
+        ``collect_slack`` when no Slack workspace is set up,
+        ``collect_teams`` when the Teams sign-in was never made, and
+        ``collect_telegram`` when Telegram has no saved login.
         ``collect_email`` is always set up: at least one mailbox is required.
     """
     unconfigured: set[RunStep] = set()
@@ -111,6 +115,14 @@ def unconfigured_steps(settings: Settings) -> frozenset[RunStep]:
         unconfigured.add(RunStep.COLLECT_LINKEDIN)
     if not settings.outlook_enabled:
         unconfigured.add(RunStep.COLLECT_CALENDAR)
+    if not settings.slack_enabled:
+        unconfigured.add(RunStep.COLLECT_SLACK)
+    if not settings.teams_enabled:
+        unconfigured.add(RunStep.COLLECT_TEAMS)
+    if not settings.telegram_enabled:
+        unconfigured.add(RunStep.COLLECT_TELEGRAM)
+    if not settings.google_calendar_enabled:
+        unconfigured.add(RunStep.COLLECT_GOOGLE_CALENDAR)
     return frozenset(unconfigured)
 
 

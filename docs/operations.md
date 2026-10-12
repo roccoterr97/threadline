@@ -414,7 +414,8 @@ reads it. `uv run tracker doctor` names it.
   the mailbox settings (`MAIL_SOURCES`, `IMAP_PROVIDER`, `IMAP_USERNAME`),
   `OWNER_LINKEDIN_PROFILE_URL`, `LINKEDIN_ACCESS_TOKEN`,
   `LINKEDIN_TOKEN_EXPIRES_ON` and `DASHBOARD_BASE_URL` (plus
-  `MICROSOFT_CLIENT_ID` and `MICROSOFT_TENANT` if you set them). Running
+  `MICROSOFT_CLIENT_ID` and `MICROSOFT_TENANT` if you set them, and
+  `GOOGLE_CALENDAR_URL` if you connected Google Calendar). Running
   `uv run tracker setup cloud` on your computer prints the exact list, names
   only, and can copy each value for you. Changes only reach sessions started
   afterwards.

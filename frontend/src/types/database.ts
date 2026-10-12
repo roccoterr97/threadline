@@ -13,7 +13,7 @@
  * schema will surface there.
  */
 
-export type Channel = 'linkedin' | 'email' | 'calendar';
+export type Channel = 'linkedin' | 'email' | 'calendar' | 'telegram' | 'slack' | 'teams';
 export type Direction = 'inbound' | 'outbound';
 /**
  * A category key (`categories.key`). Categories are data the owner defines,
@@ -48,6 +48,10 @@ export type RunStep =
   | 'collect_linkedin'
   | 'collect_email'
   | 'collect_calendar'
+  | 'collect_google_calendar'
+  | 'collect_telegram'
+  | 'collect_slack'
+  | 'collect_teams'
   | 'assess'
   | 'summary_email';
 
